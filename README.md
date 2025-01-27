@@ -45,7 +45,7 @@ python3 ../test/autotest.py -vbd="lsvbd1" -n=5 -fs=-1 -bs=0 -m=seq
 ```
 In addition you can use the provided fio tests, that time the execution and use pattern-verify process.
 ```
-make fio_verify WO=randwrite RO=randread FS=1000 WBS=8 RBS=8
+make fio_verify IO=libaio WO=randwrite RO=randread FS=1000 WBS=8 RBS=8
 ```
 Options description is provided in `Makefile`.
 
