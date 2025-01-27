@@ -15,6 +15,8 @@ RO?=read
 WO?=write
 # File size (in MB)
 FS?=1000
+# IO engine to use in FIO (libaio\io_uring)
+IO?=libaio 
 
 # To build modules outside of the kernel tree, we run "make"
 # in the kernel source tree; the Makefile these then includes this
@@ -46,8 +48,9 @@ lint:
 	find . -name "*.c" -o -name "*.h" | xargs ./checkpatch.pl -f --no-tree
 
 clean:
-	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions *.symvers *.mod *.order *.o.d
+	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions *.symvers *.mod *.order *.o.d *.state
 	rm -rf include/*.o include/.*.cmd include/.*.o.d
+	rm -rf *.out *.folded *.perf *.old *.svg *.data *.dat
 
 exit:
 	echo "$(DBI)" > /sys/module/lsbdd/parameters/delete_bd
@@ -66,10 +69,10 @@ init_no_recompile:
 
 fio_verify:
 	# Write and verify test
-	fio --name=test_verify --ioengine=libaio --iodepth=16 --rw=$(WO) --size=$(FS)M --verify_state_save=1 --bssplit=$(WBS)k/100 --direct=1 --filename=/dev/lsvbd1 --numjobs=1 --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0
+	fio --name=test_verify --ioengine=$(IO) --iodepth=16 --rw=$(WO) --size=$(FS)M --verify_state_save=1 --bssplit=$(WBS)k/100 --direct=1 --filename=/dev/lsvbd1 --numjobs=1 --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0
 
 	# Read and verify test
-	fio --name=test_verify --ioengine=libaio --iodepth=16 --rw=$(RO) --size=$(FS)M --verify_state_save=1 --bssplit=$(RBS)k/100 --direct=1 --filename=/dev/lsvbd1 --numjobs=1 --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1
+	fio --name=test_verify --ioengine=$(IO) --iodepth=16 --rw=$(RO) --size=$(FS)M --verify_state_save=1 --bssplit=$(RBS)k/100 --direct=1 --filename=/dev/lsvbd1 --numjobs=1 --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1
 
 .PHONY: modules modules_install clean
 

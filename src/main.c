@@ -112,21 +112,21 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 	curr_rs_info->redirected_sector = sectors->redirect;
 
 	old_rs_info = ds_lookup(current_redirect_manager->sel_data_struct, sectors->original);
-	if (!old_rs_info)
-		pr_debug("WRITE: Lookup in data structure _ failed\n");
 
 	pr_debug("WRITE: Old rs %p", old_rs_info);
-	pr_info("WRITE: key: %llu, sec: %llu\n", sectors->original, curr_rs_info->redirected_sector);
+	pr_debug("WRITE: key: %llu, sec: %llu\n", sectors->original, curr_rs_info->redirected_sector);
 
-	if (old_rs_info && !(old_rs_info->redirected_sector == sectors->redirect && old_rs_info->block_size == curr_rs_info->block_size)) {
+	if (old_rs_info) {
+		pr_debug("WRITE: remove old mapping\n");
 		ds_remove(current_redirect_manager->sel_data_struct, sectors->original);
-		if (status)
-			goto insert_err;
 	} else {
 		next_free_sector += curr_rs_info->block_size / SECTOR_SIZE;
 	}
 
 	status = ds_insert(current_redirect_manager->sel_data_struct, sectors->original, curr_rs_info);
+	if (status)
+		goto insert_err;
+
 	clone_bio->bi_iter.bi_sector = sectors->redirect;
 	pr_debug("original %llu, redirected %llu\n", sectors->original, sectors->redirect);
 
@@ -254,7 +254,7 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 	sectors->original = main_bio->bi_iter.bi_sector;
 	curr_rs_info = ds_lookup(redirect_manager->sel_data_struct, sectors->original);
 
-	pr_info("READ: key: %llu\n", sectors->original);
+	pr_debug("READ: key: %llu\n", sectors->original);
 
 	if (!curr_rs_info) { // Read & Write sector starts aren't equal.
 		status = check_system_bio(redirect_manager, sectors, clone_bio);
@@ -335,7 +335,7 @@ static void lsbdd_submit_bio(struct bio *bio)
 	struct bd_manager *current_redirect_manager = NULL;
 	s16 status;
 
-	pr_info("Entered submit bio\n");
+	pr_debug("Entered submit bio\n");
 
 	current_redirect_manager = get_bd_manager_by_name(bio->bi_bdev->bd_disk->disk_name);
 	if (!current_redirect_manager)
@@ -362,7 +362,7 @@ static void lsbdd_submit_bio(struct bio *bio)
 
 
 	submit_bio(clone);
-	pr_info("Submitted bio\n\n");
+	pr_debug("Submitted bio\n\n");
 	return;
 
 get_err:
@@ -449,7 +449,7 @@ static s32 check_and_open_bd(char *bd_path)
 
 	vector_add_bd(current_bdev_manager);
 
-	pr_info("Succesfully added %s to vector\n", bd_path);
+	pr_debug("Succesfully added %s to vector\n", bd_path);
 
 	return 0;
 
@@ -539,7 +539,7 @@ static s8 delete_bd(u16 index)
 		bdev_release(get_list_element_by_index(index)->bd_handler);
 		get_list_element_by_index(index)->bd_handler = NULL;
 	} else {
-		pr_info("BD with num %d is empty\n", index + 1);
+		pr_debug("BD with num %d is empty\n", index + 1);
 	}
 	if (get_list_element_by_index(index)->vbd_disk) {
 		del_gendisk(get_list_element_by_index(index)->vbd_disk);
@@ -553,7 +553,7 @@ static s8 delete_bd(u16 index)
 
 	list_del(&(get_list_element_by_index(index)->list));
 
-	pr_info("Removed bdev with index %d (from list)\n", index + 1);
+	pr_debug("Removed bdev with index %d (from list)\n", index + 1);
 	return 0;
 }
 
@@ -698,7 +698,7 @@ static s32  lsbdd_set_redirect_bd(const char *arg, const struct kernel_param *kp
 		return PTR_ERR(&status);
 
 	status = ds_init(list_last_entry(&bd_list, struct bd_manager, list)->sel_data_struct, sel_ds);
-	pr_info("%p\n", list_last_entry(&bd_list, struct bd_manager, list)->sel_data_struct);
+	pr_debug("%p\n", list_last_entry(&bd_list, struct bd_manager, list)->sel_data_struct);
 	if (status)
 		return status;
 
@@ -714,7 +714,7 @@ static s32  __init lsbdd_init(void)
 {
 	s8 status;
 
-	pr_info("LSBDD module initialised\n");
+	pr_debug("LSBDD module initialised\n");
 	bdd_major = register_blkdev(0, LSBDD_BLKDEV_NAME_PREFIX);
 
 	if (bdd_major < 0) {
@@ -763,7 +763,7 @@ static void __exit lsbdd_exit(void)
 	kfree(bdd_pool);
 	unregister_blkdev(bdd_major, LSBDD_BLKDEV_NAME_PREFIX);
 
-	pr_info("BDR module exited\n");
+	pr_debug("BDR module exited\n");
 }
 
 static const struct kernel_param_ops lsbdd_delete_ops = {
