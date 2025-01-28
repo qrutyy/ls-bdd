@@ -49,7 +49,7 @@ s32 ds_init(struct data_struct *ds, char *sel_ds)
 		if (!hash_table)
 			goto mem_err;
 
-		hash_init(hash_table->head);
+		lhash_init(hash_table->head);
 		ds->type = HASHTABLE_TYPE;
 		ds->structure.map_hash = hash_table;
 		ds->structure.map_hash->nf_bck = 0;
@@ -234,7 +234,7 @@ s32 ds_empty_check(struct data_struct *ds)
 		return 1;
 	if (ds->type == SKIPLIST_TYPE && ds->structure.map_list->head_lvl == 0)
 		return 1;
-	if (ds->type == HASHTABLE_TYPE && hash_empty(ds->structure.map_hash->head))
+	if (ds->type == HASHTABLE_TYPE && llist_empty(ds->structure.map_hash->head))
 		return 1;
 	if (ds->type == RBTREE_TYPE && ds->structure.map_rbtree->node_num == 0)
 		return 1;
