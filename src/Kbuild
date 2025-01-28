@@ -9,4 +9,4 @@ ccflags-y := 	-Wall					\
 		-Werror=implicit-function-declaration   \
 
 obj-m := lsbdd.o
-lsbdd-objs := main.o utils/btree-utils.o utils/skiplist.o utils/ds-control.o utils/hashtable-utils.o utils/rbtree.o
+lsbdd-objs := main.o utils/btree-utils.o utils/skiplist.o utils/ds-control.o utils/hashtable-utils.o utils/rbtree.o 

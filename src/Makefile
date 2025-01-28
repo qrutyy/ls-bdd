@@ -17,6 +17,9 @@ WO?=write
 FS?=1000
 # IO engine to use in FIO (libaio\io_uring)
 IO?=libaio 
+# Number of fio jobs to run
+NJ?=1
+
 
 # To build modules outside of the kernel tree, we run "make"
 # in the kernel source tree; the Makefile these then includes this
@@ -69,10 +72,10 @@ init_no_recompile:
 
 fio_verify:
 	# Write and verify test
-	fio --name=test_verify --ioengine=$(IO) --iodepth=16 --rw=$(WO) --size=$(FS)M --verify_state_save=1 --bssplit=$(WBS)k/100 --direct=1 --filename=/dev/lsvbd1 --numjobs=1 --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0
+	fio --name=test_verify --ioengine=$(IO) --iodepth=16 --rw=$(WO) --size=$(FS)M --verify_state_save=1 --bssplit=$(WBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0 --numjobs=$(NJ)
 
 	# Read and verify test
-	fio --name=test_verify --ioengine=$(IO) --iodepth=16 --rw=$(RO) --size=$(FS)M --verify_state_save=1 --bssplit=$(RBS)k/100 --direct=1 --filename=/dev/lsvbd1 --numjobs=1 --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1
+	fio --name=test_verify --ioengine=$(IO) --iodepth=16 --rw=$(RO) --size=$(FS)M --verify_state_save=1 --bssplit=$(RBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 --numjobs=$(NJ)
 
 .PHONY: modules modules_install clean
 
