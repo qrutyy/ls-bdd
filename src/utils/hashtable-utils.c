@@ -18,8 +18,13 @@ inline void __lhash_init(struct llist_head *ht, unsigned int size)
 void hash_insert(struct hashtable *ht, struct llist_node *node, sector_t key)
 {
 	if (llist_add(node, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)]))
-		pr_warn("Hashtable: was empty\n");
-
+		pr_debug("Hashtable: was empty\n");
+	
+	/** Note, that there is a lot of buckets (1 * 2 ** 7) -> 
+	  * probably few first ten inserts will be in empty buckets 
+	  */
+	
+	pr_debug("Hashtable: key %lld written\n", key);
 	ht->max_bck_num = BUCKET_NUM;
 }
 
@@ -83,34 +88,26 @@ struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *pre
 	return prev_max_node;
 }
 
-static inline void __llist_del(struct llist_node *node, struct llist_node *prev, spinlock_t lock)
+static void __llist_del(struct llist_node node, struct llist_node prev, spinlock_t lock)
 {
 	struct llist_node *next = NULL;
-	pr_info("6\n");
-	spin_lock(&lock);
-	pr_info("7\n");
-	next = node->next;
 
-	WRITE_ONCE(prev->next, next);
-pr_info("8\n");
-	WRITE_ONCE(node->next, NULL);
-pr_info("9\n");
-	kfree(node);
-	WRITE_ONCE(node, NULL);
-pr_info("10\n");
-	spin_unlock(&lock);
+	next = node.next;
+	WRITE_ONCE(prev.next, next);
+	WRITE_ONCE(node.next, NULL);
 }
 
 void hashtable_remove(struct hashtable *ht, sector_t key)
 {
 	struct hash_el *el, *tmp, *prev_el = NULL;
 	u32 bckt_num = 0;
-
+	spinlock_t bckt_lock;
+	
 	bckt_num = hash_min(BUCKET_NUM, HT_MAP_BITS);
-	spinlock_t bckt_lock = ht->lock[bckt_num]; // per bucket lock
-pr_info("6\n");
-	pr_debug("Hashtable: bucket_val %llu", BUCKET_NUM);
+	bckt_lock = ht->lock[bckt_num]; // per bucket lock
 
+	pr_debug("Hashtable: bucket_val %llu", BUCKET_NUM);
+	spin_lock(&bckt_lock); // test only. should be moved further to decrease the crit. section
 	// no lock or other sync is needed, due to lock-free llist iter
 	llist_for_each_entry_safe(el, tmp, ht->head[bckt_num].first, node) {
 		if (el != NULL && el->key == key)
@@ -121,6 +118,15 @@ pr_info("6\n");
 		pr_warn("Hashtable: tried to remove not existing element\n");
 		return;
 	}
-	(prev_el) ? __llist_del(&el->node, &prev_el->node, bckt_lock) : llist_del_first(&ht->head[bckt_num]);
+	pr_debug("Hashtable: key %lld removing\n", key);
+	pr_debug("Hashtable: key %lld \n", el->key);
+	pr_debug("Prev %p, el %p\n", prev_el, el);
+
+	if (prev_el) {
+		__llist_del(el->node, prev_el->node, bckt_lock); 
+	}	else { 
+		llist_del_first(&ht->head[bckt_num]);
+	}
+	spin_unlock(&bckt_lock);
 }
 

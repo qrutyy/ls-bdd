@@ -27,7 +27,7 @@ struct hashtable {
 	DECLARE_LHASHTABLE(head, HT_MAP_BITS);
 	struct hash_el *last_el;
 	u8 max_bck_num;
-	spinlock_t *lock;
+	spinlock_t lock[1 << HT_MAP_BITS];
 };
 
 struct hash_el {
