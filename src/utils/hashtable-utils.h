@@ -3,6 +3,7 @@
 #include <linux/hashtable.h>
 #include <linux/llist.h>
 #include <linux/spinlock.h>
+#include <linux/slab.h>
 #pragma once
 
 #define HT_MAP_BITS 7
@@ -36,9 +37,9 @@ struct hash_el {
 	void *value;
 };
 
-void hash_insert(struct hashtable *hm, struct llist_node *node, sector_t key);
-void hashtable_free(struct hashtable *hm);
-struct hash_el *hashtable_find_node(struct hashtable *hm, sector_t key);
-struct hash_el *hashtable_prev(struct hashtable *hm, sector_t key, sector_t *prev_key);
-void hashtable_remove(struct hashtable *hm, sector_t key);
+void hash_insert(struct hashtable *ht, struct llist_node *node, sector_t key);
+void hashtable_free(struct hashtable *ht, struct kmem_cache *lsbdd_hash_cache);
+struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key);
+struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *prev_key);
+void hashtable_remove(struct hashtable *ht, sector_t key);
 void __lhash_init(struct llist_head *htm, unsigned int size);

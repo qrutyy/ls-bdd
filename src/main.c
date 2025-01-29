@@ -5,6 +5,7 @@
 #include <linux/list.h>
 #include <linux/moduleparam.h>
 #include "utils/ds-control.h"
+#include "utils/hashtable-utils.h"
 #include "main.h"
 
 MODULE_DESCRIPTION("Log-Structured virtual Block Device Driver module");
@@ -17,16 +18,18 @@ struct bio_set *bdd_pool;
 struct list_head bd_list;
 atomic64_t next_free_sector = ATOMIC_INIT(LSBDD_SECTOR_OFFSET);
 
-static s32  vector_add_bd(struct bd_manager *current_bdev_manager)
+static struct kmem_cache *lsbdd_sectors_cache = NULL;
+static struct kmem_cache *lsbdd_value_cache = NULL;
+static struct kmem_cache *lsbdd_hash_cache = NULL;
+
+static void vector_add_bd(struct bd_manager *current_bdev_manager)
 {
 	list_add_tail(&current_bdev_manager->list, &bd_list);
-
-	return 0;
 }
 
 static struct bd_manager *get_bd_manager_by_name(char *vbd_name)
 {
-	struct bd_manager *entry;
+	struct bd_manager *entry = NULL;
 
 	list_for_each_entry(entry, &bd_list, list) {
 		if (!strcmp(entry->vbd_disk->disk_name, vbd_name))
@@ -38,7 +41,7 @@ static struct bd_manager *get_bd_manager_by_name(char *vbd_name)
 
 static struct bd_manager *get_list_element_by_index(u16 index)
 {
-	struct bd_manager *entry;
+	struct bd_manager *entry = NULL;
 	u16 i = 0;
 
 	list_for_each_entry(entry, &bd_list, list) {
@@ -52,7 +55,7 @@ static struct bd_manager *get_list_element_by_index(u16 index)
 
 static s8 convert_to_int(const char *arg, u8 *result)
 {
-	long number;
+	long number = 0;
 	s32 res = kstrtol(arg, 10, &number);
 
 	if (res != 0)
@@ -93,13 +96,15 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 {
 	s8 status;
 	struct sectors *sectors = NULL;
-	struct redir_sector_info *old_rs_info = NULL;
-	struct redir_sector_info *curr_rs_info = NULL;
+	struct value_redir *old_value = NULL;
+	struct value_redir *curr_value = NULL;
 
-	sectors = kzalloc(sizeof(struct sectors), GFP_KERNEL);
-	curr_rs_info = kzalloc(sizeof(struct redir_sector_info), GFP_KERNEL);
+	// i guess this allocation can be deleted.... (if it will affect latency a lot)
+	// btw it was made only for readability reason ;)
+	sectors = kmem_cache_alloc(lsbdd_sectors_cache, GFP_KERNEL); 
+	curr_value = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
 
-	if (!(sectors && curr_rs_info))
+	if (!(sectors && curr_value))
 		goto mem_err;
 
 	sectors->original = main_bio->bi_iter.bi_sector;
@@ -108,40 +113,41 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 	pr_debug("Original sector: bi_sector = %llu, block_size %u\n",
 			main_bio->bi_iter.bi_sector, clone_bio->bi_iter.bi_size);
 
-	curr_rs_info->block_size = main_bio->bi_iter.bi_size;
-	curr_rs_info->redirected_sector = sectors->redirect;
+	curr_value->block_size = main_bio->bi_iter.bi_size;
+	curr_value->redirected_sector = sectors->redirect;
 
-	old_rs_info = ds_lookup(current_redirect_manager->sel_data_struct, sectors->original);
+	old_value = ds_lookup(current_redirect_manager->sel_data_struct, sectors->original);
 
-	pr_debug("WRITE: Old rs %p", old_rs_info);
-	pr_debug("WRITE: key: %llu, sec: %llu\n", sectors->original, curr_rs_info->redirected_sector);
+	pr_debug("WRITE: Old rs %p", old_value);
+	pr_debug("WRITE: key: %llu, sec: %llu\n", sectors->original, curr_value->redirected_sector);
 
-	if (old_rs_info) {
-		pr_debug("WRITE: remove old mapping key %lld old_val: %lld, new_val %lld\n", sectors->original, old_rs_info->redirected_sector, sectors->redirect);
+	if (old_value) {
+		pr_debug("WRITE: remove old mapping key %lld old_val: %lld, new_val %lld\n", sectors->original, old_value->redirected_sector, sectors->redirect);
 		ds_remove(current_redirect_manager->sel_data_struct, sectors->original);
 	} else {
-		atomic64_add(curr_rs_info->block_size / SECTOR_SIZE, &next_free_sector);
+		atomic64_add(curr_value->block_size / SECTOR_SIZE, &next_free_sector);
 	}
 
-	status = ds_insert(current_redirect_manager->sel_data_struct, sectors->original, curr_rs_info);
+	status = ds_insert(current_redirect_manager->sel_data_struct, sectors->original, curr_value, lsbdd_hash_cache);
 	if (status)
 		goto insert_err;
 
 	clone_bio->bi_iter.bi_sector = sectors->redirect;
 	pr_debug("original %llu, redirected %llu\n", sectors->original, sectors->redirect);
 
+	kmem_cache_free(lsbdd_sectors_cache, sectors);
 	return 0;
 
 insert_err:
-	pr_err("Failed inserting key: %llu vallue: %p in _\n", sectors->original, curr_rs_info);
-	kfree(sectors);
-	kfree(curr_rs_info);
+	pr_err("Failed inserting key: %llu vallue: %p in _\n", sectors->original, curr_value);
+	kmem_cache_free(lsbdd_sectors_cache, sectors);
+	kmem_cache_free(lsbdd_value_cache, curr_value);
 	return status;
 
 mem_err:
 pr_err("Memory allocation failed\n");
-	kfree(sectors);
-	kfree(curr_rs_info);
+	kmem_cache_free(lsbdd_sectors_cache, sectors);
+	kmem_cache_free(lsbdd_value_cache, curr_value);
 	return -ENOMEM;
 }
 
@@ -199,7 +205,7 @@ static s32 setup_bio_split(struct bio *clone_bio, struct bio *main_bio, s32 near
  */
 static s16 check_system_bio(struct bd_manager *redirect_manager, struct sectors *sectors, struct bio *bio)
 {
-	struct redir_sector_info *last_rs = NULL;
+	struct value_redir *last_rs = NULL;
 
 	if (ds_empty_check(redirect_manager->sel_data_struct)) {
 		bio->bi_iter.bi_sector = sectors->original;
@@ -232,8 +238,8 @@ static s16 check_system_bio(struct bd_manager *redirect_manager, struct sectors 
  */
 static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clone_bio, struct bd_manager *redirect_manager)
 {
-	struct redir_sector_info *curr_rs_info = NULL;
-	struct redir_sector_info *prev_rs_info = NULL;
+	struct value_redir *curr_value = NULL;
+	struct value_redir *prev_value = NULL;
 	struct sectors *sectors = NULL;
 	sector_t prev_sector_val = 0;
 	sector_t *prev_sector = &prev_sector_val;
@@ -244,34 +250,31 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 	if (main_bio->bi_iter.bi_size == 0)
 		return 0;
 
-	curr_rs_info = kzalloc(sizeof(struct redir_sector_info), GFP_KERNEL);
-	prev_rs_info = kzalloc(sizeof(struct redir_sector_info), GFP_KERNEL);
-	sectors = kzalloc(sizeof(struct sectors), GFP_KERNEL);
-
-	if (!(sectors && curr_rs_info && prev_rs_info))
+	sectors = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
+	if (!sectors)
 		goto mem_err;
 
 	sectors->original = main_bio->bi_iter.bi_sector;
-	curr_rs_info = ds_lookup(redirect_manager->sel_data_struct, sectors->original);
+	curr_value = ds_lookup(redirect_manager->sel_data_struct, sectors->original);
 
 	pr_debug("READ: key: %llu\n", sectors->original);
 
-	if (!curr_rs_info) { // Read & Write sector starts aren't equal.
+	if (!curr_value) { // Read & Write sector starts aren't equal.
 		status = check_system_bio(redirect_manager, sectors, clone_bio);
 		if (status)
 			return 0;
 
 		pr_debug("READ: Sector: %llu isnt mapped\n", sectors->original);
 
-		prev_rs_info = ds_prev(redirect_manager->sel_data_struct, sectors->original, prev_sector);
-		sectors->redirect = prev_rs_info->redirected_sector * SECTOR_SIZE + (sectors->original - *prev_sector) * SECTOR_SIZE;
-		to_end_of_block = (prev_rs_info->redirected_sector * SECTOR_SIZE + prev_rs_info->block_size) - sectors->redirect;
+		prev_value = ds_prev(redirect_manager->sel_data_struct, sectors->original, prev_sector);
+		sectors->redirect = prev_value->redirected_sector * SECTOR_SIZE + (sectors->original - *prev_sector) * SECTOR_SIZE;
+		to_end_of_block = (prev_value->redirected_sector * SECTOR_SIZE + prev_value->block_size) - sectors->redirect;
 		to_read_in_clone = main_bio->bi_iter.bi_size - to_end_of_block;
 		/* Address of main block end (reading from operation pba + bi_size) - End of previous block */
 
-		clone_bio->bi_iter.bi_sector = prev_rs_info->redirected_sector + (prev_rs_info->block_size - to_end_of_block) / SECTOR_SIZE;
+		clone_bio->bi_iter.bi_sector = prev_value->redirected_sector + (prev_value->block_size - to_end_of_block) / SECTOR_SIZE;
 
-		pr_debug("To read = %d, to end = %d, main size = %u, prev_rs bs = %u, prev_rs sector = %llu\n", to_read_in_clone, to_end_of_block, main_bio->bi_iter.bi_size, prev_rs_info->block_size, prev_rs_info->redirected_sector);
+		pr_debug("To read = %d, to end = %d, main size = %u, prev_rs bs = %u, prev_rs sector = %llu\n", to_read_in_clone, to_end_of_block, main_bio->bi_iter.bi_size, prev_value->block_size, prev_value->redirected_sector);
 		pr_debug("Clone bio: sector = %llu, size = %u\n", clone_bio->bi_iter.bi_sector, clone_bio->bi_iter.bi_size);
 
 		if (to_read_in_clone < main_bio->bi_iter.bi_size && to_read_in_clone != 0) {
@@ -280,45 +283,41 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 				if (status < 0)
 					goto split_err;
 
-				if (to_read_in_clone > prev_rs_info->block_size) {
-					to_read_in_clone -= prev_rs_info->block_size;
-					to_end_of_block = prev_rs_info->block_size;
+				if (to_read_in_clone > prev_value->block_size) {
+					to_read_in_clone -= prev_value->block_size;
+					to_end_of_block = prev_value->block_size;
 				} else {
 					break;
 				}
 			}
 		}
 		clone_bio->bi_iter.bi_size = (to_read_in_clone <= 0) ? to_end_of_block : to_read_in_clone;
-	} else if (curr_rs_info->redirected_sector) { // Read & Write start sectors are equal.
+	} else if (curr_value->redirected_sector) { // Read & Write start sectors are equal.
 		pr_debug("Found redirected sector: %llu, rs_bs = %u, main_bs = %u\n",
-			(curr_rs_info->redirected_sector), curr_rs_info->block_size, main_bio->bi_iter.bi_size);
+			(curr_value->redirected_sector), curr_value->block_size, main_bio->bi_iter.bi_size);
 
-		to_read_in_clone = main_bio->bi_iter.bi_size - curr_rs_info->block_size;
-		clone_bio->bi_iter.bi_sector = curr_rs_info->redirected_sector;
+		to_read_in_clone = main_bio->bi_iter.bi_size - curr_value->block_size;
+		clone_bio->bi_iter.bi_sector = curr_value->redirected_sector;
 
 		while (to_read_in_clone > 0) {
-			to_read_in_clone -= setup_bio_split(clone_bio, main_bio, curr_rs_info->block_size);
+			to_read_in_clone -= setup_bio_split(clone_bio, main_bio, curr_value->block_size);
 			if (status < 0)
 				goto split_err;
 		}
-		clone_bio->bi_iter.bi_size = (to_read_in_clone < 0) ? curr_rs_info->block_size + to_read_in_clone : curr_rs_info->block_size;
+		clone_bio->bi_iter.bi_size = (to_read_in_clone < 0) ? curr_value->block_size + to_read_in_clone : curr_value->block_size;
 		pr_debug("End of read, Clone: size: %u, sector %llu, to_read = %d\n", clone_bio->bi_iter.bi_size, clone_bio->bi_iter.bi_sector, to_read_in_clone);
 	}
 	return 0;
 
 split_err:
 	pr_err("Bio split went wrong\n");
-	kfree(curr_rs_info);
-	kfree(prev_rs_info);
-	kfree(sectors);
+	kmem_cache_free(lsbdd_sectors_cache, sectors);
 	bio_io_error(main_bio);
 	return -1;
 
 mem_err:
 	pr_err("Memory allocation failed.\n");
-	kfree(prev_rs_info);
-	kfree(curr_rs_info);
-	kfree(sectors);
+	kmem_cache_free(lsbdd_sectors_cache, sectors);
 	return -ENOMEM;
 }
 
@@ -547,7 +546,7 @@ static s8 delete_bd(u16 index)
 		get_list_element_by_index(index)->vbd_disk = NULL;
 	}
 	if (get_list_element_by_index(index)->sel_data_struct) {
-		ds_free(get_list_element_by_index(index)->sel_data_struct);
+		ds_free(get_list_element_by_index(index)->sel_data_struct, lsbdd_hash_cache);
 		get_list_element_by_index(index)->sel_data_struct = NULL;
 	}
 
@@ -736,6 +735,15 @@ static s32  __init lsbdd_init(void)
 
 	INIT_LIST_HEAD(&bd_list);
 
+	lsbdd_sectors_cache = kmem_cache_create("sectors_cache", sizeof(struct sectors), 0, SLAB_HWCACHE_ALIGN, NULL);
+	lsbdd_value_cache = kmem_cache_create("value_cache", sizeof(struct value_redir), 0, SLAB_HWCACHE_ALIGN, NULL);
+	lsbdd_hash_cache = kmem_cache_create("hash_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+
+	if (!(lsbdd_value_cache && lsbdd_sectors_cache && lsbdd_hash_cache)) {
+		pr_err("Couldn't allocate cache\n");
+		goto mem_err;
+	}
+	
 	return 0;
 
 mem_err:

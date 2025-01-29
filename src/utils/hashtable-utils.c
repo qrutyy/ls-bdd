@@ -28,14 +28,14 @@ void hash_insert(struct hashtable *ht, struct llist_node *node, sector_t key)
 	ht->max_bck_num = BUCKET_NUM;
 }
 
-void hashtable_free(struct hashtable *ht)
+void hashtable_free(struct hashtable *ht, struct kmem_cache *lsbdd_hash_cache)
 {
 	s32 bckt_iter = 0;
 	struct hash_el *el, *tmp = NULL;
 
 	lhash_for_each_safe(ht->head, bckt_iter, tmp, el, node) {
 		if (el) {
-			kfree(el);
+			kmem_cache_free(lsbdd_hash_cache, el);
 			xchg(&el, NULL);
 		}
 	}

@@ -10,7 +10,7 @@
 
 static const char *available_ds[] = {"bt", "sl", "ht", "rb"};
 
-struct redir_sector_info {
+struct value_redir {
 	sector_t redirected_sector;
 	u32 block_size;
 };

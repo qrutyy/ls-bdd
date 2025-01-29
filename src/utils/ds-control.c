@@ -8,6 +8,7 @@
 #include "skiplist.h"
 #include "rbtree.h"
 
+
 s32 ds_init(struct data_struct *ds, char *sel_ds)
 {
 	struct btree *btree_map = NULL;
@@ -73,7 +74,7 @@ mem_err:
 	return -ENOMEM;
 }
 
-void ds_free(struct data_struct *ds)
+void ds_free(struct data_struct *ds, struct kmem_cache *lsbdd_hash_cache)
 {
 	if (ds->type == BTREE_TYPE) {
 		btree_destroy(ds->structure.map_btree->head);
@@ -84,7 +85,7 @@ void ds_free(struct data_struct *ds)
 		ds->structure.map_list = NULL;
 	}
 	if (ds->type == HASHTABLE_TYPE) {
-		hashtable_free(ds->structure.map_hash);
+		hashtable_free(ds->structure.map_hash, lsbdd_hash_cache);
 		ds->structure.map_hash = NULL;
 	}
 	if (ds->type == RBTREE_TYPE) {
@@ -138,7 +139,7 @@ void ds_remove(struct data_struct *ds, sector_t key)
 		rbtree_remove(ds->structure.map_rbtree, key);
 }
 
-s32 ds_insert(struct data_struct *ds, sector_t key, void *value)
+s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct kmem_cache *lsbdd_hash_cache)
 {
 	struct hash_el *el = NULL;
 	u64 *kp;
@@ -149,7 +150,7 @@ s32 ds_insert(struct data_struct *ds, sector_t key, void *value)
 	if (ds->type == SKIPLIST_TYPE)
 		skiplist_add(ds->structure.map_list, key, value);
 	if (ds->type == HASHTABLE_TYPE) {
-		el = kzalloc(sizeof(struct hash_el), GFP_KERNEL);
+		el = kmem_cache_alloc(lsbdd_hash_cache, GFP_KERNEL);
 		if (!el)
 			goto mem_err;
 
