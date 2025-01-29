@@ -52,7 +52,7 @@ s32 ds_init(struct data_struct *ds, char *sel_ds)
 		lhash_init(hash_table->head);
 		ds->type = HASHTABLE_TYPE;
 		ds->structure.map_hash = hash_table;
-		ds->structure.map_hash->nf_bck = 0;
+		ds->structure.map_hash->max_bck_num = 0;
 	} else if (!strncmp(sel_ds, rb, 2)) {
 		rbtree_map = kzalloc(sizeof(struct rbtree), GFP_KERNEL);
 		rbtree_map = rbtree_init();

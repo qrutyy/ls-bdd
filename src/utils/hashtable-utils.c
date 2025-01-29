@@ -4,12 +4,10 @@
 #include "hashtable-utils.h"
 #include <linux/slab.h>
 #include <linux/llist.h>
-/**
-	* SMP modification of basic kernel hashtable using llist.
-	*/
 
+//SMP modification of basic kernel hashtable using llist.
 
-void __lhash_init(struct llist_head *ht, unsigned int size)
+inline void __lhash_init(struct llist_head *ht, unsigned int size)
 {
 	unsigned int i;
 
@@ -22,7 +20,7 @@ void hash_insert(struct hashtable *ht, struct llist_node *node, sector_t key)
 	if (llist_add(node, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)]))
 		pr_warn("Hashtable: was empty\n");
 
-	ht->nf_bck = BUCKET_NUM;
+	ht->max_bck_num = BUCKET_NUM;
 }
 
 void hashtable_free(struct hashtable *ht)
@@ -36,9 +34,7 @@ void hashtable_free(struct hashtable *ht)
 			xchg(&el, NULL);
 		}
 	}
-	pr_debug("Hashtable: finished clearing the hashtable inside\n");
 	kfree(ht);
-	pr_debug("2\n");
 	xchg(&ht, NULL);
 }
 
@@ -72,7 +68,7 @@ struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *pre
 
 	if (prev_max_node->key == 0) {
 		pr_debug("Hashtable: Previous element is in the previous bucket\n");
-		llist_for_each_entry(el, ht->head[hash_min(min(BUCKET_NUM - 1, ht->nf_bck), HT_MAP_BITS)].first, node) {
+		llist_for_each_entry(el, ht->head[hash_min(min(BUCKET_NUM - 1, ht->max_bck_num), HT_MAP_BITS)].first, node) {
 			if (el && el->key <= key && el->key > prev_max_node->key)
 				prev_max_node = el;
 
@@ -87,31 +83,44 @@ struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *pre
 	return prev_max_node;
 }
 
+static inline void __llist_del(struct llist_node *node, struct llist_node *prev, spinlock_t lock)
+{
+	struct llist_node *next = NULL;
+	pr_info("6\n");
+	spin_lock(&lock);
+	pr_info("7\n");
+	next = node->next;
 
-// spinlock it 
+	WRITE_ONCE(prev->next, next);
+pr_info("8\n");
+	WRITE_ONCE(node->next, NULL);
+pr_info("9\n");
+	kfree(node);
+	WRITE_ONCE(node, NULL);
+pr_info("10\n");
+	spin_unlock(&lock);
+}
+
 void hashtable_remove(struct hashtable *ht, sector_t key)
 {
-// todo	
-}
+	struct hash_el *el, *tmp, *prev_el = NULL;
+	u32 bckt_num = 0;
 
+	bckt_num = hash_min(BUCKET_NUM, HT_MAP_BITS);
+	spinlock_t bckt_lock = ht->lock[bckt_num]; // per bucket lock
+pr_info("6\n");
+	pr_debug("Hashtable: bucket_val %llu", BUCKET_NUM);
 
-// todo
-static inline void llist_del_init(struct hlist_node *n)
-{
-	if (!n->pprev) {
-		__hlist_del(n);
-		INIT_HLIST_NODE(n);
+	// no lock or other sync is needed, due to lock-free llist iter
+	llist_for_each_entry_safe(el, tmp, ht->head[bckt_num].first, node) {
+		if (el != NULL && el->key == key)
+			break;
+		prev_el = el;
 	}
-}
-
-
-static inline void __llist_del(struct hlist_node *n)
-{
-	struct hlist_node *next = n->next;
-	struct hlist_node **pprev = n->pprev;
-
-	WRITE_ONCE(*pprev, next);
-	if (next)
-		WRITE_ONCE(next->pprev, pprev);
+	if (!el) {
+		pr_warn("Hashtable: tried to remove not existing element\n");
+		return;
+	}
+	(prev_el) ? __llist_del(&el->node, &prev_el->node, bckt_lock) : llist_del_first(&ht->head[bckt_num]);
 }
 
