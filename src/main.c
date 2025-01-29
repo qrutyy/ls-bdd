@@ -15,7 +15,7 @@ static s32  bdd_major;
 char sel_ds[LSBDD_MAX_DS_NAME_LEN + 1];
 struct bio_set *bdd_pool;
 struct list_head bd_list;
-sector_t next_free_sector = LSBDD_SECTOR_OFFSET;
+atomic64_t next_free_sector = ATOMIC_INIT(LSBDD_SECTOR_OFFSET);
 
 static s32  vector_add_bd(struct bd_manager *current_bdev_manager)
 {
@@ -103,7 +103,7 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 		goto mem_err;
 
 	sectors->original = main_bio->bi_iter.bi_sector;
-	sectors->redirect = next_free_sector;
+	sectors->redirect = atomic64_read(&next_free_sector);
 
 	pr_debug("Original sector: bi_sector = %llu, block_size %u\n",
 			main_bio->bi_iter.bi_sector, clone_bio->bi_iter.bi_size);
@@ -117,10 +117,10 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 	pr_debug("WRITE: key: %llu, sec: %llu\n", sectors->original, curr_rs_info->redirected_sector);
 
 	if (old_rs_info) {
-		pr_debug("WRITE: remove old mapping\n");
+		pr_debug("WRITE: remove old mapping key %lld old_val: %lld, new_val %lld\n", sectors->original, old_rs_info->redirected_sector, sectors->redirect);
 		ds_remove(current_redirect_manager->sel_data_struct, sectors->original);
 	} else {
-		next_free_sector += curr_rs_info->block_size / SECTOR_SIZE;
+		atomic64_add(curr_rs_info->block_size / SECTOR_SIZE, &next_free_sector);
 	}
 
 	status = ds_insert(current_redirect_manager->sel_data_struct, sectors->original, curr_rs_info);

@@ -5,7 +5,7 @@
 #include <linux/slab.h>
 #include <linux/llist.h>
 
-//SMP modification of basic kernel hashtable using llist.
+// SMP modification of basic kernel hashtable using llist (not doubly though).
 
 inline void __lhash_init(struct llist_head *ht, unsigned int size)
 {
@@ -21,7 +21,7 @@ void hash_insert(struct hashtable *ht, struct llist_node *node, sector_t key)
 		pr_debug("Hashtable: was empty\n");
 	
 	/** Note, that there is a lot of buckets (1 * 2 ** 7) -> 
-	  * probably few first ten inserts will be in empty buckets 
+	  * probably few first tens of inserts will be in empty buckets 
 	  */
 	
 	pr_debug("Hashtable: key %lld written\n", key);
@@ -50,8 +50,10 @@ struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key)
 	pr_debug("Hashtable: bucket_val %llu", BUCKET_NUM);
 
 	llist_for_each_entry_safe(el, tmp, ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)].first, node) {
-		if (el != NULL && el->key == key)
+		if (el != NULL && el->key == key) {
+			pr_debug("key %lld, found %lld\n", key, el->key);
 			return el;
+		}
 	}
 	return NULL;
 }
@@ -88,13 +90,17 @@ struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *pre
 	return prev_max_node;
 }
 
-static void __llist_del(struct llist_node node, struct llist_node prev, spinlock_t lock)
+static inline void __llist_del(struct llist_node node, struct llist_node prev, spinlock_t lock)
 {
 	struct llist_node *next = NULL;
+
+	spin_lock(&lock);
 
 	next = node.next;
 	WRITE_ONCE(prev.next, next);
 	WRITE_ONCE(node.next, NULL);
+
+	spin_unlock(&lock);
 }
 
 void hashtable_remove(struct hashtable *ht, sector_t key)
@@ -107,7 +113,7 @@ void hashtable_remove(struct hashtable *ht, sector_t key)
 	bckt_lock = ht->lock[bckt_num]; // per bucket lock
 
 	pr_debug("Hashtable: bucket_val %llu", BUCKET_NUM);
-	spin_lock(&bckt_lock); // test only. should be moved further to decrease the crit. section
+	 // test only. should be moved further to decrease the crit. section
 	// no lock or other sync is needed, due to lock-free llist iter
 	llist_for_each_entry_safe(el, tmp, ht->head[bckt_num].first, node) {
 		if (el != NULL && el->key == key)
@@ -118,15 +124,11 @@ void hashtable_remove(struct hashtable *ht, sector_t key)
 		pr_warn("Hashtable: tried to remove not existing element\n");
 		return;
 	}
-	pr_debug("Hashtable: key %lld removing\n", key);
-	pr_debug("Hashtable: key %lld \n", el->key);
-	pr_debug("Prev %p, el %p\n", prev_el, el);
 
 	if (prev_el) {
 		__llist_del(el->node, prev_el->node, bckt_lock); 
-	}	else { 
+	} else { 
 		llist_del_first(&ht->head[bckt_num]);
 	}
-	spin_unlock(&bckt_lock);
 }
 
