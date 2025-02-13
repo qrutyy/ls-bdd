@@ -263,7 +263,6 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 		status = check_system_bio(redirect_manager, sectors, clone_bio);
 		if (status)
 			return 0;
-
 		pr_debug("READ: Sector: %llu isnt mapped\n", sectors->original);
 
 		prev_value = ds_prev(redirect_manager->sel_data_struct, sectors->original, prev_sector);
@@ -355,10 +354,8 @@ static void lsbdd_submit_bio(struct bio *bio)
 	else
 		pr_warn("Unknown Operation in bio\n");
 
-
 	if (status)
 		goto setup_err;
-
 
 	submit_bio(clone);
 	pr_debug("Submitted bio\n\n");

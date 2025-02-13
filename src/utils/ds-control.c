@@ -148,7 +148,7 @@ s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct kmem_cac
 	if (ds->type == BTREE_TYPE)
 		return btree_insert(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp, value, GFP_KERNEL);
 	if (ds->type == SKIPLIST_TYPE)
-		skiplist_add(ds->structure.map_list, key, value);
+		skiplist_insert(ds->structure.map_list, key, value);
 	if (ds->type == HASHTABLE_TYPE) {
 		el = kmem_cache_alloc(lsbdd_hash_cache, GFP_KERNEL);
 		if (!el)
