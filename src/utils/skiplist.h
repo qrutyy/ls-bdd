@@ -48,19 +48,19 @@ struct skiplist_node {
 	sector_t key;
 	void *value;
 	u32 height;
-	size_t next[1]; // array of markable pointers
+	size_t next[]; // array of markable pointers
 };
 
 struct skiplist {
 	struct skiplist_node *head;
 	u32 head_lvl; // to remove
-	atomic_t *max_lvl; // max historic number of levels
+	atomic_t max_lvl; // max historic number of levels
 };
 
 struct skiplist *skiplist_init(void);
 struct skiplist_node *skiplist_find_node(struct skiplist *sl, sector_t key);
 void skiplist_free(struct skiplist *sl);
-struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *data);
+struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, sector_t expected, void *data);
 void skiplist_remove(struct skiplist *sl, sector_t key);
 struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t *prev_key);
 struct skiplist_node *skiplist_last(struct skiplist *sl);
