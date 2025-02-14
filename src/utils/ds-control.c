@@ -99,7 +99,7 @@ void *ds_lookup(struct data_struct *ds, sector_t key)
 	struct skiplist_node *sl_node = NULL;
 	struct hash_el *hm_node = NULL;
 	struct rbtree_node *rb_node = NULL;
-	u64 *kp;
+	u64 *kp = NULL;
 
 	kp = &key;
 	if (ds->type == BTREE_TYPE)
@@ -126,7 +126,7 @@ void *ds_lookup(struct data_struct *ds, sector_t key)
 
 void ds_remove(struct data_struct *ds, sector_t key)
 {
-	u64 *kp;
+	u64 *kp = NULL;
 
 	kp = &key;
 	if (ds->type == BTREE_TYPE)
@@ -142,7 +142,7 @@ void ds_remove(struct data_struct *ds, sector_t key)
 s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct kmem_cache *lsbdd_hash_cache)
 {
 	struct hash_el *el = NULL;
-	u64 *kp;
+	u64 *kp = NULL;
 
 	kp = &key;
 	if (ds->type == BTREE_TYPE)
@@ -175,7 +175,7 @@ void *ds_last(struct data_struct *ds, sector_t key)
 	struct hash_el *hm_node = NULL;
 	struct skiplist_node *sl_node = NULL;
 	struct rbtree_node *rb_node = NULL;
-	u64 *kp;
+	u64 *kp = NULL;
 
 	kp = &key;
 	if (ds->type == BTREE_TYPE)
@@ -204,7 +204,7 @@ void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key)
 	struct skiplist_node *sl_node = NULL;
 	struct hash_el *hm_node = NULL;
 	struct rbtree_node *rb_node = NULL;
-	u64 *kp;
+	u64 *kp = NULL;
 
 	kp = &key;
 	if (ds->type == BTREE_TYPE)
@@ -224,7 +224,6 @@ void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key)
 		CHECK_FOR_NULL(rb_node);
 		CHECK_VALUE_AND_RETURN(rb_node);
 	}
-
 	pr_err("Failed to get rs_info from get_prev()\n");
 	BUG();
 }
@@ -233,7 +232,7 @@ s32 ds_empty_check(struct data_struct *ds)
 {
 	if (ds->type == BTREE_TYPE && ds->structure.map_btree->head->height == 0)
 		return 1;
-	if (ds->type == SKIPLIST_TYPE && ds->structure.map_list->head_lvl == 0)
+	if (ds->type == SKIPLIST_TYPE && skiplist_is_empty(ds->structure.map_list))
 		return 1;
 	if (ds->type == HASHTABLE_TYPE && llist_empty(ds->structure.map_hash->head))
 		return 1;

@@ -62,7 +62,8 @@ alloc_fail:
 	return NULL;
 }
 
-struct skiplist *skiplist_init (void) {
+struct skiplist *skiplist_init (void)
+{
     struct skiplist *sl = NULL;
 	
 	sl = kzalloc(sizeof(struct skiplist), GFP_KERNEL);
@@ -92,6 +93,14 @@ void skiplist_free(struct skiplist *sl)
         node = next;
     }
 }
+
+bool skiplist_is_empty(struct skiplist *sl)
+{
+	struct skiplist_node *node = NULL;
+	node = sl->head;
+	return node->next[0];
+}
+
 /**
  * The `find_preds` function searches for nodes in a skiplist that precede and follow a node with a given key, traversing levels from top to bottom. 
  * If a node is logically removed (marked), it is either skipped (with `DONT_UNLINK`) or physically removed (with `unlink`). 
@@ -175,7 +184,8 @@ static struct skiplist_node *find_preds (struct skiplist_node **preds, struct sk
     return NULL;
 }
 
-struct skiplist_node* skiplist_find_node (struct skiplist *sl, sector_t key) {
+struct skiplist_node* skiplist_find_node (struct skiplist *sl, sector_t key)
+{
     struct skiplist_node *node = NULL;
 	
 	node = find_preds(NULL, NULL, 0, sl, key, DONT_UNLINK);
@@ -184,6 +194,7 @@ struct skiplist_node* skiplist_find_node (struct skiplist *sl, sector_t key) {
 	
 	return node;
 }
+
 /**
  * Gets last node just by iterating at the level 0.
  * If some node has mark -> remove the mark and skip it.

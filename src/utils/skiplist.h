@@ -18,8 +18,8 @@
 #define MAX_LVL 24
 
 // SYNC GCC SPECIFIC
-// Can be set as gcc function __sync_val_compare_and_swap, both of them support atomicity so basically it doesn't matter
-// atomic-gcc.h even has a macro that makes it equal
+// Can be set as gcc function __sync_val_compare_and_swap, both of them support atomicity so basically it doesn't matter (atomic-gcc.h even has a macro that makes it equal)
+
 #define SYNC_CAS(ptr, old, new)      cmpxchg(ptr, old, new)
 #define SYNC_INC(ptr)				 atomic_inc(ptr)
 #define SYNC_SWAP(ptr, val)			 xchg(ptr, val)
@@ -30,8 +30,8 @@
 #define IS_TAGGED(v, tag) ((v) &  tag)
 #define STRIP_TAG(v, tag) ((v) & ~tag)
 
-#define  MARK_NODE(x) TAG_VALUE((size_t)(x), 0x1)
 // marks the node by switching the last bit to 1 and vice versa
+#define  MARK_NODE(x) TAG_VALUE((size_t)(x), 0x1)
 #define   HAS_MARK(x) (IS_TAGGED((x), 0x1) == 0x1)
 #define   GET_NODE(x) ((struct skiplist_node *)(x))
 // cleans the pointer from the mark
@@ -53,7 +53,6 @@ struct skiplist_node {
 
 struct skiplist {
 	struct skiplist_node *head;
-	u32 head_lvl; // to remove
 	atomic_t max_lvl; // max historic number of levels
 };
 
@@ -64,3 +63,5 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *d
 void skiplist_remove(struct skiplist *sl, sector_t key);
 struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t *prev_key);
 struct skiplist_node *skiplist_last(struct skiplist *sl);
+bool skiplist_is_empty(struct skiplist *sl);
+
