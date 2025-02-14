@@ -100,8 +100,8 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 
 	// i guess this allocation can be deleted.... (if it will affect latency a lot)
 	// btw it was made only for readability reason ;)
-	sectors = kmem_cache_alloc(lsbdd_sectors_cache, GFP_KERNEL); 
-	curr_value = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
+	sectors = kmem_cache_alloc(lsbdd_sectors_cache, SLAB_KERNEL); 
+	curr_value = kmem_cache_alloc(lsbdd_value_cache, SLAB_KERNEL);
 
 	if (!(sectors && curr_value))
 		goto mem_err;
@@ -249,7 +249,7 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 	if (main_bio->bi_iter.bi_size == 0)
 		return 0;
 
-	sectors = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
+	sectors = kmem_cache_alloc(lsbdd_value_cache, SLAB_KERNEL);
 	if (!sectors)
 		goto mem_err;
 
