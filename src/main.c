@@ -5,11 +5,10 @@
 #include <linux/list.h>
 #include <linux/moduleparam.h>
 #include "utils/ds-control.h"
-#include "utils/hashtable-utils.h"
 #include "main.h"
 
 MODULE_DESCRIPTION("Log-Structured virtual Block Device Driver module");
-MODULE_AUTHOR("Mike Gavrilenko - @qrutyy");
+MODULE_AUTHOR("Mikhail Gavrilenko - @qrutyy");
 MODULE_LICENSE("Dual MIT/GPL");
 
 static s32  bdd_major;
@@ -145,7 +144,7 @@ insert_err:
 	return status;
 
 mem_err:
-pr_err("Memory allocation failed\n");
+	pr_err("Memory allocation failed\n");
 	kmem_cache_free(lsbdd_sectors_cache, sectors);
 	kmem_cache_free(lsbdd_value_cache, curr_value);
 	return -ENOMEM;
@@ -303,9 +302,12 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 			if (status < 0)
 				goto split_err;
 		}
+
 		clone_bio->bi_iter.bi_size = (to_read_in_clone < 0) ? curr_value->block_size + to_read_in_clone : curr_value->block_size;
+
 		pr_debug("End of read, Clone: size: %u, sector %llu, to_read = %d\n", clone_bio->bi_iter.bi_size, clone_bio->bi_iter.bi_sector, to_read_in_clone);
 	}
+
 	return 0;
 
 split_err:
@@ -332,8 +334,6 @@ static void lsbdd_submit_bio(struct bio *bio)
 	struct bio *clone = NULL;
 	struct bd_manager *current_redirect_manager = NULL;
 	s16 status;
-
-	pr_debug("Entered submit bio\n");
 
 	current_redirect_manager = get_bd_manager_by_name(bio->bi_bdev->bd_disk->disk_name);
 	if (!current_redirect_manager)
@@ -763,6 +763,10 @@ static void __exit lsbdd_exit(void)
 		list_del(&entry->list);
 		kfree(entry);
 	}
+
+	kmem_cache_destroy(lsbdd_sectors_cache);
+	kmem_cache_destroy(lsbdd_value_cache);
+	kmem_cache_destroy(lsbdd_hash_cache);
 
 	bioset_exit(bdd_pool);
 	kfree(bdd_pool);
