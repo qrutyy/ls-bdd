@@ -5,6 +5,7 @@
 #include <linux/list.h>
 #include <linux/moduleparam.h>
 #include "utils/ds-control.h"
+#include "utils/hashtable-utils.h"
 #include "main.h"
 
 MODULE_DESCRIPTION("Log-Structured virtual Block Device Driver module");
@@ -100,10 +101,10 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 
 	// i guess this allocation can be deleted.... (if it will affect latency a lot)
 	// btw it was made only for readability reason ;)
-	sectors = kmem_cache_alloc(lsbdd_sectors_cache, SLAB_KERNEL); 
-	curr_value = kmem_cache_alloc(lsbdd_value_cache, SLAB_KERNEL);
+	sectors = kmem_cache_alloc(lsbdd_sectors_cache, GFP_KERNEL); 
+	curr_value = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
 
-	if (!(sectors && curr_value))
+	if (unlikely(!(sectors && curr_value)))
 		goto mem_err;
 
 	sectors->original = main_bio->bi_iter.bi_sector;
@@ -128,7 +129,7 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 	}
 
 	status = ds_insert(current_redirect_manager->sel_data_struct, sectors->original, curr_value, lsbdd_hash_cache);
-	if (status)
+	if (unlikely(status))
 		goto insert_err;
 
 	clone_bio->bi_iter.bi_sector = sectors->redirect;
@@ -206,7 +207,7 @@ static s16 check_system_bio(struct bd_manager *redirect_manager, struct sectors 
 {
 	struct value_redir *last_rs = NULL;
 
-	if (ds_empty_check(redirect_manager->sel_data_struct)) {
+	if (unlikely(ds_empty_check(redirect_manager->sel_data_struct))) {
 		bio->bi_iter.bi_sector = sectors->original;
 		return -1;
 	}
@@ -214,7 +215,7 @@ static s16 check_system_bio(struct bd_manager *redirect_manager, struct sectors 
 	last_rs = ds_last(redirect_manager->sel_data_struct, sectors->original);
 	pr_debug("READ: last_rs = %llu\n", last_rs->redirected_sector);
 
-	if (sectors->original > last_rs->redirected_sector) {
+	if (unlikely(sectors->original > last_rs->redirected_sector)) {
 		bio->bi_iter.bi_sector = sectors->original;
 		pr_debug("Recognised system bio\n");
 		return -1;
@@ -249,7 +250,7 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 	if (main_bio->bi_iter.bi_size == 0)
 		return 0;
 
-	sectors = kmem_cache_alloc(lsbdd_value_cache, SLAB_KERNEL);
+	sectors = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
 	if (!sectors)
 		goto mem_err;
 
@@ -278,7 +279,7 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 		if (to_read_in_clone < main_bio->bi_iter.bi_size && to_read_in_clone != 0) {
 			while (to_end_of_block > 0) {
 				status = setup_bio_split(clone_bio, main_bio, to_end_of_block);
-				if (status < 0)
+				if (unlikely(status < 0))
 					goto split_err;
 
 				if (to_read_in_clone > prev_value->block_size) {
@@ -299,7 +300,7 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 
 		while (to_read_in_clone > 0) {
 			to_read_in_clone -= setup_bio_split(clone_bio, main_bio, curr_value->block_size);
-			if (status < 0)
+			if (unlikely(status < 0))
 				goto split_err;
 		}
 
@@ -336,25 +337,26 @@ static void lsbdd_submit_bio(struct bio *bio)
 	s16 status;
 
 	current_redirect_manager = get_bd_manager_by_name(bio->bi_bdev->bd_disk->disk_name);
-	if (!current_redirect_manager)
+	if (unlikely(!current_redirect_manager))
 		goto get_err;
 
 	clone = bio_alloc_clone(current_redirect_manager->bd_handler->bdev, bio,
 							GFP_KERNEL, bdd_pool);
-	if (!clone)
+	if (unlikely(!clone))
 		goto clone_err;
 
 	clone->bi_private = bio;
 	clone->bi_end_io = bdd_bio_end_io;
 
-	if (bio_op(bio) == REQ_OP_READ)
+	if (bio_op(bio) == REQ_OP_READ) {
 		status = setup_read_from_clone_segments(bio, clone, current_redirect_manager);
-	else if (bio_op(bio) == REQ_OP_WRITE)
+	} else if (bio_op(bio) == REQ_OP_WRITE) {
 		status = setup_write_in_clone_segments(bio, clone, current_redirect_manager);
-	else
+	} else {
 		pr_warn("Unknown Operation in bio\n");
+	}
 
-	if (status)
+	if (unlikely(status))
 		goto setup_err;
 
 	submit_bio(clone);

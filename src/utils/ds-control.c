@@ -150,7 +150,7 @@ s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct kmem_cac
 	if (ds->type == SKIPLIST_TYPE)
 		skiplist_insert(ds->structure.map_list, key, value);
 	if (ds->type == HASHTABLE_TYPE) {
-		el = kmem_cache_alloc(lsbdd_hash_cache, SLAB_KERNEL);
+		el = kmem_cache_alloc(lsbdd_hash_cache, GFP_KERNEL);
 		if (!el)
 			goto mem_err;
 
