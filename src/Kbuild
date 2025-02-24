@@ -7,6 +7,21 @@ ccflags-y := 	-Wall					\
 		-g					\
 		-Werror=format-security			\
 		-Werror=implicit-function-declaration   \
+		-DDEBUG 	\
 
 obj-m := lsbdd.o
-lsbdd-objs := main.o utils/btree-utils.o utils/skiplist.o utils/ds-control.o utils/hashtable-utils.o utils/rbtree.o 
+
+ifeq ($(type), lf)
+	DIR := utils/lock-free
+ifeq ($(type), sy)
+	DIR := utils/sync
+else 
+	$(error Invalid type specified. Use "make type=lf" or "make type=sy")
+endif
+
+# Add dynamical include path for the ds-control headers.
+ccflags-y += -I$(PWD)/$(DIR)
+
+lsbdd-objs := main.o ds-control.o \
+              $(DIR)/btree-utils.o $(DIR)/skiplist.o \
+              $(DIR)/hashtable-utils.o $(DIR)/rbtree.o
