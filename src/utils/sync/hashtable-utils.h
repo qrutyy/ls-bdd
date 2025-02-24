@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
+#include <linux/hashtable.h>
+
 #pragma once
 
 #define HT_MAP_BITS 7

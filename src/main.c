@@ -5,7 +5,7 @@
 #include <linux/list.h>
 #include <linux/moduleparam.h>
 #include "utils/ds-control.h"
-#include "utils/hashtable-utils.h"
+#include "hashtable-utils.h"
 #include "main.h"
 
 MODULE_DESCRIPTION("Log-Structured virtual Block Device Driver module");

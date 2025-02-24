@@ -275,7 +275,7 @@ static void *update_node (struct skiplist_node *node, void* new_val) {
     // replace 0 with our value. Then another thread that is updating the value could think it
     // succeeded and return our value even though it should return 0.
     if (old_val == SYNC_CAS(&node->value, old_val, new_val)) {
-        pr_debug("Skilist(update_node): the CAS succeeded. updated the value of the node");
+        pr_debug("Skilist(update_node): the CAS succeeded. updated the value of the node\n");
         return old_val;
     }
     pr_debug("Skiplist(update_node): lost a race. the CAS failed. another thread changed the node's value");
@@ -293,10 +293,8 @@ struct skiplist_node *skiplist_insert (struct skiplist *sl, sector_t key, void* 
     struct skiplist_node *new_node = NULL;
 	struct skiplist_node *old_node = NULL;
 	struct skiplist_node *pred = NULL; 
-	struct skiplist_node *old_next = NULL; 
 	void* ret_val = NULL;
-	size_t other = 0;
-	struct skiplist_node *next = NULL;
+	size_t other, old_next, next = 0;
     s32 n;
 
 	n = random_levels(sl);
@@ -327,18 +325,18 @@ struct skiplist_node *skiplist_insert (struct skiplist *sl, sector_t key, void* 
 
     // Link <new_node> into <sl> from the bottom level up. After <new_node> is inserted into the bottom level
     // it is officially part of the skiplist. Can lead to bugs i guess...
-    pred = preds[0];
-	next = nexts[0];
-	new_node->next[0] = next;
+    pred = (struct skiplist_node *)preds[0];
+	next = (size_t)nexts[0];
+	new_node->next[0] = (size_t)next;
 
 	pr_debug("Before cas: next = %zx, new_node = %p\n", next, new_node);
     other = SYNC_CAS(&pred->next[0], next, new_node); // does it change only the lower one?
     if (other != next) {
-        pr_debug("Skiplist(insert): failed to change pred's link: expected %ld found %ld\n", next, other);
+        pr_debug("Skiplist(insert): failed to change pred's link: expected %zx found %zx\n", next, other);
         kfree(new_node);
         return skiplist_insert(sl, key, value); // retry
     }
-	pr_debug("Skiplist(insert): other = %zx new_node = %p next = %zx, pred = %zx\n", other, new_node, next, pred);
+	pr_debug("Skiplist(insert): other = %zx new_node = %p next = %zx, pred = %p\n", other, new_node, next, pred);
     pr_debug("Skiplist(insert): successfully inserted a new node %p at the bottom level\n", new_node);
 	pr_debug("Skiplist(insert): pred[0] = %p, pred[1] = %p\n", preds[0], preds[1]);
 	pr_debug("Skiplist(insert): pred->next[0] = %zx, pred->next[1] = %zx\n", (&pred[1])->next[0], (&pred[1])->next[1]);
@@ -350,7 +348,7 @@ struct skiplist_node *skiplist_insert (struct skiplist *sl, sector_t key, void* 
         pr_debug("Skiplist(insert): inserting the new node %p at level %ld\n", new_node, level);
         do {
             pred = preds[level];
-			next = nexts[level];
+			next = (size_t)nexts[level];
             BUG_ON(!(new_node->next[level] == (size_t)nexts[level] || new_node->next[level] == MARK_NODE(nexts[level])));
             pr_debug("Skiplist(insert): attempting to insert the new node between %p and %p\n", pred, nexts[level]);
 
