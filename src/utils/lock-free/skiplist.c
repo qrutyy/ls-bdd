@@ -48,8 +48,6 @@ static struct skiplist_node *node_alloc(sector_t key, void* value, s32 height)
 	BUG_ON(height <= 0 || height > MAX_LVL);
 	struct skiplist_node *node = NULL;
 
-	pr_debug("Skiplist(node): height = %d\n", height);
-	
 	node = kzalloc(sizeof(struct skiplist_node) + height * sizeof(struct skiplist_node *), GFP_KERNEL);
 	if (!node)
 		goto alloc_fail;
@@ -140,14 +138,9 @@ static struct skiplist_node *find_preds(struct skiplist_node **preds, struct ski
         }
 
         node = GET_NODE(next);
-		pr_debug("Level %zd: GET_NODE(%zx) returned node = %p\n", level, next, node);
-
         while (node != NULL && level < node->height && node->height <= MAX_LVL) {
 
             next = node->next[level];
-            pr_debug("Traversing(right): node = %p, key = %lld, next = %zx\n", node, node ? node->key : -1, next);
-
-            pr_debug("Traversing(right): next[0] = %zx, next[1] = %zx\n", node->next[0], node->next[1]);
             // A tag means a node is logically removed but not physically unlinked yet
              while (HAS_MARK(next)) {
                 if (unlink == DONT_UNLINK) {
@@ -161,7 +154,7 @@ static struct skiplist_node *find_preds(struct skiplist_node **preds, struct ski
 				 else {
                     // Unlink logically removed nodes.
                     pr_debug("Unlinking node: pred = %p, node = %p, new_next = %p\n", pred, node, STRIP_MARK(next));
-                    other = SYNC_CAS(&pred->next[level], node, STRIP_MARK(next));
+                    other = SYNC_CAS(&pred->next[level], (size_t)node, STRIP_MARK(next));
                     if (other == (size_t)node) {
                         node = STRIP_MARK(next);
                     } else {
@@ -194,7 +187,6 @@ static struct skiplist_node *find_preds(struct skiplist_node **preds, struct ski
 
             pred = node;
             node = GET_NODE(next);
-			pr_debug("GET_NEXT: %p NEXT: %zx\n", node, next);
         }
 
         if (level < n) {
@@ -320,7 +312,7 @@ struct skiplist_node *skiplist_insert (struct skiplist *sl, sector_t key, void* 
 //	next = new_node->next[0] = (size_t)nexts[0];
 	for (size_t level = 0; level < new_node->height; ++level) {
         new_node->next[level] = (size_t)nexts[level];
-		pr_debug("Skiplist(insert):assigning new %ld at level %zd\n", (size_t)nexts[level], level);
+		pr_debug("Skiplist(insert):assigning new %p at level %zd\n", nexts[level], level);
     }
 
     // Link <new_node> into <sl> from the bottom level up. After <new_node> is inserted into the bottom level
@@ -441,12 +433,39 @@ void skiplist_remove (struct skiplist *sl, sector_t key) {
 
     return;
 }
-
+struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t *prev_key) {
+    struct skiplist_node *pred = sl->head;
+    struct skiplist_node *node = NULL;
+    size_t next;
+    
+    for (ssize_t level = atomic_read(&sl->max_lvl) - 1; level >= 0; --level) {
+        while (1) {
+            next = pred->next[level];
+            node = GET_NODE(next);
+            
+            if (!node || node->key >= key) {
+                break;
+            }
+            pred = node;
+        }
+    }
+    
+    if (pred == sl->head) {
+        return NULL;
+    }
+    
+    if (prev_key) {
+        *prev_key = pred->key;
+    }
+    return pred;
+}
+/*
 struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t *prev_key) 
 {
 	struct skiplist_node *node = NULL;
 	size_t next = 0;
 	enum unlink unlink = DONT_UNLINK;
+	size_t other = 0;
 
 	next = sl->head->next[0];
 	node = GET_NODE(next);
@@ -466,7 +485,7 @@ struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t 
                 break;
             next = node->next[0];
         } 
-		/* else {
+		else {
             // Unlink logically removed nodes.
             other = SYNC_CAS(&pred->next[0], (size_t)node, (size_t)STRIP_MARK(next));
             if (other == (size_t)node) {
@@ -477,9 +496,9 @@ struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t 
 					node = GET_NODE(other);
             }
             next = (node != NULL) ? node->next[0] : 0;
-        } */
+        }
     }
 	node = GET_NODE(next);
 	*prev_key = node->key;
 	return node;
-}
+} */
