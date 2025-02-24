@@ -32,7 +32,7 @@ void hashtable_free(struct hashtable *ht, struct kmem_cache *lsbdd_hash_cache)
 {
 	s32 bckt_iter = 0;
 	struct hash_el *el, *tmp = NULL;
-
+	pr_debug("hash: %p\n", lsbdd_hash_cache);
 	lhash_for_each_safe(ht->head, bckt_iter, tmp, el, node) {
 		if (el) {
 			kmem_cache_free(lsbdd_hash_cache, el);
@@ -67,25 +67,32 @@ struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *pre
 		return NULL;
 
 	struct hash_el *el, *tmp = NULL;
+	sector_t bucket_num = 0;
 
 	llist_for_each_entry_safe(el, tmp, ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)].first, node) {
 		if (el && el->key <= key && el->key > prev_max_node->key)
 			prev_max_node = el;
 	}
 
-	if (prev_max_node->key == 0) {
-		pr_debug("Hashtable: Previous element is in the previous bucket\n");
-		llist_for_each_entry(el, ht->head[hash_min(min(BUCKET_NUM - 1, ht->max_bck_num), HT_MAP_BITS)].first, node) {
-			if (el && el->key <= key && el->key > prev_max_node->key)
+	if (!prev_max_node->value) { // cant compare key with 0, bc sector 0 can appear in the bio!
+		bucket_num = (!BUCKET_NUM) ? 0 : BUCKET_NUM - 1;
+		pr_debug("Hashtable: key = %lld Previous element is in the previous bucket %lld, bck %lld\n", key, bucket_num, BUCKET_NUM);
+
+		llist_for_each_entry(el, ht->head[hash_min(min(bucket_num, ht->max_bck_num), HT_MAP_BITS)].first, node) {
+			if (el && el->key <= key && el->key >= prev_max_node->key)
 				prev_max_node = el;
 
 			pr_debug("Hashtable: prev el key = %llu\n", el->key);
 		}
-		if (prev_max_node->key == 0)
-			return NULL;
+		
 	}
 	pr_debug("Hashtable: Element with prev key - el key=%llu, val=%p\n", prev_max_node->key, prev_max_node->value);
-
+	
+	if (!prev_max_node->value) {
+		kfree(prev_max_node);
+		return NULL;
+	}
+	
 	*prev_key = prev_max_node->key;
 	return prev_max_node;
 }

@@ -209,6 +209,7 @@ static s16 check_system_bio(struct bd_manager *redirect_manager, struct sectors 
 
 	if (unlikely(ds_empty_check(redirect_manager->sel_data_struct))) {
 		bio->bi_iter.bi_sector = sectors->original;
+		pr_debug("Recognised system bio\n");
 		return -1;
 	}
 
@@ -266,6 +267,9 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 		pr_debug("READ: Sector: %llu isnt mapped\n", sectors->original);
 
 		prev_value = ds_prev(redirect_manager->sel_data_struct, sectors->original, prev_sector);
+		if (!prev_value)
+			return 0;
+
 		sectors->redirect = prev_value->redirected_sector * SECTOR_SIZE + (sectors->original - *prev_sector) * SECTOR_SIZE;
 		to_end_of_block = (prev_value->redirected_sector * SECTOR_SIZE + prev_value->block_size) - sectors->redirect;
 		to_read_in_clone = main_bio->bi_iter.bi_size - to_end_of_block;
