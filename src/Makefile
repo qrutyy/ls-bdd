@@ -21,6 +21,8 @@ IO?=libaio
 NJ?=1
 # IO depth num
 ID?=1
+# Type of data-structures to be used in the driver (lf/sy) 
+TY?=lf
 
 # To build modules outside of the kernel tree, we run "make"
 # in the kernel source tree; the Makefile these then includes this
@@ -61,7 +63,7 @@ exit:
 	rmmod lsbdd.ko
 
 init:
-	make
+	make type="$(TY)"
 	make ins
 	echo "$(DS)" > /sys/module/lsbdd/parameters/set_data_structure
 	make set
