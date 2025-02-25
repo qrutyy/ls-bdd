@@ -14,4 +14,4 @@ jobs:
         run: |
           sudo apt install build-essential linux-headers-6.8.0-1010-azure
           cd src/
-          make
+          make type=lf 
