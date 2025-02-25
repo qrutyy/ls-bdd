@@ -10,6 +10,13 @@
 
 static const char *available_ds[] = {"bt", "sl", "ht", "rb"};
 
+// Returns "ret_val" if el != NULL
+#define CHECK_NN_STATUS_AND_RETURN(el, ret_val)  \
+	do {									  \
+		if (!el)							  \
+			return ret_val;					  \
+	} while (0)			
+
 struct value_redir {
 	sector_t redirected_sector;
 	u32 block_size;

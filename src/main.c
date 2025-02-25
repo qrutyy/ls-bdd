@@ -58,8 +58,7 @@ static s8 convert_to_int(const char *arg, u8 *result)
 	long number = 0;
 	s32 res = kstrtol(arg, 10, &number);
 
-	if (res != 0)
-		return res;
+	CHECK_NN_STATUS_AND_RETURN(res, res);
 
 	if (number < 0 || number > 255)
 		return -ERANGE;
@@ -248,8 +247,7 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 	s32 to_read_in_clone = 0;
 	s16 status = 0;
 
-	if (main_bio->bi_iter.bi_size == 0)
-		return 0;
+	CHECK_NN_STATUS_AND_RETURN(!main_bio->bi_iter.bi_size, 0);
 
 	sectors = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
 	if (!sectors)
@@ -262,13 +260,11 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 
 	if (!curr_value) { // Read & Write sector starts aren't equal.
 		status = check_system_bio(redirect_manager, sectors, clone_bio);
-		if (status)
-			return 0;
+		CHECK_NN_STATUS_AND_RETURN(!status, 0);		
 		pr_debug("READ: Sector: %llu isnt mapped\n", sectors->original);
 
 		prev_value = ds_prev(redirect_manager->sel_data_struct, sectors->original, prev_sector);
-		if (!prev_value)
-			return 0;
+		CHECK_NN_STATUS_AND_RETURN(prev_value, 0);
 
 		sectors->redirect = prev_value->redirected_sector * SECTOR_SIZE + (sectors->original - *prev_sector) * SECTOR_SIZE;
 		to_end_of_block = (prev_value->redirected_sector * SECTOR_SIZE + prev_value->block_size) - sectors->redirect;
@@ -698,28 +694,22 @@ static s32  lsbdd_set_redirect_bd(const char *arg, const struct kernel_param *kp
 	if (!list_empty(&bd_list))
 		bdd_major = register_blkdev(0, LSBDD_BLKDEV_NAME_PREFIX);
 
-	if (status)
-		return PTR_ERR(&status);
+	CHECK_NN_STATUS_AND_RETURN(!status, PTR_ERR(&status));
 	
 	last_bd = list_last_entry(&bd_list, struct bd_manager, list);
 
 	status = ds_init(last_bd->sel_data_struct, sel_ds, cache_mng);
-
-	pr_debug("%p\n", last_bd->sel_data_struct);
-	if (status)
-		return status;
+	CHECK_NN_STATUS_AND_RETURN(!status, status);
 
 	status = create_bd(index);
-
-	if (status)
-		return status;
+	CHECK_NN_STATUS_AND_RETURN(!status, status);
 
 	return 0;
 }
 
 static bool lsbdd_ds_cache_alloc(void)
 {
-	struct cache_manager *cache_mng = kzalloc(sizeof(struct cache_manager), GFP_KERNEL);	// mb switch to stack alloc
+	cache_mng = kzalloc(sizeof(struct cache_manager), GFP_KERNEL);	// mb switch to stack alloc
 	cache_mng->ht_cache = kmem_cache_create("hashtable_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
 	// kmem_cache_create("skiplist_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
 //	kmem_cache_create("rbtree_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
@@ -728,6 +718,15 @@ static bool lsbdd_ds_cache_alloc(void)
 		return false;
 
 	return true;
+}
+
+inline static void lsbdd_ds_cache_destroy(void)
+{
+	kmem_cache_destroy(cache_mng->ht_cache);
+	kfree(cache_mng);
+	// kmem_cache_create("skiplist_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+//	kmem_cache_create("rbtree_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+//	kmem_cache_create("btree_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
 }
 
 static s32  __init lsbdd_init(void)
@@ -743,7 +742,6 @@ static s32  __init lsbdd_init(void)
 	}
 
 	bdd_pool = kzalloc(sizeof(struct bio_set), GFP_KERNEL);
-
 	if (!bdd_pool)
 		goto mem_err;
 
@@ -759,9 +757,14 @@ static s32  __init lsbdd_init(void)
 	lsbdd_sectors_cache = kmem_cache_create("sectors_cache", sizeof(struct sectors), 0, SLAB_HWCACHE_ALIGN, NULL);
 	lsbdd_value_cache = kmem_cache_create("value_cache", sizeof(struct value_redir), 0, SLAB_HWCACHE_ALIGN, NULL);
 	if (!(lsbdd_sectors_cache && lsbdd_value_cache))
-		goto mem_err:
+		goto mem_err;
 
-	status =  lsbdd_ds_cache_alloc();
+	if (!(lsbdd_sectors_cache && lsbdd_value_cache))
+		goto mem_err;
+
+	status = lsbdd_ds_cache_alloc();
+	if (!status)
+		goto mem_err;
 
 	return 0;
 
@@ -788,7 +791,7 @@ static void __exit lsbdd_exit(void)
 
 	kmem_cache_destroy(lsbdd_sectors_cache);
 	kmem_cache_destroy(lsbdd_value_cache);
-	kmem_cache_destroy(lsbdd_hash_cache);
+	lsbdd_ds_cache_destroy();
 
 	bioset_exit(bdd_pool);
 	kfree(bdd_pool);
