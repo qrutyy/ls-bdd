@@ -58,7 +58,7 @@ struct skiplist {
 
 struct skiplist *skiplist_init(void);
 struct skiplist_node *skiplist_find_node(struct skiplist *sl, sector_t key);
-void skiplist_free(struct skiplist *sl);
+void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache);
 struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *data);
 void skiplist_remove(struct skiplist *sl, sector_t key);
 struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t *prev_key);

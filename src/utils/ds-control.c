@@ -9,14 +9,12 @@
 #include "rbtree.h"
 
 
-s32 ds_init(struct data_struct *ds, char *sel_ds)
+s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mng)
 {
 	struct btree *btree_map = NULL;
 	struct skiplist *sl_map = NULL;
 	struct btree_head *root = NULL;
-	struct hashtable *hash_table = NULL;
 	struct rbtree *rbtree_map = NULL;
-	struct hash_el *last_hel = NULL;
 	s32 status = 0;
 	char *bt = "bt";
 	char *sl = "sl";
@@ -40,20 +38,11 @@ s32 ds_init(struct data_struct *ds, char *sel_ds)
 		ds->type = BTREE_TYPE;
 		ds->structure.map_btree = btree_map;
 	} else if (!strncmp(sel_ds, sl, 2)) {
-		sl_map = skiplist_init();
-		ds->type = SKIPLIST_TYPE;
-		ds->structure.map_list = sl_map;
+		if (!skiplist_init(ds, cache_mng->sl_cache))
+			goto mem_err:
 	} else if (!strncmp(sel_ds, ht, 2)) {
-		hash_table = kzalloc(sizeof(struct hashtable), GFP_KERNEL);
-		last_hel = kzalloc(sizeof(struct hash_el), GFP_KERNEL);
-		hash_table->last_el = last_hel;
-		if (!hash_table)
-			goto mem_err;
-
-		lhash_init(hash_table->head);
-		ds->type = HASHTABLE_TYPE;
-		ds->structure.map_hash = hash_table;
-		ds->structure.map_hash->max_bck_num = 0;
+		if (!hashtable_init(ds, cache_mng->ht_cache))
+			goto mem_err:
 	} else if (!strncmp(sel_ds, rb, 2)) {
 		rbtree_map = kzalloc(sizeof(struct rbtree), GFP_KERNEL);
 		rbtree_map = rbtree_init();
@@ -74,18 +63,18 @@ mem_err:
 	return -ENOMEM;
 }
 
-void ds_free(struct data_struct *ds, struct kmem_cache *lsbdd_hash_cache)
+void ds_free(struct data_struct *ds, struct cache_manager *cache_mng)
 {
 	if (ds->type == BTREE_TYPE) {
 		btree_destroy(ds->structure.map_btree->head);
 		ds->structure.map_btree = NULL;
 	}
 	if (ds->type == SKIPLIST_TYPE) {
-		skiplist_free(ds->structure.map_list);
+		skiplist_free(ds->structure.map_list, cache_mng->sl_cache);
 		ds->structure.map_list = NULL;
 	}
 	if (ds->type == HASHTABLE_TYPE) {
-		hashtable_free(ds->structure.map_hash, lsbdd_hash_cache);
+		hashtable_free(ds->structure.map_hash, cache_mng->ht_cache);
 		ds->structure.map_hash = NULL;
 	}
 	if (ds->type == RBTREE_TYPE) {
@@ -139,26 +128,18 @@ void ds_remove(struct data_struct *ds, sector_t key)
 		rbtree_remove(ds->structure.map_rbtree, key);
 }
 
-s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct kmem_cache *lsbdd_hash_cache)
+s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng)
 {
-	struct hash_el *el = NULL;
 	u64 *kp = NULL;
-
 	kp = &key;
+
 	if (ds->type == BTREE_TYPE)
 		return btree_insert(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp, value, GFP_KERNEL);
 	if (ds->type == SKIPLIST_TYPE)
-		skiplist_insert(ds->structure.map_list, key, value);
+		skiplist_insert(ds->structure.map_list, key, value, cache_mng->sl_cache);
 	if (ds->type == HASHTABLE_TYPE) {
-		el = kmem_cache_alloc(lsbdd_hash_cache, GFP_KERNEL);
-		if (!el)
-			goto mem_err;
-
-		el->key = key;
-		el->value = value;
-		hash_insert(ds->structure.map_hash, &el->node, key);
-		if (ds->structure.map_hash->last_el->key < key)
-			ds->structure.map_hash->last_el = el;
+		if (!hash_insert(ds->structure.map_hash, &el->node, key, value, cache_mng->ht_cache)())
+			goto mem_err:
 	}
 	if (ds->type == RBTREE_TYPE)
 		rbtree_add(ds->structure.map_rbtree, key, value);

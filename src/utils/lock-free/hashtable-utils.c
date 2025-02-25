@@ -15,8 +15,36 @@ inline void __lhash_init(struct llist_head *ht, unsigned int size)
 		init_llist_head(&ht[i]);
 }
 
-void hash_insert(struct hashtable *ht, struct llist_node *node, sector_t key)
+bool hashtable_init(struct data_struct *ds, struct kmem_cache *ht_cache) {
+	struct hashtable *hash_table = NULL;
+	struct hash_el *last_hel = NULL;
+	
+	hash_table = kzalloc(sizeof(struct hashtable), GFP_KERNEL);
+	last_hel = kmem_cache_alloc(ht_cache, GFP_KERNEL);
+	hash_table->last_el = last_hel;
+	if (!(hash_table && last_hel))
+		return false;
+
+	lhash_init(hash_table->head);
+	ds->type = HASHTABLE_TYPE;
+	ds->structure.map_hash = hash_table;
+	ds->structure.map_hash->max_bck_num = 0;
+	return true;
+}
+
+bool hash_insert(struct hashtable *ht, struct llist_node *node, sector_t key, void* value, struct kmem_cache *ht_cache)
 {
+
+	struct hash_el *el = NULL;
+	el = kmem_cache_alloc(ht_cache, GFP_KERNEL);
+	pr_debug("ds-hash: %p, ds-el: %p\n", ht_cache, el);
+
+	if (!el)
+		return false;
+
+	el->key = key;
+	el->value = value;
+	
 	if (llist_add(node, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)]))
 		pr_debug("Hashtable: was empty\n");
 	
@@ -26,16 +54,22 @@ void hash_insert(struct hashtable *ht, struct llist_node *node, sector_t key)
 	
 	pr_debug("Hashtable: key %lld written\n", key);
 	ht->max_bck_num = BUCKET_NUM;
+	
+	if (ds->structure.map_hash->last_el->key < key)
+		ds->structure.map_hash->last_el = el;
+
+	return true;
 }
 
-void hashtable_free(struct hashtable *ht, struct kmem_cache *lsbdd_hash_cache)
+void hashtable_free(struct hashtable *ht, struct kmem_cache *ht_cache)
 {
 	s32 bckt_iter = 0;
 	struct hash_el *el, *tmp = NULL;
-	pr_debug("hash: %p\n", lsbdd_hash_cache);
+	pr_debug("hash: %p\n", ht_cache);
 	lhash_for_each_safe(ht->head, bckt_iter, tmp, el, node) {
 		if (el) {
-			kmem_cache_free(lsbdd_hash_cache, el);
+			pr_debug("el %p\n", el);
+			kmem_cache_free(ht_cache, el);
 			xchg(&el, NULL);
 		}
 	}
@@ -58,7 +92,7 @@ struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key)
 	return NULL;
 }
 
-struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *prev_key)
+struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *prev_key, struct lsbdd_nodes_cache *node_cache)
 {
 	struct hash_el *prev_max_node = NULL; 
 	
@@ -104,7 +138,7 @@ static inline void __llist_del(struct llist_node node, struct llist_node prev, s
 	spin_lock(&lock);
 
 	next = node.next;
-	WRITE_ONCE(prev.next, next);
+	WRITE_ONCE(prev.next, next); // should cause a mem_leak i guess
 	WRITE_ONCE(node.next, NULL);
 
 	spin_unlock(&lock);

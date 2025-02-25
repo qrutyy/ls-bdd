@@ -20,7 +20,7 @@ atomic64_t next_free_sector = ATOMIC_INIT(LSBDD_SECTOR_OFFSET);
 
 static struct kmem_cache *lsbdd_sectors_cache = NULL;
 static struct kmem_cache *lsbdd_value_cache = NULL;
-static struct kmem_cache *lsbdd_hash_cache = NULL;
+struct cache_manager *cache_mng = NULL;
 
 static void vector_add_bd(struct bd_manager *current_bdev_manager)
 {
@@ -128,7 +128,7 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 		atomic64_add(curr_value->block_size / SECTOR_SIZE, &next_free_sector);
 	}
 
-	status = ds_insert(current_redirect_manager->sel_data_struct, sectors->original, curr_value, lsbdd_hash_cache);
+	status = ds_insert(current_redirect_manager->sel_data_struct, sectors->original, curr_value, cache_mng);
 	if (unlikely(status))
 		goto insert_err;
 
@@ -549,7 +549,7 @@ static s8 delete_bd(u16 index)
 		get_list_element_by_index(index)->vbd_disk = NULL;
 	}
 	if (get_list_element_by_index(index)->sel_data_struct) {
-		ds_free(get_list_element_by_index(index)->sel_data_struct, lsbdd_hash_cache);
+		ds_free(get_list_element_by_index(index)->sel_data_struct, cache_mng);
 		get_list_element_by_index(index)->sel_data_struct = NULL;
 	}
 
@@ -672,6 +672,7 @@ static s32  lsbdd_set_data_struct(const char *arg, const struct kernel_param *kp
 		pr_err("%s is not supported. Check available data structure by set_data_structs\n", sel_ds);
 		return -1;
 	}
+
 	return 0;
 }
 
@@ -682,9 +683,10 @@ static s32  lsbdd_set_data_struct(const char *arg, const struct kernel_param *kp
  */
 static s32  lsbdd_set_redirect_bd(const char *arg, const struct kernel_param *kp)
 {
-	s8 status;
-	s32 index;
+	s8 status = 0;
+	s32 index = 0;
 	char path[LSBDD_MAX_BD_NAME_LENGTH];
+	struct bd_manager *last_bd = NULL;
 
 	if (sscanf(arg, "%d %s", &index, path) != 2) {
 		pr_err("Wrong input, 2 values are required\n");
@@ -698,9 +700,12 @@ static s32  lsbdd_set_redirect_bd(const char *arg, const struct kernel_param *kp
 
 	if (status)
 		return PTR_ERR(&status);
+	
+	last_bd = list_last_entry(&bd_list, struct bd_manager, list);
 
-	status = ds_init(list_last_entry(&bd_list, struct bd_manager, list)->sel_data_struct, sel_ds);
-	pr_debug("%p\n", list_last_entry(&bd_list, struct bd_manager, list)->sel_data_struct);
+	status = ds_init(last_bd->sel_data_struct, sel_ds, cache_mng);
+
+	pr_debug("%p\n", last_bd->sel_data_struct);
 	if (status)
 		return status;
 
@@ -712,9 +717,22 @@ static s32  lsbdd_set_redirect_bd(const char *arg, const struct kernel_param *kp
 	return 0;
 }
 
+static bool lsbdd_ds_cache_alloc(void)
+{
+	struct cache_manager *cache_mng = kzalloc(sizeof(struct cache_manager), GFP_KERNEL);	// mb switch to stack alloc
+	cache_mng->ht_cache = kmem_cache_create("hashtable_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+	// kmem_cache_create("skiplist_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+//	kmem_cache_create("rbtree_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+//	kmem_cache_create("btree_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+	if (!cache_mng->ht_cache)
+		return false;
+
+	return true;
+}
+
 static s32  __init lsbdd_init(void)
 {
-	s8 status;
+	s8 status = 0;
 
 	pr_debug("LSBDD module initialised\n");
 	bdd_major = register_blkdev(0, LSBDD_BLKDEV_NAME_PREFIX);
@@ -740,13 +758,11 @@ static s32  __init lsbdd_init(void)
 
 	lsbdd_sectors_cache = kmem_cache_create("sectors_cache", sizeof(struct sectors), 0, SLAB_HWCACHE_ALIGN, NULL);
 	lsbdd_value_cache = kmem_cache_create("value_cache", sizeof(struct value_redir), 0, SLAB_HWCACHE_ALIGN, NULL);
-	lsbdd_hash_cache = kmem_cache_create("hash_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+	if (!(lsbdd_sectors_cache && lsbdd_value_cache))
+		goto mem_err:
 
-	if (!(lsbdd_value_cache && lsbdd_sectors_cache && lsbdd_hash_cache)) {
-		pr_err("Couldn't allocate cache\n");
-		goto mem_err;
-	}
-	
+	status =  lsbdd_ds_cache_alloc();
+
 	return 0;
 
 mem_err:

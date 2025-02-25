@@ -43,7 +43,7 @@ static s32 random_levels(struct skiplist *sl)
  * In our case - node is a tower. Node's next - is an array of next nodes.
  * - !size_t array for safe pointer storage.
  */ 
-static struct skiplist_node *node_alloc(sector_t key, void* value, s32 height)
+static struct skiplist_node *node_alloc(sector_t key, void* value, s32 height, struct kmem_cache *sl_cache)
 {
 	BUG_ON(height <= 0 || height > MAX_LVL);
 	struct skiplist_node *node = NULL;
@@ -62,7 +62,7 @@ alloc_fail:
 	return NULL;
 }
 
-struct skiplist *skiplist_init (void)
+bool skiplist_init(struct data_struct *ds, struct kmem_cache *sl_cache)
 {
     struct skiplist *sl = NULL;
 	
@@ -71,17 +71,19 @@ struct skiplist *skiplist_init (void)
 		goto alloc_fail;
 
 	atomic_set(&sl->max_lvl, 1); 
-    sl->head = node_alloc(HEAD_KEY, HEAD_VALUE, MAX_LVL);
+    sl->head = node_alloc(HEAD_KEY, HEAD_VALUE, MAX_LVL, sl_cache); // mb hard to implement caching
 	// mb to add tail? (see prev seq version)
 	memset(sl->head->next, 0, MAX_LVL * sizeof(struct skiplist *));
-    return sl;
+    ds->type = SKIPLIST_TYPE;
+	ds->structure.map_list = sl;
+	return true;
 
 alloc_fail:
 	kfree(sl);
-	return NULL;
+	return false;
 }
 
-void skiplist_free(struct skiplist *sl) 
+void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache) 
 {
 	struct skiplist_node *node = NULL;
 	struct skiplist_node *next = NULL;
@@ -275,7 +277,7 @@ static void *update_node (struct skiplist_node *node, void* new_val) {
     return update_node(node, new_val); // tail call (retry)
 }
 
-struct skiplist_node *skiplist_insert (struct skiplist *sl, sector_t key, void* value) {
+struct skiplist_node *skiplist_insert (struct skiplist *sl, sector_t key, void* value, struct kmem_cache *sl_cache) {
     pr_debug("Skiplist(insert): key %lld skiplist %p\n", key, sl);
     pr_debug("Skiplist(insert): new value %p\n", value);
     BUG_ON(!value);
@@ -304,7 +306,7 @@ struct skiplist_node *skiplist_insert (struct skiplist *sl, sector_t key, void* 
 
     pr_debug("Skiplist(insert): attempting to insert a new node between %p and %p, height %d\n", preds[0], nexts[0], n);
 
-    new_node = node_alloc(key, value, n);
+    new_node = node_alloc(key, value, n, sl_cache);
 	if (!(new_node && new_node->value))
 		goto mem_err;
 
