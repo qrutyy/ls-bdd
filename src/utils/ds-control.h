@@ -10,6 +10,8 @@
 			return NULL;						  \
 	} while (0)									  \
 
+
+
 #define CHECK_VALUE_AND_RETURN(node)			  \
 	do {										  \
 		if (node->value)						  \

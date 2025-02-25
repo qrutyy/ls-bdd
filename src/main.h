@@ -10,8 +10,8 @@
 
 static const char *available_ds[] = {"bt", "sl", "ht", "rb"};
 
-// Returns "ret_val" if el != NULL
-#define CHECK_NN_STATUS_AND_RETURN(el, ret_val)  \
+// Returns "ret_val" if el == NULL
+#define IF_NULL_RETURN(el, ret_val)  \
 	do {									  \
 		if (!el)							  \
 			return ret_val;					  \

@@ -58,7 +58,7 @@ static s8 convert_to_int(const char *arg, u8 *result)
 	long number = 0;
 	s32 res = kstrtol(arg, 10, &number);
 
-	CHECK_NN_STATUS_AND_RETURN(res, res);
+	IF_NULL_RETURN(!res, res);
 
 	if (number < 0 || number > 255)
 		return -ERANGE;
@@ -117,7 +117,7 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 
 	old_value = ds_lookup(current_redirect_manager->sel_data_struct, sectors->original);
 
-	pr_debug("WRITE: Old rs %p", old_value);
+	pr_debug("WRITE: Old rs %p\n", old_value);
 	pr_debug("WRITE: key: %llu, sec: %llu\n", sectors->original, curr_value->redirected_sector);
 
 	if (old_value) {
@@ -167,8 +167,7 @@ static s32 setup_bio_split(struct bio *clone_bio, struct bio *main_bio, s32 near
 	struct bio *split_bio = NULL; // first half of splitted bio
 
 	split_bio = bio_split(clone_bio, nearest_bs / SECTOR_SIZE, GFP_KERNEL, bdd_pool);
-	if (!split_bio)
-		return -1;
+	IF_NULL_RETURN(split_bio, -1);
 
 	pr_debug("RECURSIVE READ p1: bs = %u, main to read = %u, st sec = %llu\n",
 		split_bio->bi_iter.bi_size, main_bio->bi_iter.bi_size, split_bio->bi_iter.bi_sector);
@@ -247,8 +246,9 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 	s32 to_read_in_clone = 0;
 	s16 status = 0;
 
-	CHECK_NN_STATUS_AND_RETURN(!main_bio->bi_iter.bi_size, 0);
+	IF_NULL_RETURN(main_bio->bi_iter.bi_size, 0);
 
+	pr_debug("blyaaa kmem error\n");
 	sectors = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
 	if (!sectors)
 		goto mem_err;
@@ -260,11 +260,11 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 
 	if (!curr_value) { // Read & Write sector starts aren't equal.
 		status = check_system_bio(redirect_manager, sectors, clone_bio);
-		CHECK_NN_STATUS_AND_RETURN(!status, 0);		
+		IF_NULL_RETURN(!status, 0);		
 		pr_debug("READ: Sector: %llu isnt mapped\n", sectors->original);
 
 		prev_value = ds_prev(redirect_manager->sel_data_struct, sectors->original, prev_sector);
-		CHECK_NN_STATUS_AND_RETURN(prev_value, 0);
+		IF_NULL_RETURN(prev_value, 0);
 
 		sectors->redirect = prev_value->redirected_sector * SECTOR_SIZE + (sectors->original - *prev_sector) * SECTOR_SIZE;
 		to_end_of_block = (prev_value->redirected_sector * SECTOR_SIZE + prev_value->block_size) - sectors->redirect;
@@ -694,15 +694,15 @@ static s32  lsbdd_set_redirect_bd(const char *arg, const struct kernel_param *kp
 	if (!list_empty(&bd_list))
 		bdd_major = register_blkdev(0, LSBDD_BLKDEV_NAME_PREFIX);
 
-	CHECK_NN_STATUS_AND_RETURN(!status, PTR_ERR(&status));
+	IF_NULL_RETURN(!status, PTR_ERR(&status));
 	
 	last_bd = list_last_entry(&bd_list, struct bd_manager, list);
 
 	status = ds_init(last_bd->sel_data_struct, sel_ds, cache_mng);
-	CHECK_NN_STATUS_AND_RETURN(!status, status);
+	IF_NULL_RETURN(!status, status);
 
 	status = create_bd(index);
-	CHECK_NN_STATUS_AND_RETURN(!status, status);
+	IF_NULL_RETURN(!status, status);
 
 	return 0;
 }
@@ -748,7 +748,7 @@ static s32  __init lsbdd_init(void)
 	status = bioset_init(bdd_pool, BIO_POOL_SIZE, 0, 0);
 
 	if (status) {
-		pr_err("Couldn't allocate bio set");
+		pr_err("Couldn't allocate bio set\n");
 		goto mem_err;
 	}
 

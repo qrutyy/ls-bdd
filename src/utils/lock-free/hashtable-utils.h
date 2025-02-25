@@ -37,8 +37,8 @@ struct hash_el {
 	void *value;
 };
 
-bool hashtable_init(struct data_struct *ds, struct kmem_cache *ht_cache);
-bool hash_insert(struct hashtable *ht, struct llist_node *node, sector_t key, void* value, struct kmem_cache *ht_cache);
+struct hashtable *hashtable_init(struct kmem_cache *ht_cache);
+struct hash_el *hash_insert(struct hashtable *ht, sector_t key, void* value, struct kmem_cache *ht_cache);
 void hashtable_free(struct hashtable *ht, struct kmem_cache *ht_cache);
 struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key);
 struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *prev_key);

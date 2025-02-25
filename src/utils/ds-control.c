@@ -12,9 +12,10 @@
 s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mng)
 {
 	struct btree *btree_map = NULL;
-	struct skiplist *sl_map = NULL;
 	struct btree_head *root = NULL;
 	struct rbtree *rbtree_map = NULL;
+	struct skiplist *skiplist = NULL;
+	struct hashtable *hash_table = NULL;
 	s32 status = 0;
 	char *bt = "bt";
 	char *sl = "sl";
@@ -38,11 +39,20 @@ s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mn
 		ds->type = BTREE_TYPE;
 		ds->structure.map_btree = btree_map;
 	} else if (!strncmp(sel_ds, sl, 2)) {
-		if (!skiplist_init(ds, cache_mng->sl_cache))
-			goto mem_err:
+		skiplist = skiplist_init(cache_mng->sl_cache);
+		if (!skiplist)
+			goto mem_err;
+
+		ds->type = SKIPLIST_TYPE;
+		ds->structure.map_list = skiplist;
 	} else if (!strncmp(sel_ds, ht, 2)) {
-		if (!hashtable_init(ds, cache_mng->ht_cache))
-			goto mem_err:
+		hash_table = hashtable_init(cache_mng->ht_cache);
+		if (!hash_table)
+			goto mem_err;
+
+		ds->type = HASHTABLE_TYPE;
+		ds->structure.map_hash = hash_table;
+		ds->structure.map_hash->max_bck_num = 0;
 	} else if (!strncmp(sel_ds, rb, 2)) {
 		rbtree_map = kzalloc(sizeof(struct rbtree), GFP_KERNEL);
 		rbtree_map = rbtree_init();
@@ -58,8 +68,6 @@ mem_err:
 	pr_err("Memory allocation failed\n");
 	kfree(ds);
 	kfree(root);
-	kfree(hash_table);
-	kfree(last_hel);
 	return -ENOMEM;
 }
 
@@ -132,14 +140,18 @@ s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_ma
 {
 	u64 *kp = NULL;
 	kp = &key;
+	struct hash_el *el = NULL;
 
 	if (ds->type == BTREE_TYPE)
 		return btree_insert(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp, value, GFP_KERNEL);
 	if (ds->type == SKIPLIST_TYPE)
 		skiplist_insert(ds->structure.map_list, key, value, cache_mng->sl_cache);
 	if (ds->type == HASHTABLE_TYPE) {
-		if (!hash_insert(ds->structure.map_hash, &el->node, key, value, cache_mng->ht_cache)())
-			goto mem_err:
+		el = hash_insert(ds->structure.map_hash, key, value, cache_mng->ht_cache);
+		if (!el)
+			goto mem_err;
+		if (ds->structure.map_hash->last_el->key < key)
+			ds->structure.map_hash->last_el = el;
 	}
 	if (ds->type == RBTREE_TYPE)
 		rbtree_add(ds->structure.map_rbtree, key, value);
@@ -147,7 +159,6 @@ s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_ma
 
 mem_err:
 	pr_err("Memory allocation failed\n");
-	kfree(el);
 	return -ENOMEM;
 }
 

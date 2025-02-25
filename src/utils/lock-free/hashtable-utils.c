@@ -15,7 +15,7 @@ inline void __lhash_init(struct llist_head *ht, unsigned int size)
 		init_llist_head(&ht[i]);
 }
 
-bool hashtable_init(struct data_struct *ds, struct kmem_cache *ht_cache) {
+struct hashtable *hashtable_init(struct kmem_cache *ht_cache) {
 	struct hashtable *hash_table = NULL;
 	struct hash_el *last_hel = NULL;
 	
@@ -23,29 +23,24 @@ bool hashtable_init(struct data_struct *ds, struct kmem_cache *ht_cache) {
 	last_hel = kmem_cache_alloc(ht_cache, GFP_KERNEL);
 	hash_table->last_el = last_hel;
 	if (!(hash_table && last_hel))
-		return false;
-
+		return NULL;
 	lhash_init(hash_table->head);
-	ds->type = HASHTABLE_TYPE;
-	ds->structure.map_hash = hash_table;
-	ds->structure.map_hash->max_bck_num = 0;
-	return true;
+	return hash_table;
 }
 
-bool hash_insert(struct hashtable *ht, struct llist_node *node, sector_t key, void* value, struct kmem_cache *ht_cache)
+struct hash_el *hash_insert(struct hashtable *ht, sector_t key, void* value, struct kmem_cache *ht_cache)
 {
-
 	struct hash_el *el = NULL;
 	el = kmem_cache_alloc(ht_cache, GFP_KERNEL);
 	pr_debug("ds-hash: %p, ds-el: %p\n", ht_cache, el);
 
 	if (!el)
-		return false;
+		return NULL;
 
 	el->key = key;
 	el->value = value;
 	
-	if (llist_add(node, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)]))
+	if (llist_add(&el->node, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)]))
 		pr_debug("Hashtable: was empty\n");
 	
 	/** Note, that there is a lot of buckets (1 * 2 ** 7) -> 
@@ -55,10 +50,7 @@ bool hash_insert(struct hashtable *ht, struct llist_node *node, sector_t key, vo
 	pr_debug("Hashtable: key %lld written\n", key);
 	ht->max_bck_num = BUCKET_NUM;
 	
-	if (ds->structure.map_hash->last_el->key < key)
-		ds->structure.map_hash->last_el = el;
-
-	return true;
+	return el;
 }
 
 void hashtable_free(struct hashtable *ht, struct kmem_cache *ht_cache)
@@ -81,7 +73,7 @@ struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key)
 {
 	struct hash_el *el, *tmp = NULL;
 
-	pr_debug("Hashtable: bucket_val %llu", BUCKET_NUM);
+	pr_debug("Hashtable: bucket_val %llu\n", BUCKET_NUM);
 
 	llist_for_each_entry_safe(el, tmp, ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)].first, node) {
 		if (el != NULL && el->key == key) {
@@ -92,11 +84,11 @@ struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key)
 	return NULL;
 }
 
-struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *prev_key, struct lsbdd_nodes_cache *node_cache)
+struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *prev_key)
 {
 	struct hash_el *prev_max_node = NULL; 
 	
-	prev_max_node = kzalloc(sizeof(struct hash_el), GFP_KERNEL);
+	prev_max_node = kzalloc(sizeof(struct hash_el), GFP_KERNEL); // mb even no allocation is needed.
 	if (!prev_max_node)
 		return NULL;
 
@@ -153,7 +145,7 @@ void hashtable_remove(struct hashtable *ht, sector_t key)
 	bckt_num = hash_min(BUCKET_NUM, HT_MAP_BITS);
 	bckt_lock = ht->lock[bckt_num]; // per bucket lock
 
-	pr_debug("Hashtable: bucket_val %llu", BUCKET_NUM);
+	pr_debug("Hashtable: bucket_val %llu\n", BUCKET_NUM);
 	 // test only. should be moved further to decrease the crit. section
 	// no lock or other sync is needed, due to lock-free llist iter
 	llist_for_each_entry_safe(el, tmp, ht->head[bckt_num].first, node) {

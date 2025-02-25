@@ -62,7 +62,7 @@ alloc_fail:
 	return NULL;
 }
 
-bool skiplist_init(struct data_struct *ds, struct kmem_cache *sl_cache)
+struct skiplist *skiplist_init(struct kmem_cache *sl_cache)
 {
     struct skiplist *sl = NULL;
 	
@@ -74,13 +74,11 @@ bool skiplist_init(struct data_struct *ds, struct kmem_cache *sl_cache)
     sl->head = node_alloc(HEAD_KEY, HEAD_VALUE, MAX_LVL, sl_cache); // mb hard to implement caching
 	// mb to add tail? (see prev seq version)
 	memset(sl->head->next, 0, MAX_LVL * sizeof(struct skiplist *));
-    ds->type = SKIPLIST_TYPE;
-	ds->structure.map_list = sl;
-	return true;
+   	return sl;
 
 alloc_fail:
 	kfree(sl);
-	return false;
+	return NULL;
 }
 
 void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache) 
@@ -301,7 +299,7 @@ struct skiplist_node *skiplist_insert (struct skiplist *sl, sector_t key, void* 
             return ret_val;
 
         // If we lose a race with a thread removing the node we tried to update then we have to retry.
-        return skiplist_insert(sl, key, value); // tail call
+        return skiplist_insert(sl, key, value, sl_cache); // tail call
     }
 
     pr_debug("Skiplist(insert): attempting to insert a new node between %p and %p, height %d\n", preds[0], nexts[0], n);
@@ -328,7 +326,7 @@ struct skiplist_node *skiplist_insert (struct skiplist *sl, sector_t key, void* 
     if (other != next) {
         pr_debug("Skiplist(insert): failed to change pred's link: expected %zx found %zx\n", next, other);
         kfree(new_node);
-        return skiplist_insert(sl, key, value); // retry
+        return skiplist_insert(sl, key, value, sl_cache); // retry
     }
 	pr_debug("Skiplist(insert): other = %zx new_node = %p next = %zx, pred = %p\n", other, new_node, next, pred);
     pr_debug("Skiplist(insert): successfully inserted a new node %p at the bottom level\n", new_node);
@@ -386,7 +384,7 @@ struct skiplist_node *skiplist_insert (struct skiplist *sl, sector_t key, void* 
 
 mem_err:
 	pr_warn("Failed to allocate node, retrying\n");
-	return skiplist_insert(sl, key, value);
+	return skiplist_insert(sl, key, value, sl_cache);
 }
 
 void skiplist_remove (struct skiplist *sl, sector_t key) {
