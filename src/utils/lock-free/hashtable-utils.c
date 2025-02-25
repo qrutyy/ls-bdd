@@ -57,10 +57,8 @@ void hashtable_free(struct hashtable *ht, struct kmem_cache *ht_cache)
 {
 	s32 bckt_iter = 0;
 	struct hash_el *el, *tmp = NULL;
-	pr_debug("hash: %p\n", ht_cache);
 	lhash_for_each_safe(ht->head, bckt_iter, tmp, el, node) {
-		if (el) {
-			pr_debug("el %p\n", el);
+		if (el && (u64)el->key > 0 && llist_next(&el->node)) {
 			kmem_cache_free(ht_cache, el);
 			xchg(&el, NULL);
 		}

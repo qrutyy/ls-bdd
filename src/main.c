@@ -247,8 +247,6 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 	s16 status = 0;
 
 	IF_NULL_RETURN(main_bio->bi_iter.bi_size, 0);
-
-	pr_debug("blyaaa kmem error\n");
 	sectors = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
 	if (!sectors)
 		goto mem_err;

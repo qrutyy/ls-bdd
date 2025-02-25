@@ -55,7 +55,8 @@ lint:
 
 clean:
 	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions *.symvers *.mod *.order *.o.d *.state
-	rm -rf utils/*.o utils/.*.cmd utils/.*.o.d
+	rm -rf utils/lock-free/*.o utils/lock-free/.*.cmd utils/lock-free/.*.o.d
+	rm -rf utils/sync/*.o utils/sync/.*.cmd utils/sync/.*.o.d
 	rm -rf *.out *.folded *.perf *.old *.svg *.data *.dat
 
 exit:
