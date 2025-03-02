@@ -11,8 +11,9 @@ inline void __lhash_init(struct llist_head *ht, unsigned int size)
 {
 	unsigned int i;
 
-	for (i = 0; i < size; i++)
+	for (i = 0; i < size; i++) {
 		init_llist_head(&ht[i]);
+	}
 }
 
 struct hashtable *hashtable_init(struct kmem_cache *ht_cache) {
@@ -20,10 +21,17 @@ struct hashtable *hashtable_init(struct kmem_cache *ht_cache) {
 	struct hash_el *last_hel = NULL;
 	
 	hash_table = kzalloc(sizeof(struct hashtable), GFP_KERNEL);
-	last_hel = kmem_cache_alloc(ht_cache, GFP_KERNEL);
+	 if (!hash_table)
+        return NULL;
+
+	last_hel = kmem_cache_zalloc(ht_cache, GFP_KERNEL);
+	if (!last_hel) {
+        kfree(hash_table);
+        return NULL;
+    }
+
 	hash_table->last_el = last_hel;
-	if (!(hash_table && last_hel))
-		return NULL;
+	
 	lhash_init(hash_table->head);
 	return hash_table;
 }
@@ -31,7 +39,7 @@ struct hashtable *hashtable_init(struct kmem_cache *ht_cache) {
 struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void* value, struct kmem_cache *ht_cache)
 {
 	struct hash_el *el = NULL;
-	el = kmem_cache_alloc(ht_cache, GFP_KERNEL);
+	el = kmem_cache_zalloc(ht_cache, GFP_KERNEL);
 	pr_debug("ds-hash: %p, ds-el: %p\n", ht_cache, el);
 
 	if (!el)
@@ -55,18 +63,22 @@ struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void* value
 	return el;
 }
 
-void hashtable_free(struct hashtable *ht, struct kmem_cache *ht_cache)
-{
-	s32 bckt_iter = 0;
-	struct hash_el *el, *tmp = NULL;
-	lhash_for_each_safe(ht->head, bckt_iter, tmp, el, node) {
-		if (el && (u64)el->key > 0 && llist_next(&el->node)) {
-			kmem_cache_free(ht_cache, el);
-			xchg(&el, NULL);
-		}
-	}
-	kfree(ht);
-	xchg(&ht, NULL);
+void hashtable_free(struct hashtable *ht, struct kmem_cache *ht_cache) {
+    s32 bckt_iter = 0;
+    struct hash_el *el, *tmp = NULL;
+
+    lhash_for_each_safe(ht->head, bckt_iter, tmp, el, node) {
+        if (el && (u64)el->key > 0 && el->value) {
+            if (likely(el)) {
+				pr_debug("el: %p\n",el);
+				kmem_cache_free(ht_cache, el);
+            } else {
+                pr_err("Attempted to free an invalid object\n");
+            }
+        }
+    }
+
+    kfree(ht);
 }
 
 struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key)

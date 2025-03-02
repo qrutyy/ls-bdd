@@ -17,7 +17,7 @@
 #define lhash_for_each_safe(name, bkt, tmp, obj, member)				\
 	for ((bkt) = 0, obj = NULL; obj == NULL && (bkt) < HASH_SIZE(name);	\
 			(bkt)++)													\
-		llist_for_each_entry_safe(obj, tmp, (struct llist_node *)&name[bkt], member)
+		llist_for_each_entry_safe(obj, tmp, (struct llist_node *)&name[bkt].first->next, member)
 
 #define DECLARE_LHASHTABLE(name, bits)                                  \
 	struct llist_head name[1 << (bits)]
