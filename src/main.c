@@ -5,17 +5,17 @@
 #include <linux/list.h>
 #include <linux/moduleparam.h>
 #include "utils/ds-control.h"
-#include "hashtable-utils.h"
 #include "main.h"
 
 MODULE_DESCRIPTION("Log-Structured virtual Block Device Driver module");
 MODULE_AUTHOR("Mikhail Gavrilenko - @qrutyy");
 MODULE_LICENSE("Dual MIT/GPL");
 
-static s32  bdd_major;
+static s32 bdd_major = 0;
 char sel_ds[LSBDD_MAX_DS_NAME_LEN + 1];
-struct bio_set *bdd_pool;
-struct list_head bd_list;
+char ds_type[2 + 1];
+struct bio_set *bdd_pool = NULL;
+struct list_head bd_list; 
 atomic64_t next_free_sector = ATOMIC_INIT(LSBDD_SECTOR_OFFSET);
 
 static struct kmem_cache *lsbdd_sectors_cache = NULL;
@@ -704,19 +704,29 @@ static s32  lsbdd_set_redirect_bd(const char *arg, const struct kernel_param *kp
 
 	return 0;
 }
-
-static bool lsbdd_ds_cache_alloc(void)
+/*
+static s32 lsbdd_ds_type(const char *arg, const struct kernel_param *kp)
 {
-	cache_mng = kzalloc(sizeof(struct cache_manager), GFP_KERNEL);	// mb switch to stack alloc
-	cache_mng->ht_cache = kmem_cache_create("hashtable_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
-	// kmem_cache_create("skiplist_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
-//	kmem_cache_create("rbtree_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
-//	kmem_cache_create("btree_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
-	if (!cache_mng->ht_cache)
-		return false;
+	s8 status = 0;
+	char type[2];
+	struct bd_manager *last_bd = NULL;
 
-	return true;
+	if (sscanf(arg, "%s", type) != 1) {
+		pr_err("Wrong input, no more than 1 value is required\n");
+		return -EINVAL;
+	}
+	if (strcmp(type, "ty")) {
+		gl_type = "ty";
+	} else if (strcmp(type, "sy")) {
+		gl_type = "sy";
+	} else {
+		pr_err("set_ds_type: wrong type. (see README)\n");
+		return 0;
+	}
+
+	return 0;
 }
+*/
 
 inline static void lsbdd_ds_cache_destroy(void)
 {
@@ -757,11 +767,8 @@ static s32  __init lsbdd_init(void)
 	if (!(lsbdd_sectors_cache && lsbdd_value_cache))
 		goto mem_err;
 
-	if (!(lsbdd_sectors_cache && lsbdd_value_cache))
-		goto mem_err;
-
-	status = lsbdd_ds_cache_alloc();
-	if (!status)
+	cache_mng = kzalloc(sizeof(struct cache_manager), GFP_KERNEL);
+	if (!cache_mng)
 		goto mem_err;
 
 	return 0;
@@ -817,7 +824,12 @@ static const struct kernel_param_ops lsbdd_ds_ops = {
 	.set = lsbdd_set_data_struct,
 	.get = lsbdd_get_data_structs,
 };
-
+/*
+static const struct kernel_param_ops lsbdd_ds_type = {
+	.set = lsbdd_set_ds_type,
+	.get = NULL,
+};
+*/
 MODULE_PARM_DESC(delete_bd, "Delete BD");
 module_param_cb(delete_bd, &lsbdd_delete_ops, NULL, 0200);
 
@@ -829,6 +841,10 @@ module_param_cb(set_redirect_bd, &lsbdd_redirect_ops, NULL, 0200);
 
 MODULE_PARM_DESC(set_data_structure, "Set data structure to be used in mapping");
 module_param_cb(set_data_structure, &lsbdd_ds_ops, NULL, 0644);
-
+/*
+// Additional parameter, just to handle difference between API's
+MODULE_PARM_DESC(set_ds_type, "Set data structure type to use (lock-free - lf or sync - sy)");
+module_param_cb(set_ds_type, &lsbdd_ds_type, NULL, 0200);
+*/
 module_init(lsbdd_init);
 module_exit(lsbdd_exit);

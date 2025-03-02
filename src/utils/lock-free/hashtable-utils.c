@@ -28,7 +28,7 @@ struct hashtable *hashtable_init(struct kmem_cache *ht_cache) {
 	return hash_table;
 }
 
-struct hash_el *hash_insert(struct hashtable *ht, sector_t key, void* value, struct kmem_cache *ht_cache)
+struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void* value, struct kmem_cache *ht_cache)
 {
 	struct hash_el *el = NULL;
 	el = kmem_cache_alloc(ht_cache, GFP_KERNEL);
@@ -50,6 +50,8 @@ struct hash_el *hash_insert(struct hashtable *ht, sector_t key, void* value, str
 	pr_debug("Hashtable: key %lld written\n", key);
 	ht->max_bck_num = BUCKET_NUM;
 	
+	if (ht->last_el->key < key)
+		ht->last_el = el;
 	return el;
 }
 
@@ -161,5 +163,10 @@ void hashtable_remove(struct hashtable *ht, sector_t key)
 	} else { 
 		llist_del_first(&ht->head[bckt_num]);
 	}
+}
+
+bool hashtable_is_empty(struct hashtable *ht)
+{
+ return llist_empty(ht->head);
 }
 

@@ -29,11 +29,12 @@ struct skiplist {
 	s32 max_lvl;
 };
 
-struct skiplist *skiplist_init(void);
+struct skiplist *skiplist_init(struct kmem_cache *sl_cache);
 struct skiplist_node *skiplist_find_node(struct skiplist *sl, sector_t key);
-void skiplist_free(struct skiplist *sl);
+void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache);
 void skiplist_print(struct skiplist *sl);
-struct skiplist_node *skiplist_add(struct skiplist *sl, sector_t key, void *data);
+struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *data, struct kmem_cache *sl_cache);
 void skiplist_remove(struct skiplist *sl, sector_t key);
 struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t *prev_key);
 struct skiplist_node *skiplist_last(struct skiplist *sl);
+bool skiplist_is_empty(struct skiplist *sl);

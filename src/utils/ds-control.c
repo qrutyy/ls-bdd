@@ -8,7 +8,6 @@
 #include "skiplist.h"
 #include "rbtree.h"
 
-
 s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mng)
 {
 	struct btree *btree_map = NULL;
@@ -23,6 +22,7 @@ s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mn
 	char *rb = "rb";
 
 	if (!strncmp(sel_ds, bt, 2)) {
+
 		btree_map = kzalloc(sizeof(struct btree), GFP_KERNEL);
 		if (!btree_map)
 			goto mem_err;
@@ -46,6 +46,7 @@ s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mn
 		ds->type = SKIPLIST_TYPE;
 		ds->structure.map_list = skiplist;
 	} else if (!strncmp(sel_ds, ht, 2)) {
+		cache_mng->ht_cache = kmem_cache_create("hashtable_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
 		hash_table = hashtable_init(cache_mng->ht_cache);
 		if (!hash_table)
 			goto mem_err;
@@ -147,11 +148,9 @@ s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_ma
 	if (ds->type == SKIPLIST_TYPE)
 		skiplist_insert(ds->structure.map_list, key, value, cache_mng->sl_cache);
 	if (ds->type == HASHTABLE_TYPE) {
-		el = hash_insert(ds->structure.map_hash, key, value, cache_mng->ht_cache);
+		el = hashtable_insert(ds->structure.map_hash, key, value, cache_mng->ht_cache);
 		if (!el)
 			goto mem_err;
-		if (ds->structure.map_hash->last_el->key < key)
-			ds->structure.map_hash->last_el = el;
 	}
 	if (ds->type == RBTREE_TYPE)
 		rbtree_add(ds->structure.map_rbtree, key, value);
@@ -226,7 +225,7 @@ s32 ds_empty_check(struct data_struct *ds)
 		return 1;
 	if (ds->type == SKIPLIST_TYPE && skiplist_is_empty(ds->structure.map_list))
 		return 1;
-	if (ds->type == HASHTABLE_TYPE && llist_empty(ds->structure.map_hash->head))
+	if (ds->type == HASHTABLE_TYPE && hashtable_is_empty(ds->structure.map_hash))
 		return 1;
 	if (ds->type == RBTREE_TYPE && ds->structure.map_rbtree->node_num == 0)
 		return 1;

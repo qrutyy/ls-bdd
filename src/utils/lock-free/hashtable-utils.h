@@ -38,9 +38,10 @@ struct hash_el {
 };
 
 struct hashtable *hashtable_init(struct kmem_cache *ht_cache);
-struct hash_el *hash_insert(struct hashtable *ht, sector_t key, void* value, struct kmem_cache *ht_cache);
+struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void* value, struct kmem_cache *ht_cache);
 void hashtable_free(struct hashtable *ht, struct kmem_cache *ht_cache);
 struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key);
 struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *prev_key);
 void hashtable_remove(struct hashtable *ht, sector_t key);
 void __lhash_init(struct llist_head *htm, unsigned int size);
+bool hashtable_is_empty(struct hashtable *ht);
