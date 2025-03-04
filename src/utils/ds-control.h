@@ -10,6 +10,8 @@
 			return NULL;						  \
 	} while (0)									  \
 
+
+
 #define CHECK_VALUE_AND_RETURN(node)			  \
 	do {										  \
 		if (node->value)						  \
@@ -33,11 +35,18 @@ struct data_struct {
 	} structure;
 };
 
-int ds_init(struct data_struct *ds, char *sel_ds);
-void ds_free(struct data_struct *ds);
+struct cache_manager {
+	struct kmem_cache *ht_cache;
+	struct kmem_cache *sl_cache;
+	struct kmem_cache *bt_cache;
+	struct kmem_cache *rb_cache;
+};
+
+int ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mng);
+void ds_free(struct data_struct *ds, struct cache_manager *cache_mng);
 void *ds_lookup(struct data_struct *ds, sector_t key);
 void ds_remove(struct data_struct *ds, sector_t key);
-int ds_insert(struct data_struct *ds, sector_t key, void *value);
+int ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng);
 void *ds_last(struct data_struct *ds, sector_t key);
 void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key);
 int ds_empty_check(struct data_struct *ds);

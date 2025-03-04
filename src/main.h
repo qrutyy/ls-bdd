@@ -10,7 +10,14 @@
 
 static const char *available_ds[] = {"bt", "sl", "ht", "rb"};
 
-struct redir_sector_info {
+// Returns "ret_val" if el == NULL
+#define IF_NULL_RETURN(el, ret_val)  \
+	do {									  \
+		if (!el)							  \
+			return ret_val;					  \
+	} while (0)			
+
+struct value_redir {
 	sector_t redirected_sector;
 	u32 block_size;
 };

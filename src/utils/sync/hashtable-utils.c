@@ -4,15 +4,40 @@
 #include "hashtable-utils.h"
 #include <linux/slab.h>
 
-
-
-void hash_insert(struct hashtable *ht, struct hlist_node *node, sector_t key)
+struct hashtable *hashtable_init(struct kmem_cache *ht_cache)
 {
-	hlist_add_head(node, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)]);
-	ht->nf_bck = BUCKET_NUM;
+	struct hashtable *hash_table = NULL;
+	struct hash_el *last_hel = NULL;
+ 
+	hash_table = kzalloc(sizeof(struct hashtable), GFP_KERNEL);
+	last_hel = kzalloc(sizeof(struct hash_el), GFP_KERNEL);
+	hash_table->last_el = last_hel;
+	if (!hash_table)
+		return NULL;
+
+	hash_init(hash_table->head);
+	return hash_table;
 }
 
-void hashtable_free(struct hashtable *ht)
+struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void* value, struct kmem_cache *ht_cache)
+{
+	struct hash_el *el = NULL;
+	el = kzalloc(sizeof(struct hash_el), GFP_KERNEL); // #TODO fix mem error, handle outside.
+	if (!el) {
+		pr_err("Hashtable: mem err\n");
+		return NULL;
+	}
+
+	el->key = key;
+	el->value = value;
+	hlist_add_head(&el->node, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)]);
+	ht->max_bck_num = BUCKET_NUM;
+	if (ht->last_el->key < key)
+		ht->last_el = el;
+	return el;
+}
+
+void hashtable_free(struct hashtable *ht, struct kmem_cache *ht_cache)
 {
 	s32 bckt_iter = 0;
 	struct hash_el *el;
@@ -54,7 +79,7 @@ struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *pre
 	if (prev_max_node->key == 0) {
 		pr_debug("Hashtable: Element with  is in the prev bucket\n");
 		// mb execute recursively key + mb_size
-		hlist_for_each_entry(el, &ht->head[hash_min(min(BUCKET_NUM - 1, ht->nf_bck), HT_MAP_BITS)], node) {
+		hlist_for_each_entry(el, &ht->head[hash_min(min(BUCKET_NUM - 1, ht->max_bck_num), HT_MAP_BITS)], node) {
 			if (el && el->key <= key && el->key > prev_max_node->key)
 				prev_max_node = el;
 			pr_debug("Hashtable: prev el key = %llu\n", el->key);
@@ -76,3 +101,7 @@ void hashtable_remove(struct hashtable *ht, sector_t key)
 	hash_del(ht_node);
 }
 
+bool hashtable_is_empty(struct hashtable *ht)
+{
+ return hash_empty(ht->head);
+}

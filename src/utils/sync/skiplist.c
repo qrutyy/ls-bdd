@@ -54,7 +54,7 @@ static struct skiplist_node *create_node(sector_t key, void *value)
 	return create_node_tall(key, value, 1);
 }
 
-struct skiplist *skiplist_init(void)
+struct skiplist *skiplist_init(struct kmem_cache *sl_cache)
 {
 	struct skiplist *sl;
 	struct skiplist_node *head;
@@ -218,7 +218,7 @@ fail:
 	return ERR_PTR(-ENOMEM);
 }
 
-struct skiplist_node *skiplist_add(struct skiplist *sl, sector_t key, void *value)
+struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *value, struct kmem_cache *sl_cache)
 {
 	struct skiplist_node *old;
 	struct skiplist_node *new;
@@ -244,7 +244,7 @@ fail:
 	return ERR_PTR(err);
 }
 
-void skiplist_free(struct skiplist *sl)
+void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache)
 {
 	struct skiplist_node *curr;
 	struct skiplist_node *next;
@@ -375,4 +375,9 @@ struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t 
 	}
 
 	return NULL;
+}
+
+bool skiplist_is_empty(struct skiplist *sl) 
+{
+	return sl->head_lvl == 0;
 }

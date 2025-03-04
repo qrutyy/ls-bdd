@@ -8,25 +8,28 @@
 #include "main.h"
 
 MODULE_DESCRIPTION("Log-Structured virtual Block Device Driver module");
-MODULE_AUTHOR("Mike Gavrilenko - @qrutyy");
+MODULE_AUTHOR("Mikhail Gavrilenko - @qrutyy");
 MODULE_LICENSE("Dual MIT/GPL");
 
-static s32  bdd_major;
+static s32 bdd_major = 0;
 char sel_ds[LSBDD_MAX_DS_NAME_LEN + 1];
-struct bio_set *bdd_pool;
-struct list_head bd_list;
-sector_t next_free_sector = LSBDD_SECTOR_OFFSET;
+char ds_type[2 + 1];
+struct bio_set *bdd_pool = NULL;
+struct list_head bd_list; 
+atomic64_t next_free_sector = ATOMIC_INIT(LSBDD_SECTOR_OFFSET);
 
-static s32  vector_add_bd(struct bd_manager *current_bdev_manager)
+static struct kmem_cache *lsbdd_sectors_cache = NULL;
+static struct kmem_cache *lsbdd_value_cache = NULL;
+struct cache_manager *cache_mng = NULL;
+
+static void vector_add_bd(struct bd_manager *current_bdev_manager)
 {
 	list_add_tail(&current_bdev_manager->list, &bd_list);
-
-	return 0;
 }
 
 static struct bd_manager *get_bd_manager_by_name(char *vbd_name)
 {
-	struct bd_manager *entry;
+	struct bd_manager *entry = NULL;
 
 	list_for_each_entry(entry, &bd_list, list) {
 		if (!strcmp(entry->vbd_disk->disk_name, vbd_name))
@@ -38,7 +41,7 @@ static struct bd_manager *get_bd_manager_by_name(char *vbd_name)
 
 static struct bd_manager *get_list_element_by_index(u16 index)
 {
-	struct bd_manager *entry;
+	struct bd_manager *entry = NULL;
 	u16 i = 0;
 
 	list_for_each_entry(entry, &bd_list, list) {
@@ -52,11 +55,10 @@ static struct bd_manager *get_list_element_by_index(u16 index)
 
 static s8 convert_to_int(const char *arg, u8 *result)
 {
-	long number;
+	long number = 0;
 	s32 res = kstrtol(arg, 10, &number);
 
-	if (res != 0)
-		return res;
+	IF_NULL_RETURN(!res, res);
 
 	if (number < 0 || number > 255)
 		return -ERANGE;
@@ -93,55 +95,58 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 {
 	s8 status;
 	struct sectors *sectors = NULL;
-	struct redir_sector_info *old_rs_info = NULL;
-	struct redir_sector_info *curr_rs_info = NULL;
+	struct value_redir *old_value = NULL;
+	struct value_redir *curr_value = NULL;
 
-	sectors = kzalloc(sizeof(struct sectors), GFP_KERNEL);
-	curr_rs_info = kzalloc(sizeof(struct redir_sector_info), GFP_KERNEL);
+	// i guess this allocation can be deleted.... (if it will affect latency a lot)
+	// btw it was made only for readability reason ;)
+	sectors = kmem_cache_alloc(lsbdd_sectors_cache, GFP_KERNEL); 
+	curr_value = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
 
-	if (!(sectors && curr_rs_info))
+	if (unlikely(!(sectors && curr_value)))
 		goto mem_err;
 
 	sectors->original = main_bio->bi_iter.bi_sector;
-	sectors->redirect = next_free_sector;
+	sectors->redirect = atomic64_read(&next_free_sector);
 
 	pr_debug("Original sector: bi_sector = %llu, block_size %u\n",
 			main_bio->bi_iter.bi_sector, clone_bio->bi_iter.bi_size);
 
-	curr_rs_info->block_size = main_bio->bi_iter.bi_size;
-	curr_rs_info->redirected_sector = sectors->redirect;
+	curr_value->block_size = main_bio->bi_iter.bi_size;
+	curr_value->redirected_sector = sectors->redirect;
 
-	old_rs_info = ds_lookup(current_redirect_manager->sel_data_struct, sectors->original);
-	if (!old_rs_info)
-		pr_debug("WRITE: Lookup in data structure _ failed\n");
+	old_value = ds_lookup(current_redirect_manager->sel_data_struct, sectors->original);
 
-	pr_debug("WRITE: Old rs %p", old_rs_info);
-	pr_info("WRITE: key: %llu, sec: %llu\n", sectors->original, curr_rs_info->redirected_sector);
+	pr_debug("WRITE: Old rs %p\n", old_value);
+	pr_debug("WRITE: key: %llu, sec: %llu\n", sectors->original, curr_value->redirected_sector);
 
-	if (old_rs_info && !(old_rs_info->redirected_sector == sectors->redirect && old_rs_info->block_size == curr_rs_info->block_size)) {
+	if (old_value) {
+		pr_debug("WRITE: remove old mapping key %lld old_val: %lld, new_val %lld\n", sectors->original, old_value->redirected_sector, sectors->redirect);
 		ds_remove(current_redirect_manager->sel_data_struct, sectors->original);
-		if (status)
-			goto insert_err;
 	} else {
-		next_free_sector += curr_rs_info->block_size / SECTOR_SIZE;
+		atomic64_add(curr_value->block_size / SECTOR_SIZE, &next_free_sector);
 	}
 
-	status = ds_insert(current_redirect_manager->sel_data_struct, sectors->original, curr_rs_info);
+	status = ds_insert(current_redirect_manager->sel_data_struct, sectors->original, curr_value, cache_mng);
+	if (unlikely(status))
+		goto insert_err;
+
 	clone_bio->bi_iter.bi_sector = sectors->redirect;
 	pr_debug("original %llu, redirected %llu\n", sectors->original, sectors->redirect);
 
+	kmem_cache_free(lsbdd_sectors_cache, sectors);
 	return 0;
 
 insert_err:
-	pr_err("Failed inserting key: %llu vallue: %p in _\n", sectors->original, curr_rs_info);
-	kfree(sectors);
-	kfree(curr_rs_info);
+	pr_err("Failed inserting key: %llu vallue: %p in _\n", sectors->original, curr_value);
+	kmem_cache_free(lsbdd_sectors_cache, sectors);
+	kmem_cache_free(lsbdd_value_cache, curr_value);
 	return status;
 
 mem_err:
-pr_err("Memory allocation failed\n");
-	kfree(sectors);
-	kfree(curr_rs_info);
+	pr_err("Memory allocation failed\n");
+	kmem_cache_free(lsbdd_sectors_cache, sectors);
+	kmem_cache_free(lsbdd_value_cache, curr_value);
 	return -ENOMEM;
 }
 
@@ -162,8 +167,7 @@ static s32 setup_bio_split(struct bio *clone_bio, struct bio *main_bio, s32 near
 	struct bio *split_bio = NULL; // first half of splitted bio
 
 	split_bio = bio_split(clone_bio, nearest_bs / SECTOR_SIZE, GFP_KERNEL, bdd_pool);
-	if (!split_bio)
-		return -1;
+	IF_NULL_RETURN(split_bio, -1);
 
 	pr_debug("RECURSIVE READ p1: bs = %u, main to read = %u, st sec = %llu\n",
 		split_bio->bi_iter.bi_size, main_bio->bi_iter.bi_size, split_bio->bi_iter.bi_sector);
@@ -199,17 +203,18 @@ static s32 setup_bio_split(struct bio *clone_bio, struct bio *main_bio, s32 near
  */
 static s16 check_system_bio(struct bd_manager *redirect_manager, struct sectors *sectors, struct bio *bio)
 {
-	struct redir_sector_info *last_rs = NULL;
+	struct value_redir *last_rs = NULL;
 
-	if (ds_empty_check(redirect_manager->sel_data_struct)) {
+	if (unlikely(ds_empty_check(redirect_manager->sel_data_struct))) {
 		bio->bi_iter.bi_sector = sectors->original;
+		pr_debug("Recognised system bio\n");
 		return -1;
 	}
 
 	last_rs = ds_last(redirect_manager->sel_data_struct, sectors->original);
 	pr_debug("READ: last_rs = %llu\n", last_rs->redirected_sector);
 
-	if (sectors->original > last_rs->redirected_sector) {
+	if (unlikely(sectors->original > last_rs->redirected_sector)) {
 		bio->bi_iter.bi_sector = sectors->original;
 		pr_debug("Recognised system bio\n");
 		return -1;
@@ -232,8 +237,8 @@ static s16 check_system_bio(struct bd_manager *redirect_manager, struct sectors 
  */
 static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clone_bio, struct bd_manager *redirect_manager)
 {
-	struct redir_sector_info *curr_rs_info = NULL;
-	struct redir_sector_info *prev_rs_info = NULL;
+	struct value_redir *curr_value = NULL;
+	struct value_redir *prev_value = NULL;
 	struct sectors *sectors = NULL;
 	sector_t prev_sector_val = 0;
 	sector_t *prev_sector = &prev_sector_val;
@@ -241,84 +246,78 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 	s32 to_read_in_clone = 0;
 	s16 status = 0;
 
-	if (main_bio->bi_iter.bi_size == 0)
-		return 0;
-
-	curr_rs_info = kzalloc(sizeof(struct redir_sector_info), GFP_KERNEL);
-	prev_rs_info = kzalloc(sizeof(struct redir_sector_info), GFP_KERNEL);
-	sectors = kzalloc(sizeof(struct sectors), GFP_KERNEL);
-
-	if (!(sectors && curr_rs_info && prev_rs_info))
+	IF_NULL_RETURN(main_bio->bi_iter.bi_size, 0);
+	sectors = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
+	if (!sectors)
 		goto mem_err;
 
 	sectors->original = main_bio->bi_iter.bi_sector;
-	curr_rs_info = ds_lookup(redirect_manager->sel_data_struct, sectors->original);
+	curr_value = ds_lookup(redirect_manager->sel_data_struct, sectors->original);
 
-	pr_info("READ: key: %llu\n", sectors->original);
+	pr_debug("READ: key: %llu\n", sectors->original);
 
-	if (!curr_rs_info) { // Read & Write sector starts aren't equal.
+	if (!curr_value) { // Read & Write sector starts aren't equal.
 		status = check_system_bio(redirect_manager, sectors, clone_bio);
-		if (status)
-			return 0;
-
+		IF_NULL_RETURN(!status, 0);		
 		pr_debug("READ: Sector: %llu isnt mapped\n", sectors->original);
 
-		prev_rs_info = ds_prev(redirect_manager->sel_data_struct, sectors->original, prev_sector);
-		sectors->redirect = prev_rs_info->redirected_sector * SECTOR_SIZE + (sectors->original - *prev_sector) * SECTOR_SIZE;
-		to_end_of_block = (prev_rs_info->redirected_sector * SECTOR_SIZE + prev_rs_info->block_size) - sectors->redirect;
+		prev_value = ds_prev(redirect_manager->sel_data_struct, sectors->original, prev_sector);
+		IF_NULL_RETURN(prev_value, 0);
+
+		sectors->redirect = prev_value->redirected_sector * SECTOR_SIZE + (sectors->original - *prev_sector) * SECTOR_SIZE;
+		to_end_of_block = (prev_value->redirected_sector * SECTOR_SIZE + prev_value->block_size) - sectors->redirect;
 		to_read_in_clone = main_bio->bi_iter.bi_size - to_end_of_block;
 		/* Address of main block end (reading from operation pba + bi_size) - End of previous block */
 
-		clone_bio->bi_iter.bi_sector = prev_rs_info->redirected_sector + (prev_rs_info->block_size - to_end_of_block) / SECTOR_SIZE;
+		clone_bio->bi_iter.bi_sector = prev_value->redirected_sector + (prev_value->block_size - to_end_of_block) / SECTOR_SIZE;
 
-		pr_debug("To read = %d, to end = %d, main size = %u, prev_rs bs = %u, prev_rs sector = %llu\n", to_read_in_clone, to_end_of_block, main_bio->bi_iter.bi_size, prev_rs_info->block_size, prev_rs_info->redirected_sector);
+		pr_debug("To read = %d, to end = %d, main size = %u, prev_rs bs = %u, prev_rs sector = %llu\n", to_read_in_clone, to_end_of_block, main_bio->bi_iter.bi_size, prev_value->block_size, prev_value->redirected_sector);
 		pr_debug("Clone bio: sector = %llu, size = %u\n", clone_bio->bi_iter.bi_sector, clone_bio->bi_iter.bi_size);
 
 		if (to_read_in_clone < main_bio->bi_iter.bi_size && to_read_in_clone != 0) {
 			while (to_end_of_block > 0) {
 				status = setup_bio_split(clone_bio, main_bio, to_end_of_block);
-				if (status < 0)
+				if (unlikely(status < 0))
 					goto split_err;
 
-				if (to_read_in_clone > prev_rs_info->block_size) {
-					to_read_in_clone -= prev_rs_info->block_size;
-					to_end_of_block = prev_rs_info->block_size;
+				if (to_read_in_clone > prev_value->block_size) {
+					to_read_in_clone -= prev_value->block_size;
+					to_end_of_block = prev_value->block_size;
 				} else {
 					break;
 				}
 			}
 		}
 		clone_bio->bi_iter.bi_size = (to_read_in_clone <= 0) ? to_end_of_block : to_read_in_clone;
-	} else if (curr_rs_info->redirected_sector) { // Read & Write start sectors are equal.
+	} else if (curr_value->redirected_sector) { // Read & Write start sectors are equal.
 		pr_debug("Found redirected sector: %llu, rs_bs = %u, main_bs = %u\n",
-			(curr_rs_info->redirected_sector), curr_rs_info->block_size, main_bio->bi_iter.bi_size);
+			(curr_value->redirected_sector), curr_value->block_size, main_bio->bi_iter.bi_size);
 
-		to_read_in_clone = main_bio->bi_iter.bi_size - curr_rs_info->block_size;
-		clone_bio->bi_iter.bi_sector = curr_rs_info->redirected_sector;
+		to_read_in_clone = main_bio->bi_iter.bi_size - curr_value->block_size;
+		clone_bio->bi_iter.bi_sector = curr_value->redirected_sector;
 
 		while (to_read_in_clone > 0) {
-			to_read_in_clone -= setup_bio_split(clone_bio, main_bio, curr_rs_info->block_size);
-			if (status < 0)
+			to_read_in_clone -= setup_bio_split(clone_bio, main_bio, curr_value->block_size);
+			if (unlikely(status < 0))
 				goto split_err;
 		}
-		clone_bio->bi_iter.bi_size = (to_read_in_clone < 0) ? curr_rs_info->block_size + to_read_in_clone : curr_rs_info->block_size;
+
+		clone_bio->bi_iter.bi_size = (to_read_in_clone < 0) ? curr_value->block_size + to_read_in_clone : curr_value->block_size;
+
 		pr_debug("End of read, Clone: size: %u, sector %llu, to_read = %d\n", clone_bio->bi_iter.bi_size, clone_bio->bi_iter.bi_sector, to_read_in_clone);
 	}
+
 	return 0;
 
 split_err:
 	pr_err("Bio split went wrong\n");
-	kfree(curr_rs_info);
-	kfree(prev_rs_info);
-	kfree(sectors);
+	kmem_cache_free(lsbdd_sectors_cache, sectors);
 	bio_io_error(main_bio);
 	return -1;
 
 mem_err:
 	pr_err("Memory allocation failed.\n");
-	kfree(prev_rs_info);
-	kfree(curr_rs_info);
-	kfree(sectors);
+	kmem_cache_free(lsbdd_sectors_cache, sectors);
 	return -ENOMEM;
 }
 
@@ -335,34 +334,31 @@ static void lsbdd_submit_bio(struct bio *bio)
 	struct bd_manager *current_redirect_manager = NULL;
 	s16 status;
 
-	pr_info("Entered submit bio\n");
-
 	current_redirect_manager = get_bd_manager_by_name(bio->bi_bdev->bd_disk->disk_name);
-	if (!current_redirect_manager)
+	if (unlikely(!current_redirect_manager))
 		goto get_err;
 
 	clone = bio_alloc_clone(current_redirect_manager->bd_handler->bdev, bio,
 							GFP_KERNEL, bdd_pool);
-	if (!clone)
+	if (unlikely(!clone))
 		goto clone_err;
 
 	clone->bi_private = bio;
 	clone->bi_end_io = bdd_bio_end_io;
 
-	if (bio_op(bio) == REQ_OP_READ)
+	if (bio_op(bio) == REQ_OP_READ) {
 		status = setup_read_from_clone_segments(bio, clone, current_redirect_manager);
-	else if (bio_op(bio) == REQ_OP_WRITE)
+	} else if (bio_op(bio) == REQ_OP_WRITE) {
 		status = setup_write_in_clone_segments(bio, clone, current_redirect_manager);
-	else
+	} else {
 		pr_warn("Unknown Operation in bio\n");
+	}
 
-
-	if (status)
+	if (unlikely(status))
 		goto setup_err;
 
-
 	submit_bio(clone);
-	pr_info("Submitted bio\n\n");
+	pr_debug("Submitted bio\n\n");
 	return;
 
 get_err:
@@ -449,7 +445,7 @@ static s32 check_and_open_bd(char *bd_path)
 
 	vector_add_bd(current_bdev_manager);
 
-	pr_info("Succesfully added %s to vector\n", bd_path);
+	pr_debug("Succesfully added %s to vector\n", bd_path);
 
 	return 0;
 
@@ -539,7 +535,7 @@ static s8 delete_bd(u16 index)
 		bdev_release(get_list_element_by_index(index)->bd_handler);
 		get_list_element_by_index(index)->bd_handler = NULL;
 	} else {
-		pr_info("BD with num %d is empty\n", index + 1);
+		pr_debug("BD with num %d is empty\n", index + 1);
 	}
 	if (get_list_element_by_index(index)->vbd_disk) {
 		del_gendisk(get_list_element_by_index(index)->vbd_disk);
@@ -547,13 +543,13 @@ static s8 delete_bd(u16 index)
 		get_list_element_by_index(index)->vbd_disk = NULL;
 	}
 	if (get_list_element_by_index(index)->sel_data_struct) {
-		ds_free(get_list_element_by_index(index)->sel_data_struct);
+		ds_free(get_list_element_by_index(index)->sel_data_struct, cache_mng);
 		get_list_element_by_index(index)->sel_data_struct = NULL;
 	}
 
 	list_del(&(get_list_element_by_index(index)->list));
 
-	pr_info("Removed bdev with index %d (from list)\n", index + 1);
+	pr_debug("Removed bdev with index %d (from list)\n", index + 1);
 	return 0;
 }
 
@@ -670,6 +666,7 @@ static s32  lsbdd_set_data_struct(const char *arg, const struct kernel_param *kp
 		pr_err("%s is not supported. Check available data structure by set_data_structs\n", sel_ds);
 		return -1;
 	}
+
 	return 0;
 }
 
@@ -680,9 +677,10 @@ static s32  lsbdd_set_data_struct(const char *arg, const struct kernel_param *kp
  */
 static s32  lsbdd_set_redirect_bd(const char *arg, const struct kernel_param *kp)
 {
-	s8 status;
-	s32 index;
+	s8 status = 0;
+	s32 index = 0;
 	char path[LSBDD_MAX_BD_NAME_LENGTH];
+	struct bd_manager *last_bd = NULL;
 
 	if (sscanf(arg, "%d %s", &index, path) != 2) {
 		pr_err("Wrong input, 2 values are required\n");
@@ -694,27 +692,56 @@ static s32  lsbdd_set_redirect_bd(const char *arg, const struct kernel_param *kp
 	if (!list_empty(&bd_list))
 		bdd_major = register_blkdev(0, LSBDD_BLKDEV_NAME_PREFIX);
 
-	if (status)
-		return PTR_ERR(&status);
+	IF_NULL_RETURN(!status, PTR_ERR(&status));
+	
+	last_bd = list_last_entry(&bd_list, struct bd_manager, list);
 
-	status = ds_init(list_last_entry(&bd_list, struct bd_manager, list)->sel_data_struct, sel_ds);
-	pr_info("%p\n", list_last_entry(&bd_list, struct bd_manager, list)->sel_data_struct);
-	if (status)
-		return status;
+	status = ds_init(last_bd->sel_data_struct, sel_ds, cache_mng);
+	IF_NULL_RETURN(!status, status);
 
 	status = create_bd(index);
-
-	if (status)
-		return status;
+	IF_NULL_RETURN(!status, status);
 
 	return 0;
+}
+/*
+static s32 lsbdd_ds_type(const char *arg, const struct kernel_param *kp)
+{
+	s8 status = 0;
+	char type[2];
+	struct bd_manager *last_bd = NULL;
+
+	if (sscanf(arg, "%s", type) != 1) {
+		pr_err("Wrong input, no more than 1 value is required\n");
+		return -EINVAL;
+	}
+	if (strcmp(type, "ty")) {
+		gl_type = "ty";
+	} else if (strcmp(type, "sy")) {
+		gl_type = "sy";
+	} else {
+		pr_err("set_ds_type: wrong type. (see README)\n");
+		return 0;
+	}
+
+	return 0;
+}
+*/
+
+inline static void lsbdd_ds_cache_destroy(void)
+{
+	kmem_cache_destroy(cache_mng->ht_cache);
+	kfree(cache_mng);
+	// kmem_cache_create("skiplist_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+//	kmem_cache_create("rbtree_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+//	kmem_cache_create("btree_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
 }
 
 static s32  __init lsbdd_init(void)
 {
-	s8 status;
+	s8 status = 0;
 
-	pr_info("LSBDD module initialised\n");
+	pr_debug("LSBDD module initialised\n");
 	bdd_major = register_blkdev(0, LSBDD_BLKDEV_NAME_PREFIX);
 
 	if (bdd_major < 0) {
@@ -723,18 +750,26 @@ static s32  __init lsbdd_init(void)
 	}
 
 	bdd_pool = kzalloc(sizeof(struct bio_set), GFP_KERNEL);
-
 	if (!bdd_pool)
 		goto mem_err;
 
 	status = bioset_init(bdd_pool, BIO_POOL_SIZE, 0, 0);
 
 	if (status) {
-		pr_err("Couldn't allocate bio set");
+		pr_err("Couldn't allocate bio set\n");
 		goto mem_err;
 	}
 
 	INIT_LIST_HEAD(&bd_list);
+
+	lsbdd_sectors_cache = kmem_cache_create("sectors_cache", sizeof(struct sectors), 0, SLAB_HWCACHE_ALIGN, NULL);
+	lsbdd_value_cache = kmem_cache_create("value_cache", sizeof(struct value_redir), 0, SLAB_HWCACHE_ALIGN, NULL);
+	if (!(lsbdd_sectors_cache && lsbdd_value_cache))
+		goto mem_err;
+
+	cache_mng = kzalloc(sizeof(struct cache_manager), GFP_KERNEL);
+	if (!cache_mng)
+		goto mem_err;
 
 	return 0;
 
@@ -759,11 +794,15 @@ static void __exit lsbdd_exit(void)
 		kfree(entry);
 	}
 
+	kmem_cache_destroy(lsbdd_sectors_cache);
+	kmem_cache_destroy(lsbdd_value_cache);
+	lsbdd_ds_cache_destroy();
+
 	bioset_exit(bdd_pool);
 	kfree(bdd_pool);
 	unregister_blkdev(bdd_major, LSBDD_BLKDEV_NAME_PREFIX);
 
-	pr_info("BDR module exited\n");
+	pr_debug("BDR module exited\n");
 }
 
 static const struct kernel_param_ops lsbdd_delete_ops = {
@@ -785,7 +824,12 @@ static const struct kernel_param_ops lsbdd_ds_ops = {
 	.set = lsbdd_set_data_struct,
 	.get = lsbdd_get_data_structs,
 };
-
+/*
+static const struct kernel_param_ops lsbdd_ds_type = {
+	.set = lsbdd_set_ds_type,
+	.get = NULL,
+};
+*/
 MODULE_PARM_DESC(delete_bd, "Delete BD");
 module_param_cb(delete_bd, &lsbdd_delete_ops, NULL, 0200);
 
@@ -797,6 +841,10 @@ module_param_cb(set_redirect_bd, &lsbdd_redirect_ops, NULL, 0200);
 
 MODULE_PARM_DESC(set_data_structure, "Set data structure to be used in mapping");
 module_param_cb(set_data_structure, &lsbdd_ds_ops, NULL, 0644);
-
+/*
+// Additional parameter, just to handle difference between API's
+MODULE_PARM_DESC(set_ds_type, "Set data structure type to use (lock-free - lf or sync - sy)");
+module_param_cb(set_ds_type, &lsbdd_ds_type, NULL, 0200);
+*/
 module_init(lsbdd_init);
 module_exit(lsbdd_exit);
