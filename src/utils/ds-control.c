@@ -39,6 +39,8 @@ s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mn
 		ds->type = BTREE_TYPE;
 		ds->structure.map_btree = btree_map;
 	} else if (!strncmp(sel_ds, sl, 2)) {
+
+		cache_mng->sl_cache = kmem_cache_create("skiplist_cache", sizeof(struct skiplist_node) + 24 * sizeof(struct skiplist_node *), 0, SLAB_HWCACHE_ALIGN, NULL);
 		skiplist = skiplist_init(cache_mng->sl_cache);
 		if (!skiplist)
 			goto mem_err;
@@ -117,9 +119,7 @@ void *ds_lookup(struct data_struct *ds, sector_t key)
 		CHECK_FOR_NULL(rb_node);
 		CHECK_VALUE_AND_RETURN(rb_node);
 	}
-
-	pr_err("Failed to lookup, key is NULL\n");
-	BUG();
+	return NULL;
 }
 
 void ds_remove(struct data_struct *ds, sector_t key)

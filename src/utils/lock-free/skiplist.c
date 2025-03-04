@@ -47,8 +47,8 @@ static struct skiplist_node *node_alloc(sector_t key, void* value, s32 height, s
 {
 	BUG_ON(height <= 0 || height > MAX_LVL);
 	struct skiplist_node *node = NULL;
-
-	node = kzalloc(sizeof(struct skiplist_node) + height * sizeof(struct skiplist_node *), GFP_KERNEL);
+	// decrease of the memory consumption is real (f.e. cache only the skiplist_node size, or create caches for every size)
+	node = kmem_cache_zalloc(sl_cache, GFP_KERNEL);
 	if (!node)
 		goto alloc_fail;
 
@@ -72,8 +72,6 @@ struct skiplist *skiplist_init(struct kmem_cache *sl_cache)
 
 	atomic_set(&sl->max_lvl, 1); 
     sl->head = node_alloc(HEAD_KEY, HEAD_VALUE, MAX_LVL, sl_cache); // mb hard to implement caching
-	// mb to add tail? (see prev seq version)
-	memset(sl->head->next, 0, MAX_LVL * sizeof(struct skiplist *));
    	return sl;
 
 alloc_fail:
@@ -88,10 +86,10 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache)
 	node = GET_NODE(sl->head->next[0]);
     while (node) {
         next = STRIP_MARK(node->next[0]);
-        // kfree((void*)node->key); // todo: i guess it was allocated in main
-        kfree(node); // todo: mb will be a bug
-        node = next;
+        kmem_cache_free(sl_cache, node); 
+		node = next;
     }
+	kfree(sl);
 }
 
 bool skiplist_is_empty(struct skiplist *sl)
