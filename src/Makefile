@@ -58,6 +58,7 @@ clean:
 	rm -rf utils/lock-free/*.o utils/lock-free/.*.cmd utils/lock-free/.*.o.d
 	rm -rf utils/sync/*.o utils/sync/.*.cmd utils/sync/.*.o.d
 	rm -rf *.out *.folded *.perf *.old *.svg *.data *.dat *.dump
+	make clean -C ../test/
 
 exit:
 	echo "$(DBI)" > /sys/module/lsbdd/parameters/delete_bd
