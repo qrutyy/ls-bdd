@@ -102,3 +102,9 @@ checkpatch.pl
 
 ## FlameGraph
 test/FlameGraph
+
+## Log specific
+*.data
+*.old
+*.folded
+

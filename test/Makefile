@@ -30,9 +30,18 @@ fio_perf:
 	# Read and test 
 	fio_perf_r_clean
 
-fio_perf_r_opt:
-	$(MAKE) fio_perf_template MODE=randread BS=$(WBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1"
 fio_perf_w_opt:
-	$(MAKE) fio_perf_template MODE=randwrite BS=$(WBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1"
+	$(MAKE) fio_perf_template MODE=randwrite BS=$(WBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --verify_state_save=1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0 "
+
+fio_perf_r_opt:
+	$(MAKE) fio_perf_template MODE=randread BS=$(RBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --verify_state_save=1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 "
+
+fio_perf_wr_opt:
+
+	$(MAKE) fio_perf_template MODE=randwrite BS=$(WBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --verify_state_save=1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0 "
+
+	$(MAKE) fio_perf_template MODE=randread BS=$(RBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --verify_state_save=1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 "
+
+
 clean:
 	rm -rf *.svg *.data *.folded *.old

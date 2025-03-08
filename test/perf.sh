@@ -1,11 +1,20 @@
 #!/bin/bash
 
 VBD_NAME="lsvbd1"
-BD_NAME="$1"
+BD_NAME="vdb"
+VERIFY="false"
 FLAMEGRAPH_PATH="./FlameGraph"
-BLOCK_DEVICE_PATH="/sys/block/${BD_NAME:-vdb}/queue/scheduler"
+BLOCK_DEVICE_PATH="/sys/block/${BD_NAME}/queue/scheduler"
 IO_DEPTH=16
+SYSCTL_CONF="/etc/sysctl.conf"
 
+# Function to display help
+usage() {
+    echo "Usage: $0 [--bd_name name_without_/dev/] [--verify true/false]"
+    exit 1
+}
+
+# Function to prioritise all the fio processes (including forks in case of numjobs > 1)
 prioritise_fio()
 {
 	echo -e "\nPrioritise fio process..."
@@ -14,6 +23,45 @@ prioritise_fio()
 		chrt -r 99 "$pid"
 	done
 }
+
+# Function to validate VERIFY variable
+validate_verify_input() {
+    if [[ "$VERIFY" != "true" && "$VERIFY" != "false" ]]; then
+        echo "ERROR: VERIFY must be either 'true' or 'false'."
+        usage
+    fi
+}
+
+# Parse options using getopts
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --bd_name)
+            BD_NAME="$2"
+            shift 2
+            ;;
+        --verify)
+            VERIFY="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            ;;
+    esac
+done
+
+validate_verify_input
+
+echo "Block device name: $BD_NAME"
+echo "Verify option: $VERIFY"
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script should be run from a root."
+    exit 1
+fi
 
 if [ ! command -v perf &> /dev/null ]; then
     echo "Error: 'perf' is not installed. Please install it and try again."
@@ -64,15 +112,28 @@ fi
 
 echo -e "\nCheck CPU governors"
 cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
-
+:' 
 echo -e "\nDisble iostats"
-#echo 0 > /sys/block/$BD_NAME/queue/iostats 
-#echo 0 > /sys/block/$VBD_NAME/queue/iostats 
-
+echo 0 > /sys/block/$BD_NAME/queue/iostats 
+echo 0 > /sys/block/$VBD_NAME/queue/iostats 
+'
 echo -e "\nDisable merges"
 echo 2 > /sys/block/$BD_NAME/queue/nomerges
 echo 2 > /sys/block/$VBD_NAME/queue/nomerges
 
+### SYSCTL CFG ###
+echo -e "\nApplying sysctl cfg"
+echo "vm.dirty_ratio = 5" >> $SYSCTL_CONF
+echo "vm.dirty_background_ratio = 2" >> $SYSCTL_CONF
+echo "vm.swappiness = 0" >> $SYSCTL_CONF
+echo "vm.overcommit_memory = 1" >> $SYSCTL_CONF
+echo "fs.aio-max-nr = 1048576" >> $SYSCTL_CONF
+echo "fs.file-max = 2097152" >> $SYSCTL_CONF
+sysctl -p
+
+echo -e "\nIncreasing file descriptors limits..."
+echo "* soft nofile 1048576" >> /etc/security/limits.conf
+echo "* hard nofile 1048576" >> /etc/security/limits.conf
 
 ###								  ###
 ###		PERFORMANCE TEST PART	  ###
@@ -81,15 +142,20 @@ echo 2 > /sys/block/$VBD_NAME/queue/nomerges
 echo -e "\nAdding probes for lsvbd.ko functions..."
 sudo perf probe -x ../src/lsbdd.ko --add '*(*)' || echo "Warning: Some probes may already exist."
 
-echo -e "\nStarting fio write workload..."
-sudo perf record -g -F 99 -a -o perf_write.data -- make fio_perf_w_opt ID=$IO_DEPTH NJ=4 
-prioritise_fio
+if [ "$VERIFY" == "true" ]; then
+	echo -e "\nStarting fio read&write verify workload ..."
+	# While veryfying - read & write cannot be run independently, due to verify information loss
+	sudo perf record -g -F 99 -a -o perf_read.data -- make fio_perf_wr_opt ID=$IO_DEPTH NJ=4 
+	prioritise_fio
+else
+	echo -e "\nStarting fio write workload..."
+	sudo perf record -g -F 99 -a -o perf_write.data -- make fio_perf_w_opt ID=$IO_DEPTH NJ=4 
+	prioritise_fio
 
-# & makes fio_perf run in the background, so the prioritise_fio can actually find the fio process
-
-echo -e "\nStarting fio read workload..."
-sudo perf record -g -F 99 -a -o perf_read.data -- make fio_perf_r_opt ID=$IO_DEPTH NJ=4 
-prioritise_fio
+	echo -e "\nStarting fio read workload..."
+	sudo perf record -g -F 99 -a -o perf_read.data -- make fio_perf_r_opt ID=$IO_DEPTH NJ=4 
+	prioritise_fio
+fi
 
 if [ ! -s perf_write.data ] || [ ! -s perf_read.data ]; then
     echo "Error: perf results are empty. Profiling may have failed."
@@ -124,4 +190,3 @@ fi
 #fi
 
 echo -e "\nFlameGraph successfully generated: lsbdd_fg_spec_read.svg and lsbdd_fg_spec_write.svg"
-
