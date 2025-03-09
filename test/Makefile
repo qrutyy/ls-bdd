@@ -15,7 +15,7 @@ NJ?=1
 ID?=1
 
 fio_perf_template:
-	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(MODE) --size=500M --bssplit=$(BS)k/100 --direct=1 --filename=/dev/lsvbd1 --numjobs=$(NJ) --serialize_overlap=1 $(EXTRA_OPTS)
+	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(MODE) --size=3000M --bssplit=$(BS)k/100 --direct=1 --filename=/dev/lsvbd1 --numjobs=$(NJ) $(EXTRA_OPTS)
 
 fio_perf_r_clean:
 	$(MAKE) fio_perf_template MODE=randread BS=$(WBS) 
@@ -25,23 +25,29 @@ fio_perf_w_clean:
 
 fio_perf:
 	# Write test
-	fio_perf_w_clean
+	make fio_perf_w_clean
 
 	# Read and test 
-	fio_perf_r_clean
+	make fio_perf_r_clean
 
 fio_perf_w_opt:
-	$(MAKE) fio_perf_template MODE=randwrite BS=$(WBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --verify_state_save=1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0 "
+	$(MAKE) fio_perf_template MODE=randwrite BS=$(WBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --per_job_logs=0 --write_bw_log=logs/write --write_lat_log=logs/write --write_hist_log=logs/write --write_iops_log=logs/write"
 
 fio_perf_r_opt:
-	$(MAKE) fio_perf_template MODE=randread BS=$(RBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --verify_state_save=1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 "
+	$(MAKE) fio_perf_template MODE=randread BS=$(RBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --per_job_logs=0 --write_bw_log=logs/read --write_lat_log=logs/read --write_hist_log=logs/read --write_iops_log=logs/read"
 
 fio_perf_wr_opt:
-
-	$(MAKE) fio_perf_template MODE=randwrite BS=$(WBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --verify_state_save=1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0 "
-
-	$(MAKE) fio_perf_template MODE=randread BS=$(RBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --verify_state_save=1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 "
-
+	$(MAKE) fio_perf_template MODE=randwrite BS=$(WBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --per_job_logs=0 --write_bw_log=logs/write --write_lat_log=logs/write --write_hist_log=logs/write --write_iops_log=logs/write"
+	
+	$(MAKE) fio_perf_template MODE=randread BS=$(RBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --per_job_logs=0 --write_bw_log=logs/read --write_lat_log=logs/read --write_hist_log=logs/read --write_iops_log=logs/read"
 
 clean:
-	rm -rf *.svg *.data *.folded *.old
+	rm -rf *.svg *.data *.folded *.old *.state
+	make clean_logs
+	make clean_plots
+
+clean_logs:
+	rm -rf logs/*_log logs/*.log  logs/*.png
+
+clean_plots:
+	rm -rf plots/*/*.png
