@@ -11,15 +11,11 @@ Highly recommended to test/use the driver using a VM, to prevent data coruption.
 
 ### Initialisation:
 ```bash
-make
-insmod lsbdd.ko
-echo "ds_name" > /sys/module/lsbdd/parameters/set_data_structure
-echo "index path" > /sys/module/lsbdd/parameters/set_redirect_bd
+make init DS="ds_name" TY="io_type" BD="bd_name" 
 ```
 **ds_name** - one of available data structures to store the mapping ("bt", "ht", "sl", "rb")
-**index** - postfix for a 'device in the middle' (prefix is 'lsvbd'), **path** - to which block device to redirect
-
-*All this steps can be reduced to `make init`*
+**io_type** - block device mode ("lf" - lock-free, "sy" - sync)
+**bd_name** - terminal block device (f.e. "vdb", "sdc", ...)
 
 ### Sending requests: 
 
@@ -61,7 +57,7 @@ In case of performance measuring `main.sh` can be used. For example:
 ```
 ./test/main.sh -s -c --io_depth 16 --jobs_num 4 --bd_name vbd
 ```
-It is able to run fio tests with pattern verification, plot generation, flamegraph generation and system-side optimisation. For more information about modes usage - see source code or run `./test/main.sh -h`. 
+It is able to run fio tests with pattern verification, plot generation (fio2gnuplot), flamegraph generation and system-side optimisation. For more information about modes usage - see source code or run `./test/main.sh -h`. 
 
 ## License
 

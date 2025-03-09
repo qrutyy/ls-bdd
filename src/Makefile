@@ -23,6 +23,8 @@ NJ?=1
 ID?=1
 # Type of data-structures to be used in the driver (lf/sy) 
 TY?=lf
+# End block device name
+BD?=vdb
 
 # To build modules outside of the kernel tree, we run "make"
 # in the kernel source tree; the Makefile these then includes this
@@ -48,7 +50,8 @@ ins:
 	insmod $(name).ko
 
 set:
-	echo -n "1 /dev/vdb" > /sys/module/$(name)/parameters/set_redirect_bd
+	echo -n "1 /dev/$(BD)" > /sys/module/$(name)/parameters/set_redirect_bd
+#	**index** - postfix for a 'device in the middle' (prefix is 'lsvbd'), **bd** - to which block device to redirect
 
 lint:
 	find . -name "*.c" -o -name "*.h" | xargs ./checkpatch.pl -f --no-tree
