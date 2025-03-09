@@ -52,11 +52,6 @@ echo -e "\nLower kernel restrictions"
 sudo sysctl kernel.kptr_restrict=0
 sudo sysctl kernel.perf_event_paranoid=1
 
-echo -e "\nCheck queue depth"
-if [ "$(cat $BD_SYS_PATH/queue/nr_requests)" -le "$IO_DEPTH" ]; then
-	echo "$IO_DEPTH" > /sys/block/$BD_NAME/queue/nr_requests
-fi
-
 echo -e "\nCheck if CONFIG_BLOCK is enabled"
 if [ "$(zgrep CONFIG_BLOCK= /boot/config-$(uname -r))" != "CONFIG_BLOCK=y" ]; then
 	echo -e "\nError: Recompile the kernel with CONFIG_BLOCK=y"
@@ -66,6 +61,11 @@ fi
 echo -e "\nCheck CPU governors"
 cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 
+echo -e "\nCheck queue depth"
+if [ "$(cat $BD_SYS_PATH/queue/nr_requests)" -le "$IO_DEPTH" ]; then
+	echo "$IO_DEPTH" > /sys/block/$BD_NAME/queue/nr_requests
+fi
+
 #echo -e "\nDisble iostats"
 #echo 0 > /sys/block/$BD_NAME/queue/iostats 
 #echo 0 > /sys/block/$VBD_NAME/queue/iostats 
@@ -73,6 +73,9 @@ cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 echo -e "\nDisable merges"
 echo 2 > /sys/block/$BD_NAME/queue/nomerges
 echo 2 > /sys/block/$VBD_NAME/queue/nomerges
+
+echo -e "\nDisable write cache"
+echo "write through" | sudo tee /sys/block/$BD_NAME/queue/write_cache
 
 ### SYSCTL CFG ###
 echo -e "\nApplying sysctl cfg"
