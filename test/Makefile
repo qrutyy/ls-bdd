@@ -42,7 +42,7 @@ fio_perf_wr_opt:
 	$(MAKE) fio_perf_template MODE=randread BS=$(RBS) EXTRA_OPTS="--cmdprio_percentage=100  --registerfiles=1 --hipri=1 --per_job_logs=0 --write_bw_log=logs/read --write_lat_log=logs/read --write_hist_log=logs/read --write_iops_log=logs/read"
 
 clean:
-	rm -rf *.svg *.data *.folded *.old *.state
+	rm -rf *.svg *.data *.folded *.old *.state *.log *.dat
 	make clean_logs
 	make clean_plots
 
@@ -50,4 +50,4 @@ clean_logs:
 	rm -rf logs/*_log logs/*.log  logs/*.png
 
 clean_plots:
-	rm -rf plots/*/*.png
+	rm -rf plots/*/*.png plots/*.png

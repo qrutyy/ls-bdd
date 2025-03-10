@@ -2,8 +2,10 @@
 
 JOBS_NUM=4
 IO_DEPTH=16
-LOGS_PATH="logs/"
-PLOTS_PATH="../plots"
+LOGS_PATH="logs"
+PLOTS_PATH="./plots"
+RESULTS_FILE="fio_results.dat"
+RUNS=20
 
 # Function to prioritize all the fio processes (including forks in case of numjobs > 1)
 prioritise_fio() {
@@ -49,8 +51,10 @@ if ! command -v fio2gnuplot &> /dev/null; then
     exit 1
 fi
 
+### BASIC BW/IOPS - TIME TESTS ###
+
 echo -e "\nRunning fio..."
-mkdir -p "$LOGS_PATH" 
+mkdir -p "$LOGS_PATH" "$PLOTS_PATH"
 make fio_perf_wr_opt ID=$IO_DEPTH NJ=$JOBS_NUM 
 prioritise_fio
 
@@ -70,4 +74,58 @@ fio2gnuplot -g -t "Write Bandwidth" -o "$PLOTS_PATH/bw/write_bw" -p "write_bw.lo
 
 echo -e "\nPlots generated in $PLOTS_PATH"
 
+### DISTRIBUTION TESTS ###
+
+echo "# Run Bandwidth IOPS Latency" > "$RESULTS_FILE"
+
+# Function to extract metrics from fio output
+extract_metrics() {
+    local log_file=$1
+    local run_id=$2
+    
+	BW=$(grep -oP 'WRITE:.*bw=.*\(\K[0-9]+(?=MB/s)' "$log_file" | head -1)
+    IOPS=$(grep -oP 'IOPS=\K[0-9]+' "$log_file" | head -1) 
+    LAT=$(grep -oP 'lat \([^\)]*\), avg=\K[0-9.]+' "$log_file" | head -1) 
+
+    echo "$run_id $BW $IOPS $LAT" >> "$RESULTS_FILE"
+}
+
+mkdir -p $LOGS_PATH 
+
+for i in $(seq 1 $RUNS); do
+    echo "Run $i of $RUNS..."
+	 
+    LOG_FILE="$LOGS_PATH/fio_run_${i}.log"
+    
+    make fio_perf_w_opt ID=$IO_DEPTH NJ=$JOBS_NUM > "$LOG_FILE"
+    
+    extract_metrics "$LOG_FILE" "$i"
+done
+
+echo "Data collected in $RESULTS_FILE"
+# Generate histograms using gnuplot
+for metric in "Bandwidth" "IOPS"; do
+    case $metric in
+        "Bandwidth") column=2; xlabel="Bandwidth (KB/s)"; output="bw_hist.png" ;;
+        "IOPS") column=3; xlabel="IOPS"; output="iops_hist.png" ;;
+        "Latency") column=4; xlabel="Latency (ms)"; output="lat_hist.png" ;;
+    esac
+
+    gnuplot <<EOF
+    set terminal png size 1000,600 enhanced font 'Arial,12'
+    set output "$PLOTS_PATH/$output"
+    set title "$metric Distribution" font "Arial,14"
+    set xlabel "$xlabel"
+    set ylabel "Number of Occurrences"
+    set grid ytics
+    set style fill solid 1.0 border -1
+    set xtics rotate by -45
+    stats "fio_results.dat" using $column name "STATS"
+    bin_width = (STATS_max - STATS_min) / 30
+    bin(x,width) = width * floor(x/width) + (width/2.0)
+    plot "fio_results.dat" using (bin(\$$column, bin_width)):(1) smooth freq with boxes lc rgb "blue" title "$metric"
+EOF
+
+    echo "$metric histogram saved to $PLOTS_PATH/$output"
+done
 
