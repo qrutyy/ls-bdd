@@ -70,6 +70,9 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+echo -e "\nPerfofm a block device warm up"
+make fio_perf_w_opt ID=64 NJ=4 
+
 if [ "$SETUP" == "true" ]; then
 	### Run config setup script
 	./setup.sh --bd_name $BD_NAME --io_depth $IO_DEPTH

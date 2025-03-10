@@ -15,7 +15,7 @@ NJ?=1
 ID?=1
 
 fio_perf_template:
-	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(MODE) --size=5000M --bssplit=$(BS)k/100 --direct=1 --filename=/dev/lsvbd1 --numjobs=$(NJ) $(EXTRA_OPTS)
+	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(MODE) --size=2000M --bssplit=$(BS)k/100 --direct=1 --filename=/dev/lsvbd1 --numjobs=$(NJ) $(EXTRA_OPTS)
 
 fio_perf_r_clean:
 	$(MAKE) fio_perf_template MODE=randread BS=$(WBS) 

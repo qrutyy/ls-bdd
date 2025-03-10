@@ -75,6 +75,8 @@ fio2gnuplot -g -t "Write Bandwidth" -o "$PLOTS_PATH/bw/write_bw" -p "write_bw.lo
 
 echo -e "\nPlots generated in $PLOTS_PATH"
 
+cd ..
+
 ### DISTRIBUTION TESTS ###
 
 echo "# Run Bandwidth IOPS Latency" > "$RESULTS_FILE"
@@ -84,7 +86,7 @@ extract_metrics() {
     local log_file=$1
     local run_id=$2
     
-	BW=$(grep -oP 'WRITE:.*bw=.*\(\K[0-9]+(?=MB/s)' "$log_file" | head -1)
+	BW=$(grep -oP 'WRITE: bw=[0-9]+MiB/s \(\K[0-9]+' "$log_file" | head -1)
     IOPS=$(grep -oP 'IOPS=\K[0-9]+' "$log_file" | head -1) 
     LAT=$(grep -oP 'lat \([^\)]*\), avg=\K[0-9.]+' "$log_file" | head -1) 
 
