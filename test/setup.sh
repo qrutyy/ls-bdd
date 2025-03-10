@@ -91,3 +91,13 @@ echo -e "\nIncreasing file descriptors limits..."
 echo "* soft nofile 1048576" >> /etc/security/limits.conf
 echo "* hard nofile 1048576" >> /etc/security/limits.conf
 
+echo -e "\nLock the CPU frequency to minimum value"
+sudo cpupower frequency-set -d clock_freq
+
+echo -e "\nPage cache and Dentry flushing"
+sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
+
+echo -e "\nSwap cache flushing"
+sudo swapoff -a && sudo swapon -a
+
+free -m
