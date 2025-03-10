@@ -6,6 +6,7 @@ LOGS_PATH="logs"
 PLOTS_PATH="./plots"
 RESULTS_FILE="fio_results.dat"
 RUNS=20
+HISTOGRAM_SCRIPT="fio_distr.py"
 
 # Function to prioritize all the fio processes (including forks in case of numjobs > 1)
 prioritise_fio() {
@@ -103,29 +104,8 @@ for i in $(seq 1 $RUNS); do
 done
 
 echo "Data collected in $RESULTS_FILE"
-# Generate histograms using gnuplot
-for metric in "Bandwidth" "IOPS"; do
-    case $metric in
-        "Bandwidth") column=2; xlabel="Bandwidth (KB/s)"; output="bw_hist.png" ;;
-        "IOPS") column=3; xlabel="IOPS"; output="iops_hist.png" ;;
-        "Latency") column=4; xlabel="Latency (ms)"; output="lat_hist.png" ;;
-    esac
 
-    gnuplot <<EOF
-    set terminal png size 1000,600 enhanced font 'Arial,12'
-    set output "$PLOTS_PATH/$output"
-    set title "$metric Distribution" font "Arial,14"
-    set xlabel "$xlabel"
-    set ylabel "Number of Occurrences"
-    set grid ytics
-    set style fill solid 1.0 border -1
-    set xtics rotate by -45
-    stats "fio_results.dat" using $column name "STATS"
-    bin_width = (STATS_max - STATS_min) / 30
-    bin(x,width) = width * floor(x/width) + (width/2.0)
-    plot "fio_results.dat" using (bin(\$$column, bin_width)):(1) smooth freq with boxes lc rgb "blue" title "$metric"
-EOF
+python3 "$HISTOGRAM_SCRIPT"
 
-    echo "$metric histogram saved to $PLOTS_PATH/$output"
-done
+echo "Histograms and statistics saved in $PLOTS_PATH"
 
