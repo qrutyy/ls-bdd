@@ -78,7 +78,7 @@ static void *bval(struct btree_geo *geo, unsigned long *node, s32 n)
 	return (void *)node[geo->no_longs + n];
 }
 
-void *btree_last_no_rep(struct btree_head *head, struct btree_geo *geo,
+sector_t btree_last_no_rep(struct btree_head *head, struct btree_geo *geo,
 		 unsigned long *key)
 {
 	s32 height = head->height;
@@ -90,7 +90,7 @@ void *btree_last_no_rep(struct btree_head *head, struct btree_geo *geo,
 	for ( ; height > 1; height--)
 		node = bval(geo, node, 0);
 
-	return bval(geo, node, 0);
+	return bkey(geo, node, 0);
 }
 
 void *btree_get_next(struct btree_head *head, struct btree_geo *geo,

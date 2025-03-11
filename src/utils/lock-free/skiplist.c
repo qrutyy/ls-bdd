@@ -223,31 +223,9 @@ struct skiplist_node* skiplist_find_node (struct skiplist *sl, sector_t key)
  * Gets last node just by iterating at the level 0.
  * If some node has mark -> remove the mark and skip it.
  */
-struct skiplist_node *skiplist_last(struct skiplist *sl) {
-    struct skiplist_node *node = NULL;
-    size_t next = 0;
 
-	node = sl->head;
-
-    while (GET_NODE(node->next[0]) != NULL) {
-		// node = STRIP_MARK(node->next[0]);
-        // Move to the next node in the level 0 list
-		next = node->next[0];  
-        if (HAS_MARK(next)) {
-			node = GET_NODE(STRIP_MARK(next));
-		} else {
-            if (GET_NODE(next)) {
-				node = GET_NODE(next);
-			} else {
-				break;
-			} 
-		}
-		
-    }
-	if (node == sl->head) {
-		pr_warn("Skiplist(last): ds is empty!\n");
-	}
-    return node;
+sector_t skiplist_last(struct skiplist *sl) {
+    return sl->last_key;
 }
 
 static void *update_node (struct skiplist_node *node, void* new_val) {
@@ -286,6 +264,11 @@ struct skiplist_node *skiplist_insert (struct skiplist *sl, sector_t key, void* 
 	void* ret_val = NULL;
 	size_t other, old_next, next = 0;
     s32 n;
+
+	if (key > sl->last_key)
+		sl->last_key = key;
+	pr_debug("last: %lld\n", sl->last_key);
+
 
 	n = random_levels(sl);
 	old_node = find_preds(preds, nexts, n, sl, key, ASSIST_UNLINK);
@@ -378,7 +361,8 @@ struct skiplist_node *skiplist_insert (struct skiplist *sl, sector_t key, void* 
     if (HAS_MARK(new_node->next[new_node->height - 1])) {
         find_preds(NULL, NULL, 0, sl, key, FORCE_UNLINK);
     }
-    return 0;
+
+	return 0;
 
 mem_err:
 	pr_warn("Failed to allocate node, retrying\n");

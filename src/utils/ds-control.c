@@ -161,10 +161,9 @@ mem_err:
 	return -ENOMEM;
 }
 
-void *ds_last(struct data_struct *ds, sector_t key)
+sector_t ds_last(struct data_struct *ds, sector_t key)
 {
 	struct hash_el *hm_node = NULL;
-	struct skiplist_node *sl_node = NULL;
 	struct rbtree_node *rb_node = NULL;
 	u64 *kp = NULL;
 
@@ -172,19 +171,17 @@ void *ds_last(struct data_struct *ds, sector_t key)
 	if (ds->type == BTREE_TYPE)
 		return btree_last_no_rep(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
 	if (ds->type == SKIPLIST_TYPE) {
-		sl_node = skiplist_last(ds->structure.map_list);
-		CHECK_FOR_NULL(sl_node);
-		CHECK_VALUE_AND_RETURN(sl_node);
+		return skiplist_last(ds->structure.map_list);
 	}
 	if (ds->type == HASHTABLE_TYPE) {
 		hm_node = ds->structure.map_hash->last_el;
 		CHECK_FOR_NULL(hm_node);
-		CHECK_VALUE_AND_RETURN(hm_node);
+		return hm_node->key;
 	}
 	if (ds->type == RBTREE_TYPE) {
 		rb_node = rbtree_last(ds->structure.map_rbtree);
 		CHECK_FOR_NULL(rb_node);
-		CHECK_VALUE_AND_RETURN(rb_node);
+		return rb_node->key;
 	}
 	pr_err("Failed to get rs_info from get_last()\n");
 	BUG();

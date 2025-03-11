@@ -344,7 +344,7 @@ void skiplist_remove(struct skiplist *sl, sector_t key)
 	}
 }
 
-struct skiplist_node *skiplist_last(struct skiplist *sl)
+sector_t skiplist_last(struct skiplist *sl)
 {
 	struct skiplist_node *curr = sl->head;
 
@@ -354,7 +354,7 @@ struct skiplist_node *skiplist_last(struct skiplist *sl)
 	while (curr->next && curr->next->key && curr->next->key != TAIL_KEY)
 		curr = curr->next;
 
-	return curr;
+	return curr->key;
 }
 
 
