@@ -1,15 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only
- *
- * Originail author: Daniel Vlasenco @spisladqo
- *
- * Modified by Mikhail Gavrilenko on (30.10.24 - last_change)
- * Changes:
- * - add skiplist_prev, skiplist_last
- * - edit input types
- * - TAIL_VALUE -> NULL
- * - add sync macroses
- * - 
- */
+/* SPDX-License-Identifier: GPL-2.0-only */
 
 #include <linux/module.h>
 
@@ -39,9 +28,9 @@
 
 // Node unlink statuses for find_pred
 enum unlink {
-    FORCE_UNLINK,
-    ASSIST_UNLINK,
-    DONT_UNLINK
+	FORCE_UNLINK,
+	ASSIST_UNLINK,
+	DONT_UNLINK
 };
 
 struct skiplist_node {

@@ -2,7 +2,7 @@
  *
  * Originail author: Daniel Vlasenco @spisladqo
  *
- * Modified by Mikhail Gavrilenko on (30.10.24 - last_change)
+ * Modified by Mikhail Gavrilenko on (11.03.25 - last_change)
  * Changes:
  * - add skiplist_prev, skiplist_last
  * - edit input types

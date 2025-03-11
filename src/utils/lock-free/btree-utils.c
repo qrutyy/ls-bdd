@@ -85,12 +85,12 @@ sector_t btree_last_no_rep(struct btree_head *head, struct btree_geo *geo,
 	unsigned long *node = head->node;
 
 	if (height == 0)
-		return NULL;
+		return 0;
 
 	for ( ; height > 1; height--)
 		node = bval(geo, node, 0);
 
-	return bkey(geo, node, 0);
+	return *bkey(geo, node, 0);
 }
 
 void *btree_get_next(struct btree_head *head, struct btree_geo *geo,

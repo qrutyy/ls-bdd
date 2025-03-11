@@ -8,7 +8,7 @@ struct hashtable *hashtable_init(struct kmem_cache *ht_cache)
 {
 	struct hashtable *hash_table = NULL;
 	struct hash_el *last_hel = NULL;
- 
+
 	hash_table = kzalloc(sizeof(struct hashtable), GFP_KERNEL);
 	last_hel = kzalloc(sizeof(struct hash_el), GFP_KERNEL);
 	hash_table->last_el = last_hel;
@@ -19,9 +19,10 @@ struct hashtable *hashtable_init(struct kmem_cache *ht_cache)
 	return hash_table;
 }
 
-struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void* value, struct kmem_cache *ht_cache)
+struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void *value, struct kmem_cache *ht_cache)
 {
 	struct hash_el *el = NULL;
+
 	el = kzalloc(sizeof(struct hash_el), GFP_KERNEL); // #TODO fix mem error, handle outside.
 	if (!el) {
 		pr_err("Hashtable: mem err\n");
@@ -103,5 +104,5 @@ void hashtable_remove(struct hashtable *ht, sector_t key)
 
 bool hashtable_is_empty(struct hashtable *ht)
 {
- return hash_empty(ht->head);
+	return hash_empty(ht->head);
 }

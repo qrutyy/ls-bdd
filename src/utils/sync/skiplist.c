@@ -3,7 +3,7 @@
 /*
  * Originail author: Daniel Vlasenco @spisladqo
  *
- * Modified by Mikhail Gavrilenko on 15.11.24
+ * Modified by Mikhail Gavrilenko on 11.03.25
  * Changes: add remove, get_last, get_prev methods
  * Fixed some issues with remove. Modified the TAIL_VALUE and data types that appear in structur.
  */
@@ -377,7 +377,7 @@ struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t 
 	return NULL;
 }
 
-bool skiplist_is_empty(struct skiplist *sl) 
+bool skiplist_is_empty(struct skiplist *sl)
 {
 	return sl->head_lvl == 0;
 }

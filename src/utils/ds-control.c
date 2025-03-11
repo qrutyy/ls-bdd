@@ -140,8 +140,9 @@ void ds_remove(struct data_struct *ds, sector_t key)
 s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng)
 {
 	u64 *kp = NULL;
-	kp = &key;
 	struct hash_el *el = NULL;
+
+	kp = &key;
 
 	if (ds->type == BTREE_TYPE)
 		return btree_insert(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp, value, GFP_KERNEL);
@@ -170,9 +171,8 @@ sector_t ds_last(struct data_struct *ds, sector_t key)
 	kp = &key;
 	if (ds->type == BTREE_TYPE)
 		return btree_last_no_rep(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
-	if (ds->type == SKIPLIST_TYPE) {
+	if (ds->type == SKIPLIST_TYPE)
 		return skiplist_last(ds->structure.map_list);
-	}
 	if (ds->type == HASHTABLE_TYPE) {
 		hm_node = ds->structure.map_hash->last_el;
 		CHECK_FOR_NULL(hm_node);

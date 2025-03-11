@@ -15,7 +15,7 @@ static const char *available_ds[] = {"bt", "sl", "ht", "rb"};
 	do {									  \
 		if (!el)							  \
 			return ret_val;					  \
-	} while (0)			
+	} while (0)
 
 struct value_redir {
 	sector_t redirected_sector;
