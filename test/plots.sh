@@ -62,8 +62,8 @@ if ! command -v fio2gnuplot &> /dev/null; then
     echo "Error: 'fio2gnuplot' is not installed. Please install it and try again."
     exit 1
 fi
-:'
-### BASIC BW/IOPS - ONCE TIME TESTS ###
+
+### BASIC BW/IOPS - ONCE TIME BENCHMARK ###
 
 echo -e "\nRunning fio..."
 mkdir -p "$LOGS_PATH" "$PLOTS_PATH"
@@ -88,7 +88,7 @@ echo -e "\nPlots generated in $PLOTS_PATH"
 
 cd ..
 
-### DISTRIBUTION TESTS ###
+### DISTRIBUTION BENCHMARK ###
 
 echo "# Run Bandwidth IOPS" > "$RESULTS_FILE"
 pwd
@@ -107,8 +107,9 @@ done
 echo "Data collected in $RESULTS_FILE"
 
 python3 "$HISTOGRAM_SCRIPT"
-'
-echo -e "\nRun Latency tests"
+
+### LATENCY BENCHMARK ###
+
 pwd
 mkdir -p $PLOTS_PATH/lat $PLOTS_PATH/lat/write $PLOTS_PATH/lat/read
 mkdir -p $PLOTS_PATH/slat $PLOTS_PATH/slat/write $PLOTS_PATH/slat/read
