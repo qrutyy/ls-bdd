@@ -175,12 +175,14 @@ sector_t ds_last(struct data_struct *ds, sector_t key)
 		return skiplist_last(ds->structure.map_list);
 	if (ds->type == HASHTABLE_TYPE) {
 		hm_node = ds->structure.map_hash->last_el;
-		CHECK_FOR_NULL(hm_node);
+		if (hm_node == NULL)
+			return 0;
 		return hm_node->key;
 	}
 	if (ds->type == RBTREE_TYPE) {
 		rb_node = rbtree_last(ds->structure.map_rbtree);
-		CHECK_FOR_NULL(rb_node);
+		if (rb_node == NULL)
+			return 0;
 		return rb_node->key;
 	}
 	pr_err("Failed to get rs_info from get_last()\n");
