@@ -2,7 +2,7 @@
  *
  * Originail author: Daniel Vlasenco @spisladqo
  *
- * Modified by Mikhail Gavrilenko on (30.10.24 - last_change)
+ * Modified by Mikhail Gavrilenko on (11.03.25 - last_change)
  * Changes:
  * - add skiplist_prev, skiplist_last
  * - edit input types
@@ -36,5 +36,5 @@ void skiplist_print(struct skiplist *sl);
 struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *data, struct kmem_cache *sl_cache);
 void skiplist_remove(struct skiplist *sl, sector_t key);
 struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t *prev_key);
-struct skiplist_node *skiplist_last(struct skiplist *sl);
+sector_t skiplist_last(struct skiplist *sl);
 bool skiplist_is_empty(struct skiplist *sl);

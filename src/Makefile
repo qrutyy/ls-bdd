@@ -23,6 +23,8 @@ NJ?=1
 ID?=1
 # Type of data-structures to be used in the driver (lf/sy) 
 TY?=lf
+# End block device name
+BD?=vdb
 
 # To build modules outside of the kernel tree, we run "make"
 # in the kernel source tree; the Makefile these then includes this
@@ -48,7 +50,8 @@ ins:
 	insmod $(name).ko
 
 set:
-	echo -n "1 /dev/vdb" > /sys/module/$(name)/parameters/set_redirect_bd
+	echo -n "1 /dev/$(BD)" > /sys/module/$(name)/parameters/set_redirect_bd
+#	**index** - postfix for a 'device in the middle' (prefix is 'lsvbd'), **bd** - to which block device to redirect
 
 lint:
 	find . -name "*.c" -o -name "*.h" | xargs ./checkpatch.pl -f --no-tree
@@ -57,7 +60,8 @@ clean:
 	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions *.symvers *.mod *.order *.o.d *.state
 	rm -rf utils/lock-free/*.o utils/lock-free/.*.cmd utils/lock-free/.*.o.d
 	rm -rf utils/sync/*.o utils/sync/.*.cmd utils/sync/.*.o.d
-	rm -rf *.out *.folded *.perf *.old *.svg *.data *.dat
+	rm -rf *.out *.folded *.perf *.old *.svg *.data *.dat *.dump
+	make clean -C ../test/
 
 exit:
 	echo "$(DBI)" > /sys/module/lsbdd/parameters/delete_bd
@@ -76,10 +80,10 @@ init_no_recompile:
 
 fio_verify:
 	# Write and verify test
-	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(WO) --size=$(FS)M --verify_state_save=1 --bssplit=$(WBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0 --numjobs=$(NJ) 
+	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(WO) --size=$(FS)M --verify_state_save=1 --bssplit=$(WBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0 --numjobs=$(NJ) --serialize_overlap=1
 
 	# Read and verify test 
-	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(RO) --size=$(FS)M --verify_state_save=1 --bssplit=$(RBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 --numjobs=$(NJ)
+	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(RO) --size=$(FS)M --verify_state_save=1 --bssplit=$(RBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 --numjobs=$(NJ) --serialize_overlap=1
 
 .PHONY: modules modules_install clean
 

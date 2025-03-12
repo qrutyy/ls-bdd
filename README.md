@@ -1,8 +1,9 @@
 # LS-BDD
-LS-BDD is a block device driver that implements log-structured storage based on B+-tree, RB-tree, Skiplist and Hashtable data structures.
-Driver is based on BIO request management and supports BIO split.
+LS-BDD is a block device driver that implements log-structured storage based on B+-tree, RB-tree, Skiplist, and Hashtable data structures. The log-structured approach is designed to speed up reading from block devices by transforming random requests into sequential ones. The efficiency and behavior of different data structures are being examined.
 
-For more info - see [presentation v1](https://github.com/qrutyy/ls-bdd/blob/main/docs/LogStructuredStoringBasedOnB+Tree.pdf)
+The driver is based on BIO request management and supports BIO splitting (i.e. different operation block sizes, e.g. 4KB write, 8 KB read). At the moment, a multithreaded lock-free implementation is in development.
+
+For more info - see [ru-presentation v1](https://github.com/qrutyy/ls-bdd/blob/main/docs/3-semester/(ru-presentation)%20Implementation%20of%20log-structured%20block%20device%20in%20Linux%20kernel.pdf) [eng-presentation v1](https://github.com/qrutyy/ls-bdd/blob/main/docs/3-semester/(eng-presentation)%20Implementation%20of%20log-structured%20block%20device%20in%20Linux%20kernel.pdf)
 
 ***Compatable with Linux Kernel 6.8***
 
@@ -11,15 +12,11 @@ Highly recommended to test/use the driver using a VM, to prevent data coruption.
 
 ### Initialisation:
 ```bash
-make
-insmod lsbdd.ko
-echo "ds_name" > /sys/module/lsbdd/parameters/set_data_structure
-echo "index path" > /sys/module/lsbdd/parameters/set_redirect_bd
+make init DS="ds_name" TY="io_type" BD="bd_name" 
 ```
 **ds_name** - one of available data structures to store the mapping ("bt", "ht", "sl", "rb")
-**index** - postfix for a 'device in the middle' (prefix is 'lsvbd'), **path** - to which block device to redirect
-
-*All this steps can be reduced to `make init`*
+**io_type** - block device mode ("lf" - lock-free, "sy" - sync)
+**bd_name** - terminal block device (f.e. "vdb", "sdc", ...)
 
 ### Sending requests: 
 
@@ -55,6 +52,13 @@ fio test/fio/_
 ```
 *Basic test - "ftv_4_8/ftv_8_4"*
 Also including the *.sh* versions (better use them for this moment)
+
+### Advanced testing
+In case of performance measuring `test/main.sh` can be used. For example:
+```
+./main.sh -s -c --io_depth 16 --jobs_num 4 --bd_name vbd
+```
+It is able to run fio tests with pattern verification, plot generation (fio2gnuplot), flamegraph generation and system-side optimisation. For more information about modes usage - see source code or run `./test/main.sh -h`. 
 
 ## License
 

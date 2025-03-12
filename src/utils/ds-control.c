@@ -39,6 +39,8 @@ s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mn
 		ds->type = BTREE_TYPE;
 		ds->structure.map_btree = btree_map;
 	} else if (!strncmp(sel_ds, sl, 2)) {
+
+		cache_mng->sl_cache = kmem_cache_create("skiplist_cache", sizeof(struct skiplist_node) + 24 * sizeof(struct skiplist_node *), 0, SLAB_HWCACHE_ALIGN, NULL);
 		skiplist = skiplist_init(cache_mng->sl_cache);
 		if (!skiplist)
 			goto mem_err;
@@ -117,9 +119,7 @@ void *ds_lookup(struct data_struct *ds, sector_t key)
 		CHECK_FOR_NULL(rb_node);
 		CHECK_VALUE_AND_RETURN(rb_node);
 	}
-
-	pr_err("Failed to lookup, key is NULL\n");
-	BUG();
+	return NULL;
 }
 
 void ds_remove(struct data_struct *ds, sector_t key)
@@ -140,8 +140,9 @@ void ds_remove(struct data_struct *ds, sector_t key)
 s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng)
 {
 	u64 *kp = NULL;
-	kp = &key;
 	struct hash_el *el = NULL;
+
+	kp = &key;
 
 	if (ds->type == BTREE_TYPE)
 		return btree_insert(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp, value, GFP_KERNEL);
@@ -161,30 +162,28 @@ mem_err:
 	return -ENOMEM;
 }
 
-void *ds_last(struct data_struct *ds, sector_t key)
+sector_t ds_last(struct data_struct *ds, sector_t key)
 {
 	struct hash_el *hm_node = NULL;
-	struct skiplist_node *sl_node = NULL;
 	struct rbtree_node *rb_node = NULL;
 	u64 *kp = NULL;
 
 	kp = &key;
 	if (ds->type == BTREE_TYPE)
 		return btree_last_no_rep(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
-	if (ds->type == SKIPLIST_TYPE) {
-		sl_node = skiplist_last(ds->structure.map_list);
-		CHECK_FOR_NULL(sl_node);
-		CHECK_VALUE_AND_RETURN(sl_node);
-	}
+	if (ds->type == SKIPLIST_TYPE)
+		return skiplist_last(ds->structure.map_list);
 	if (ds->type == HASHTABLE_TYPE) {
 		hm_node = ds->structure.map_hash->last_el;
-		CHECK_FOR_NULL(hm_node);
-		CHECK_VALUE_AND_RETURN(hm_node);
+		if (hm_node == NULL)
+			return 0;
+		return hm_node->key;
 	}
 	if (ds->type == RBTREE_TYPE) {
 		rb_node = rbtree_last(ds->structure.map_rbtree);
-		CHECK_FOR_NULL(rb_node);
-		CHECK_VALUE_AND_RETURN(rb_node);
+		if (rb_node == NULL)
+			return 0;
+		return rb_node->key;
 	}
 	pr_err("Failed to get rs_info from get_last()\n");
 	BUG();

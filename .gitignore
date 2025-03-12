@@ -97,8 +97,14 @@ Temporary Items
 
 *.state
 
-### checkpatch 
+## checkpatch 
 checkpatch.pl
 
+## FlameGraph
+test/FlameGraph
 
-# End of https://www.toptal.com/developers/gitignore/api/macos,c
+## Log specific
+*.data
+*.old
+*.folded
+

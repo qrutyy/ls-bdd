@@ -47,7 +47,7 @@ void ds_free(struct data_struct *ds, struct cache_manager *cache_mng);
 void *ds_lookup(struct data_struct *ds, sector_t key);
 void ds_remove(struct data_struct *ds, sector_t key);
 int ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng);
-void *ds_last(struct data_struct *ds, sector_t key);
+sector_t ds_last(struct data_struct *ds, sector_t key);
 void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key);
 int ds_empty_check(struct data_struct *ds);
 
