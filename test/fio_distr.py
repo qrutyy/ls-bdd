@@ -2,8 +2,8 @@ import numpy as np
 import scipy.stats as stats
 import matplotlib.pyplot as plt
 
-RESULTS_FILE = "fio_results.dat"
-PLOTS_PATH = "./plots"
+RESULTS_FILE = "logs/fio_results.dat"
+PLOTS_PATH = "./plots/bw_iops"
 
 # Load data
 data = np.loadtxt(RESULTS_FILE, skiprows=1, usecols=(1, 2))
@@ -29,7 +29,7 @@ for i in range(2):
 for i in range(2):
     stat1, p1 = stats.normaltest(data[:, i])
     stat2, p2 = stats.shapiro(data[:, i])
-    print(f"{labels[i]} Normality Test Results: normaltest p-value={p1:.5f}, shapiro p-value={p2:.5f}")
+    print(f"\n\n{labels[i]} Normality Test Results: normaltest p-value={p1:.5f}, shapiro p-value={p2:.5f}")
     
     if p1 > 0.05 or p2 > 0.05:
         print(f"✅ {labels[i]} is likely normally distributed.\n")
