@@ -1,6 +1,7 @@
 # LS-BDD
-LS-BDD is a block device driver that implements log-structured storage based on B+-tree, RB-tree, Skiplist and Hashtable data structures.
-Driver is based on BIO request management and supports BIO split.
+LS-BDD is a block device driver that implements log-structured storage based on B+-tree, RB-tree, Skiplist, and Hashtable data structures. The log-structured approach is designed to speed up reading from block devices by transforming random requests into sequential ones. The efficiency and behavior of different data structures are being examined.
+
+The driver is based on BIO request management and supports BIO splitting (i.e. different operation block sizes, e.g. 4KB write, 8 KB read). At the moment, a multithreaded lock-free implementation is in development.
 
 For more info - see [ru-presentation v1](https://github.com/qrutyy/ls-bdd/blob/main/docs/3-semester/(ru-presentation)%20Implementation%20of%20log-structured%20block%20device%20in%20Linux%20kernel.pdf) [eng-presentation v1](https://github.com/qrutyy/ls-bdd/blob/main/docs/3-semester/(eng-presentation)%20Implementation%20of%20log-structured%20block%20device%20in%20Linux%20kernel.pdf)
 
@@ -53,9 +54,9 @@ fio test/fio/_
 Also including the *.sh* versions (better use them for this moment)
 
 ### Advanced testing
-In case of performance measuring `main.sh` can be used. For example:
+In case of performance measuring `test/main.sh` can be used. For example:
 ```
-./test/main.sh -s -c --io_depth 16 --jobs_num 4 --bd_name vbd
+./main.sh -s -c --io_depth 16 --jobs_num 4 --bd_name vbd
 ```
 It is able to run fio tests with pattern verification, plot generation (fio2gnuplot), flamegraph generation and system-side optimisation. For more information about modes usage - see source code or run `./test/main.sh -h`. 
 
