@@ -83,7 +83,11 @@ make fio_perf_w_opt ID=64 NJ=1
 
 if [ "$PERF" == "true" ]; then
 	### Run config setup script
-	./perf.sh --io_depth $IO_DEPTH --jobs_num $JOBS_NUM --verify $VERIFY
+	if [ "$VERIFY" == "true" ]; then
+		./perf.sh --io_depth $IO_DEPTH --jobs_num $JOBS_NUM -v
+	else
+		./perf.sh --io_depth $IO_DEPTH --jobs_num $JOBS_NUM
+	fi
 fi
 
 if [ "$PLOTS" == "true" ]; then
