@@ -24,7 +24,7 @@ ID?=1
 # Type of data-structures to be used in the driver (lf/sy) 
 TY?=lf
 # End block device name
-BD?=vdb
+BD?=ram0
 
 # To build modules outside of the kernel tree, we run "make"
 # in the kernel source tree; the Makefile these then includes this
