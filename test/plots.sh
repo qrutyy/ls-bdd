@@ -2,13 +2,25 @@
 
 JOBS_NUM=4
 IO_DEPTH=16
+RUNS=5
+
 LOGS_PATH="logs"
 PLOTS_PATH="./plots"
 RESULTS_FILE="logs/fio_results.dat"
-RUNS=9
-HISTOGRAM_SCRIPT="fio_distr.py"
+LAT_RESULTS_FILE="logs/fio_lat_results.dat"
+
+HISTOGRAM_PLOTS_SCRIPT="fio_distr_plots.py"
+AVG_PLOTS_SCRIPT="avg_plots.py"
+LATENCY_PLOTS_SCRIPT="lat_plots.py"
+
+WBS_LIST=("4K" "8K" "16k")
+RBS_LIST=("4K" "8K" "16K")
+
+LATENCY_WRBS_LIST=("8K" "4K") ## SNIA recommends 0.5K also, need some convertion
+RW_MIXES=("100-0" "65-35" "0-100") ## Write to read ops ratio
 
 # Function to prioritize all the fio processes (including forks in case of numjobs > 1)
+# UPD: mb no need in it
 prioritise_fio() {
     echo -e "\nPrioritizing fio process..."
     for pid in $(pidof fio); do
@@ -17,20 +29,102 @@ prioritise_fio() {
     done
 }
 
-# Function to extract metrics from fio output
-extract_metrics() {
-    local log_file=$1
-    local run_id=$2
-    
-	BW=$(grep -oP 'WRITE: bw=[0-9]+MiB/s \(\K[0-9]+' "$log_file" | head -1)
-	IOPS=$(grep -oP 'IOPS=\K[0-9]+(\.[0-9]+)?k?' "$log_file" | sed 's/k//g' | awk '{s+=$1} END {print s*1000}')
-
-    echo "$run_id $BW $IOPS" >> "$RESULTS_FILE"
-}
-
 usage() {
     echo "Usage: $0 [--io_depth number] [--jobs_num number]"
     exit 1
+}
+
+extract_all_metrics() {
+    local log_file=$1
+    local run_id=$2
+    local wbs=$3
+	local rbs=$4
+    local mode=$5
+	
+	if [[ "$rbs" == "0" ]]; then	
+	    local bw=$(grep -oP 'WRITE: bw=[0-9]+MiB/s \(\K[0-9]+' "$log_file" | head -1)
+		if [[ -z "$bw" ]]; then
+			bw_gb="$(grep -oP 'WRITE: bw=.*\(([0-9]+\.[0-9]+)GB/s\)' "$log_file" | grep -oP '[0-9]+\.[0-9]+' | tail -n1)"
+			echo $bw_gb
+			bw=$(echo "$bw_gb * 1000" | bc)
+			echo $bw
+		fi
+	else
+		local bw=$(grep -oP 'READ: bw=[0-9]+MiB/s \(\K[0-9]+' "$log_file" | head -1)
+		if [[ -z "$bw" ]]; then
+			bw_gb="$(grep -oP 'READ: bw=.*\(([0-9]+\.[0-9]+)GB/s\)' "$log_file" | grep -oP '[0-9]+\.[0-9]+' | tail -n1)"
+			echo $bw_gb
+			bw=$(echo "$bw_gb * 1000" | bc)
+			echo $bw
+		fi
+	fi
+
+	# Extract IOPS from the main log file and remove 'k' if present
+    local iops=$(grep -oP 'IOPS=\K[0-9]+(\.[0-9]+)?k?' "$log_file" | sed 's/k//g' | awk '{s+=$1} END {print s}')
+	echo "DEBUG: Extracted IOPS='$iops' BW='$bw'"
+
+	echo "$run_id $wbs $rbs $bw $iops 0 0 0 $mode" >> "$RESULTS_FILE"
+}
+
+extract_latency_metrics() {
+    local run_id=$1
+    local log_file=$2
+    local bs=$3
+    local rw_mix=$4
+
+    calc_avg_latency() {
+        local file=$1
+        local result=$(awk -F',' '{sum+=$2; count++} END {if(count>0) print sum/count; else print 0}' "$file")
+        echo "$result"
+    }
+
+    calc_max_latency() {
+        local file=$1
+        local result=$(awk -F',' 'BEGIN {max=0} {if($2>max) max=$2} END {print max}' "$file")
+        echo "$result"
+    }
+
+    calc_95p_latency() {
+        local file=$1
+        local result=$(awk -F',' '{print $2}' "$file" | sort -n | awk 'NR > 0 { all[NR] = $1 } END { if (NR > 0) print all[int(NR*0.95)] }')
+        echo "$result"
+    }
+
+	local slat_file="${log_file}_slat.1.log"
+	local clat_file="${log_file}_clat.1.log"
+	local lat_file="${log_file}_lat.1.log"
+
+    local avg_slat=$(calc_avg_latency "$slat_file")
+    local avg_clat=$(calc_avg_latency "$clat_file")
+    local avg_lat=$(calc_avg_latency "$lat_file")
+
+    local max_slat=$(calc_max_latency "$slat_file")
+    local max_clat=$(calc_max_latency "$clat_file")
+    local max_lat=$(calc_max_latency "$lat_file")
+
+    local p95_slat=$(calc_95p_latency "$slat_file")
+    local p95_clat=$(calc_95p_latency "$clat_file")
+    local p95_lat=$(calc_95p_latency "$lat_file")
+
+    echo "$run_id $bs $avg_slat $avg_clat $avg_lat $max_slat $max_clat $max_lat $p95_slat $p95_clat $p95_lat $rw_mix" >> "$LAT_RESULTS_FILE"
+}
+
+run_latency_test() {
+    local bs=$1
+    local rw_mix=$2
+    local log_file="$LOGS_PATH/latency_${bs}_${rw_mix}"
+    
+    echo "Running latency test: Block Size=$bs, RW Mix=$rw_mix..."
+	rw_mix_read=$(echo "$rw_mix" | cut -d'-' -f1)
+	rw_mix_write=$(echo "$rw_mix" | cut -d'-' -f2)
+	
+	fio --name=latency_test --rw=randrw --rwmixread=${rw_mix_read} --rwmixwrite=${rw_mix_write} --bs=${bs} --numjobs=1 --iodepth=1 --time_based --runtime=3 --direct=1 --write_lat_log=$log_file --ioengine=io_uring --filename=/dev/lsvbd1
+}
+
+workload_independent_preconditioning() {
+	local wbs=$1
+    echo "Running workload independent pre-conditioning..."
+    fio --name=prep --rw=write --bs=${wbs}K --numjobs=1 --iodepth=1 --size=4G --direct=1 --output="$LOGS_PATH/preconditioning.log"
 }
 
 # Parse options using getopts
@@ -56,88 +150,89 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 echo -e "\nCleaning the logs directory"
-make clean_logs
+make clean
 
-if ! command -v fio2gnuplot &> /dev/null; then
-    echo "Error: 'fio2gnuplot' is not installed. Please install it and try again."
-    exit 1
-fi
+mkdir -p $LOGS_PATH $PLOTS_PATH/histograms $PLOTS_PATH/histograms/write $PLOTS_PATH/histograms/read $PLOTS_PATH/avg $PLOTS_PATH/avg/write $PLOTS_PATH/avg/read
 
-### BASIC BW/IOPS - ONCE TIME BENCHMARK ###
+### DISTRIBUTION + SNIA BENCHMARK ###
 
-echo -e "\nRunning fio..."
-mkdir -p "$LOGS_PATH" "$PLOTS_PATH"
-make fio_perf_wr_opt ID=$IO_DEPTH NJ=$JOBS_NUM 
-prioritise_fio
+## WRITE TESTS ##
 
-echo -e "\nLogs list:"
-ls -lah "$LOGS_PATH"
+echo -e "\nRunning write tests\n"
 
-echo -e "\nGenerating the plots"
-mkdir -p "$PLOTS_PATH/lat" "$PLOTS_PATH/iops" "$PLOTS_PATH/bw"
+for bs in "${WBS_LIST[@]}"; do 
 
-cd "$LOGS_PATH" || exit
-fio2gnuplot -g -t "Read Latency" -o "$PLOTS_PATH/lat/read_lat" -p "read_*lat.log"  -d "$PLOTS_PATH/lat"
-fio2gnuplot -g -t "Write Latency" -o "$PLOTS_PATH/lat/write_lat" -p "write_*lat.log"  -d "$PLOTS_PATH/lat"
-fio2gnuplot -g -t "Read IOPS" -o "$PLOTS_PATH/iops/read_iops" -p "read_iops.log"  -d "$PLOTS_PATH/iops"
-fio2gnuplot -g -t "Write IOPS" -o "$PLOTS_PATH/iops/write_iops" -p "write_iops.log"  -d "$PLOTS_PATH/iops"
-fio2gnuplot -g -t "Read Bandwidth" -o "$PLOTS_PATH/bw/read_bw" -p "read_bw.log"  -d "$PLOTS_PATH/bw"
-fio2gnuplot -g -t "Write Bandwidth" -o "$PLOTS_PATH/bw/write_bw" -p "write_bw.log"  -d "$PLOTS_PATH/bw"
+	workload_independent_preconditioning "128"
+ 
+	for i in $(seq 1 $RUNS); do
+		echo "Run $i of $RUNS..."
 
-echo -e "\nPlots generated in $PLOTS_PATH"
+		LOG_FILE="$LOGS_PATH/fio_w_run_${i}.log"
+		# LOG_FILE is used for simpler iops and bw results parsing
+		# Latency is parsed from fio generated log files
 
-cd ..
+		make fio_perf_w_opt ID=$IO_DEPTH NJ=$JOBS_NUM IN=$i > "$LOG_FILE"
+		extract_all_metrics "$LOG_FILE" "$i" "$bs" "0" "write"
+	done
 
-### DISTRIBUTION BENCHMARK ###
-
-echo "# Run Bandwidth IOPS" > "$RESULTS_FILE"
-pwd
-mkdir -p $LOGS_PATH $PLOTS_PATH/bw_iops
-
-for i in $(seq 1 $RUNS); do
-    echo "Run $i of $RUNS..."
-	 
-    LOG_FILE="$LOGS_PATH/fio_run_${i}.log"
-    
-    make fio_perf_w_opt ID=$IO_DEPTH NJ=$JOBS_NUM > "$LOG_FILE"
-    
-    extract_metrics "$LOG_FILE" "$i"
+	make -C ../src exit DBI=1
+	make -C ../src init_no_recompile DS=sl 
 done
 
 echo "Data collected in $RESULTS_FILE"
 
-python3 "$HISTOGRAM_SCRIPT"
+python3 "$AVG_PLOTS_SCRIPT"
+python3 "$HISTOGRAM_PLOTS_SCRIPT" 
+make clean_logs
 
-### LATENCY BENCHMARK ###
+## READ TESTS ##
+for wbs in "${WBS_LIST[@]}"; do
+	for rbs in "${RBS_LIST[@]}"; do
+  
+		workload_independent_preconditioning "$wbs"
 
-pwd
-mkdir -p $PLOTS_PATH/lat $PLOTS_PATH/lat/write $PLOTS_PATH/lat/read
-mkdir -p $PLOTS_PATH/slat $PLOTS_PATH/slat/write $PLOTS_PATH/slat/read
-mkdir -p $PLOTS_PATH/clat $PLOTS_PATH/clat/write $PLOTS_PATH/clat/read
+		for i in $(seq 1 $RUNS); do
+			echo "Run $i of $RUNS..."
 
-for i in $(seq 1 $RUNS); do
-	echo "Run $i of $RUNS..."    
+			LOG_FILE="$LOGS_PATH/fio_r_run_${i}.log"
 
-	LOG_SUFFIX="_lat_${i}"  
+			make fio_perf_r_opt RBS=$rbs ID=$IO_DEPTH NJ=$JOBS_NUM IN=$i > "$LOG_FILE"
+			extract_all_metrics "$LOG_FILE" "$i" "$wbs" "$rbs" "read"
+		done
+  
+		make -C ../src exit DBI=1
+		make -C ../src init_no_recompile DS=sl 
+	done
+done 
 
-	make fio_perf_w_opt ID=$IO_DEPTH NJ=$JOBS_NUM IN="$LOG_SUFFIX" > /dev/null
-	make fio_perf_r_opt ID=$IO_DEPTH NJ=$JOBS_NUM IN="$LOG_SUFFIX" > /dev/null
+echo "Data collected in $RESULTS_FILE"
+
+python3 "$AVG_PLOTS_SCRIPT"
+python3 "$HISTOGRAM_PLOTS_SCRIPT" 
+make clean_logs
+
+### LATENCY SNIA BENCHMARK ### TOFIX
+
+echo "# BS RW_MIX AVG_LATENCY MAX_LATENCY" > "$RESULTS_FILE"
+echo "Starting SNIA Latency Benchmark..."
+
+for rw_mix in "${RW_MIXES[@]}"; do
+    for bs in "${LATENCY_WRBS_LIST[@]}"; do
+
+		echo -e "\nPerfofm a block device warm up"
+		workload_independent_preconditioning "128"
+		
+		for i in $(seq 1 $RUNS); do
+			echo "Run $i of $RUNS..."
+			run_latency_test "$bs" "$rw_mix"
+			extract_latency_metrics "$i" "$LOGS_PATH/latency_${bs}_${rw_mix}" "$bs" "$rw_mix"
+		done
+		
+		make -C ../src exit DBI=1
+		make -C ../src init_no_recompile DS=sl 
+	done
 done
 
-ls logs -lah 
-cd logs
+python3 "$LATENCY_PLOTS_SCRIPT"
 
-echo -e "\nGenerating all in all latency plots"
-fio2gnuplot -t "Write Latency Distribution" -p "write_lat_*_lat.log" -g -d "../$PLOTS_PATH/lat/write"
-fio2gnuplot -t "Read Latency Distribution" -p "read_lat_*_lat.log" -g -d "../$PLOTS_PATH/lat/read"
-
-echo -e "\nGenerating submission latency plots"
-fio2gnuplot -t "Write SLatency Distribution" -p "write_lat_*slat.log" -g -d "../$PLOTS_PATH/slat/write"
-fio2gnuplot -t "Read SLatency Distribution" -p "read_lat_*slat.log" -g -d "../$PLOTS_PATH/slat/read"
-
-echo -e "\nGenerating completion latency plots"
-fio2gnuplot -t "Write CLatency Distribution" -p "write_lat_*clat.log" -g -d "../$PLOTS_PATH/clat/write"
-fio2gnuplot -t "Read CLatency Distribution" -p "read_lat_*clat.log" -g -d "../$PLOTS_PATH/clat/read"
-
-echo "Histograms and statistics saved in $PLOTS_PATH"
-
+echo "Histograms, AVG plots and statistics saved in $PLOTS_PATH"

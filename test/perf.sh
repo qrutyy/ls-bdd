@@ -74,15 +74,15 @@ sudo perf probe -x ../src/lsbdd.ko --add '*(*)' || echo "Warning: Some probes ma
 if [ "$VERIFY" == "true" ]; then
 	echo -e "\nStarting fio read&write verify workload ..."
 	# While veryfying - read & write cannot be run independently, due to verify information loss
-	sudo perf record -g -F 99 -a -o perf_wr.data -- make fio_perf_wr_opt ID=$IO_DEPTH JOBS_NUM=4 
+	sudo perf record -g -F 99 -a -o perf_wr.data -- make fio_perf_wr_opt ID=$IO_DEPTH NJ=4 
 	prioritise_fio
 else
 	echo -e "\nStarting fio write workload..."
-	sudo perf record -g -F 99 -a -o perf_write.data -- make fio_perf_w_opt ID=$IO_DEPTH JOBS_NUM=4 
+	sudo perf record -g -F 99 -a -o perf_write.data -- make fio_perf_w_opt ID=$IO_DEPTH NJ=4 
 	prioritise_fio
 
 	echo -e "\nStarting fio read workload..."
-	sudo perf record -g -F 99 -a -o perf_read.data -- make fio_perf_r_opt ID=$IO_DEPTH JOBS_NUM=4 
+	sudo perf record -g -F 99 -a -o perf_read.data -- make fio_perf_r_opt ID=$IO_DEPTH NJ=4 
 	prioritise_fio
 fi
 
