@@ -78,6 +78,10 @@ if [ "$SETUP" == "true" ]; then
 	./setup.sh --bd_name $BD_NAME --io_depth $IO_DEPTH
 fi
 
+if [ "$PLOTS" == "true" ]; then
+	sudo ./plots.sh  --io_depth $IO_DEPTH --jobs_num $JOBS_NUM
+fi
+
 echo -e "\nPerfofm a block device warm up"
 make fio_perf_w_opt ID=64 NJ=1 
 
@@ -90,6 +94,4 @@ if [ "$PERF" == "true" ]; then
 	fi
 fi
 
-if [ "$PLOTS" == "true" ]; then
-	sudo ./plots.sh  --io_depth $IO_DEPTH --jobs_num $JOBS_NUM
-fi
+
