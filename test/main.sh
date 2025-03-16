@@ -93,5 +93,3 @@ if [ "$PERF" == "true" ]; then
 		./perf.sh --io_depth $IO_DEPTH --jobs_num $JOBS_NUM
 	fi
 fi
-
-

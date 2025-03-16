@@ -236,4 +236,3 @@ done
 python3 "$LATENCY_PLOTS_SCRIPT"
 
 echo "Histograms, AVG plots and statistics saved in $PLOTS_PATH"
-
