@@ -17,7 +17,7 @@ WBS_LIST=("4K" "8K" "16k")
 RBS_LIST=("4K" "8K" "16K")
 
 LATENCY_WRBS_LIST=("8K" "4K") ## SNIA recommends 0.5K also, need some convertion
-RW_MIXES=("100-0" "65-35" "0-100") ## Write to read ops ratio
+RW_MIXES=("65-35") ## Write to read ops ratio
 
 # Function to prioritize all the fio processes (including forks in case of numjobs > 1)
 # UPD: mb no need in it
@@ -124,7 +124,7 @@ run_latency_test() {
 workload_independent_preconditioning() {
 	local wbs=$1
     echo "Running workload independent pre-conditioning..."
-    fio --name=prep --rw=write --bs=${wbs}K --numjobs=1 --iodepth=1 --size=4G --direct=1 --output="$LOGS_PATH/preconditioning.log"
+    fio --name=prep --rw=write --bs=${wbs}K --numjobs=1 --iodepth=1 --size=4G --filename=/dev/lsvbd1 --direct=1 --output="$LOGS_PATH/preconditioning.log"
 }
 
 # Parse options using getopts
@@ -184,7 +184,7 @@ echo "Data collected in $RESULTS_FILE"
 python3 "$AVG_PLOTS_SCRIPT"
 python3 "$HISTOGRAM_PLOTS_SCRIPT" 
 make clean_logs
-
+'
 ## READ TESTS ##
 for wbs in "${WBS_LIST[@]}"; do
 	for rbs in "${RBS_LIST[@]}"; do
@@ -220,7 +220,7 @@ for rw_mix in "${RW_MIXES[@]}"; do
     for bs in "${LATENCY_WRBS_LIST[@]}"; do
 
 		echo -e "\nPerfofm a block device warm up"
-		workload_independent_preconditioning "128"
+		workload_independent_preconditioning "$bs"
 		
 		for i in $(seq 1 $RUNS); do
 			echo "Run $i of $RUNS..."
@@ -234,5 +234,5 @@ for rw_mix in "${RW_MIXES[@]}"; do
 done
 
 python3 "$LATENCY_PLOTS_SCRIPT"
-
+'
 echo "Histograms, AVG plots and statistics saved in $PLOTS_PATH"

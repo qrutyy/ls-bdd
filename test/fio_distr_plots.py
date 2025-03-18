@@ -18,7 +18,6 @@ df["IOPS"] = clean_numeric(df["IOPS"])
 
 columns = ["BW", "IOPS"]
 
-# Ensure the main directory exists
 os.makedirs(PLOTS_PATH, exist_ok=True)
 
 # Process each (WBS, RBS) combination separately
@@ -36,13 +35,19 @@ for wbs in df["WBS"].unique():
         for i, label in enumerate(columns):
             plt.figure(figsize=(8, 6))
             plt.hist(subset[label].dropna(), bins=10, edgecolor='black')
-            if (rbs == 0): 
-                plt.title(f"Histogram of {label} (WBS={wbs})")
+            if rbs == 0: 
+                base_title = f"(WBS={wbs})"
             else: 
-                plt.title(f"Histogram of {label} (RBS={rbs} after WBS={wbs})")
-            plt.xlabel(label)
-            plt.ylabel("Frequency")
+                base_title = f"(RBS={rbs} after WBS={wbs})"
 
+            if label == "BW":
+                plt.xlabel("Bandwidth (MB/s)")
+                plt.title(f"Histogram of write operations throughput (bw) {base_title}\n")
+            else:
+                plt.ylabel("IOPS (k/s)")
+                plt.title(f"Histogram of write operations throughput (iops) {base_title}\n")
+
+            plt.ylabel("Frequency")
             plt.tight_layout()
             
             if (rbs == 0): 
@@ -78,6 +83,7 @@ for wbs in df["WBS"].unique():
             means = subset[columns].mean()
             stds = subset[columns].std(ddof=1)
 
+            # Compute 95% confidence intervals
             conf_intervals = stats.t.ppf(0.975, df=len(subset) - 1) * stats.sem(subset[columns], axis=0)
 
             def round_to_error(value, error):
