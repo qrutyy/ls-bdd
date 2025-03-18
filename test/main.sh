@@ -1,5 +1,7 @@
 #!/bin/bash
 
+DEPENDENCY_LIST = ("fio", "make", "perf")
+
 BD_NAME="vdb"
 IO_DEPTH=16
 VERIFY="false"
@@ -20,6 +22,18 @@ validate_verify_input() {
         echo "ERROR: VERIFY must be either 'true' or 'false'."
         usage
     fi
+}
+
+check_package() {
+	if [ ! command -v $1 &> /dev/null ]; then
+		echo "Error: '$1' is not installed. Please install it and try again."
+		./install.sh
+	fi
+}
+
+check_dependencies() {
+	for package in "${DEPENDENCY_LIST}" 
+		check_package(package)
 }
 
 # Parse options using getopts
@@ -60,10 +74,10 @@ while [[ "$#" -gt 0 ]]; do
 	shift
 done
 
+check_dependencies
 validate_verify_input
 
-mkdir -p plots
-mkdir -p logs
+mkdir -p plots logs
 
 echo "Block device name: $BD_NAME"
 echo "Verify option: $VERIFY"
