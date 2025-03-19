@@ -22,7 +22,6 @@ s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mn
 	char *rb = "rb";
 
 	if (!strncmp(sel_ds, bt, 2)) {
-
 		btree_map = kzalloc(sizeof(struct btree), GFP_KERNEL);
 		if (!btree_map)
 			goto mem_err;
@@ -39,8 +38,8 @@ s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mn
 		ds->type = BTREE_TYPE;
 		ds->structure.map_btree = btree_map;
 	} else if (!strncmp(sel_ds, sl, 2)) {
-
-		cache_mng->sl_cache = kmem_cache_create("skiplist_cache", sizeof(struct skiplist_node) + 24 * sizeof(struct skiplist_node *), 0, SLAB_HWCACHE_ALIGN, NULL);
+		cache_mng->sl_cache = kmem_cache_create(
+			"skiplist_cache", sizeof(struct skiplist_node) + 24 * sizeof(struct skiplist_node *), 0, SLAB_HWCACHE_ALIGN, NULL);
 		skiplist = skiplist_init(cache_mng->sl_cache);
 		if (!skiplist)
 			goto mem_err;
@@ -230,4 +229,3 @@ s32 ds_empty_check(struct data_struct *ds)
 		return 1;
 	return 0;
 }
-

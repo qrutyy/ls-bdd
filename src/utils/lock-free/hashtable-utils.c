@@ -69,7 +69,8 @@ void hashtable_free(struct hashtable *ht, struct kmem_cache *ht_cache)
 	s32 bckt_iter = 0;
 	struct hash_el *el, *tmp = NULL;
 
-	lhash_for_each_safe(ht->head, bckt_iter, tmp, el, node) {
+	lhash_for_each_safe(ht->head, bckt_iter, tmp, el, node)
+	{
 		if (el && (u64)el->key > 0 && el->value) {
 			if (likely(el)) {
 				pr_debug("el: %p\n", el);
@@ -89,7 +90,7 @@ struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key)
 
 	pr_debug("Hashtable: bucket_val %llu\n", BUCKET_NUM);
 
-	llist_for_each_entry_safe(el, tmp, ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)].first, node) {
+	llist_for_each_entry_safe (el, tmp, ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)].first, node) {
 		if (el != NULL && el->key == key) {
 			pr_debug("key %lld, found %lld\n", key, el->key);
 			return el;
@@ -109,7 +110,7 @@ struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *pre
 	struct hash_el *el, *tmp = NULL;
 	sector_t bucket_num = 0;
 
-	llist_for_each_entry_safe(el, tmp, ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)].first, node) {
+	llist_for_each_entry_safe (el, tmp, ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)].first, node) {
 		if (el && el->key <= key && el->key > prev_max_node->key)
 			prev_max_node = el;
 	}
@@ -118,13 +119,12 @@ struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *pre
 		bucket_num = (!BUCKET_NUM) ? 0 : BUCKET_NUM - 1;
 		pr_debug("Hashtable: key = %lld Previous element is in the previous bucket %lld, bck %lld\n", key, bucket_num, BUCKET_NUM);
 
-		llist_for_each_entry(el, ht->head[hash_min(min(bucket_num, ht->max_bck_num), HT_MAP_BITS)].first, node) {
+		llist_for_each_entry (el, ht->head[hash_min(min(bucket_num, ht->max_bck_num), HT_MAP_BITS)].first, node) {
 			if (el && el->key <= key && el->key >= prev_max_node->key)
 				prev_max_node = el;
 
 			pr_debug("Hashtable: prev el key = %llu\n", el->key);
 		}
-
 	}
 	pr_debug("Hashtable: Element with prev key - el key=%llu, val=%p\n", prev_max_node->key, prev_max_node->value);
 
@@ -160,9 +160,9 @@ void hashtable_remove(struct hashtable *ht, sector_t key)
 	bckt_lock = ht->lock[bckt_num]; // per bucket lock
 
 	pr_debug("Hashtable: bucket_val %llu\n", BUCKET_NUM);
-	 // test only. should be moved further to decrease the crit. section
+	// test only. should be moved further to decrease the crit. section
 	// no lock or other sync is needed, due to lock-free llist iter
-	llist_for_each_entry_safe(el, tmp, ht->head[bckt_num].first, node) {
+	llist_for_each_entry_safe (el, tmp, ht->head[bckt_num].first, node) {
 		if (el != NULL && el->key == key)
 			break;
 		prev_el = el;
@@ -182,4 +182,3 @@ bool hashtable_is_empty(struct hashtable *ht)
 {
 	return llist_empty(ht->head);
 }
-

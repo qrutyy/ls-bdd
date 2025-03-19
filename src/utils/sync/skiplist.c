@@ -22,8 +22,7 @@ static void free_node_full(struct skiplist_node *node)
 	return;
 }
 
-static struct skiplist_node *create_node_tall(sector_t key, void **value,
-								s32 h)
+static struct skiplist_node *create_node_tall(sector_t key, void **value, s32 h)
 {
 	struct skiplist_node *last;
 	struct skiplist_node *curr;
@@ -167,8 +166,7 @@ static s32 get_random_lvl(int max)
 	return lvl;
 }
 
-static void get_prev_nodes(sector_t key, struct skiplist *sl,
-			struct skiplist_node **buf, s32 lvl)
+static void get_prev_nodes(sector_t key, struct skiplist *sl, struct skiplist_node **buf, s32 lvl)
 {
 	struct skiplist_node *curr;
 	s32 curr_lvl;
@@ -187,10 +185,9 @@ static void get_prev_nodes(sector_t key, struct skiplist *sl,
 	}
 }
 
-static struct skiplist_node *skiplist_insert_at_lvl(sector_t key,
-		void *value, struct skiplist *sl, s32 lvl)
+static struct skiplist_node *skiplist_insert_at_lvl(sector_t key, void *value, struct skiplist *sl, s32 lvl)
 {
-	struct skiplist_node *prev[MAX_LVL+1];
+	struct skiplist_node *prev[MAX_LVL + 1];
 	struct skiplist_node *new;
 	struct skiplist_node *temp;
 	s32 i;
@@ -303,7 +300,6 @@ void skiplist_print(struct skiplist *sl)
 	}
 }
 
-
 void skiplist_remove(struct skiplist *sl, sector_t key)
 {
 	if (!(sl && sl->head))
@@ -356,7 +352,6 @@ sector_t skiplist_last(struct skiplist *sl)
 
 	return curr->key;
 }
-
 
 struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t *prev_key)
 {

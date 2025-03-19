@@ -10,17 +10,15 @@
 #define CHUNK_SIZE (1024 * 2)
 #define BUCKET_NUM ((sector_t)(key / (CHUNK_SIZE)))
 
-#define MEM_CHECK(ptr)													\
-		if (!node)														\
-			goto mem_err;												\
+#define MEM_CHECK(ptr)                                                                                                                     \
+	if (!node)                                                                                                                         \
+		goto mem_err;
 
-#define lhash_for_each_safe(name, bkt, tmp, obj, member)				\
-	for ((bkt) = 0, obj = NULL; obj == NULL && (bkt) < HASH_SIZE(name);	\
-			(bkt)++)													\
-		llist_for_each_entry_safe(obj, tmp, (struct llist_node *)&name[bkt].first->next, member)
+#define lhash_for_each_safe(name, bkt, tmp, obj, member)                                                                                   \
+	for ((bkt) = 0, obj = NULL; obj == NULL && (bkt) < HASH_SIZE(name); (bkt)++)                                                       \
+		llist_for_each_entry_safe (obj, tmp, (struct llist_node *)&name[bkt].first->next, member)
 
-#define DECLARE_LHASHTABLE(name, bits)                                  \
-	struct llist_head name[1 << (bits)]
+#define DECLARE_LHASHTABLE(name, bits) struct llist_head name[1 << (bits)]
 
 #define lhash_init(hashtable) __lhash_init(hashtable, HASH_SIZE(hashtable))
 
