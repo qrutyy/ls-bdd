@@ -2,7 +2,8 @@
 
 JOBS_NUM=4
 IO_DEPTH=16
-RUNS=5
+RUNS=4
+BRD_SIZE=2
 
 LOGS_PATH="logs"
 PLOTS_PATH="./plots"
@@ -13,11 +14,11 @@ HISTOGRAM_PLOTS_SCRIPT="fio_distr_plots.py"
 AVG_PLOTS_SCRIPT="avg_plots.py"
 LATENCY_PLOTS_SCRIPT="lat_plots.py"
 
-WBS_LIST=("4K" "8K" "16k")
+WBS_LIST=("4K" "8K")
 RBS_LIST=("4K" "8K" "16K")
 
 LATENCY_WRBS_LIST=("8K" "4K") ## SNIA recommends 0.5K also, need some convertion
-RW_MIXES=("65-35") ## Write to read ops ratio
+RW_MIXES=("100-0" "65-35" "0-100") ## Write to read ops ratio
 
 # Function to prioritize all the fio processes (including forks in case of numjobs > 1)
 # UPD: mb no need in it
@@ -124,7 +125,20 @@ run_latency_test() {
 workload_independent_preconditioning() {
 	local wbs=$1
     echo "Running workload independent pre-conditioning..."
-    fio --name=prep --rw=write --bs=${wbs}K --numjobs=1 --iodepth=1 --size=4G --filename=/dev/lsvbd1 --direct=1 --output="$LOGS_PATH/preconditioning.log"
+    fio --name=prep --rw=write --bs=${wbs}K --numjobs=1 --iodepth=1 --size=2G --filename=/dev/lsvbd1 --direct=1 --output="$LOGS_PATH/preconditioning.log"
+}
+
+# add data-structure
+reinit_lsvbd() {
+	make -C ../src exit DBI=1 > /dev/null
+
+	echo -e "\nPage cache and Dentry flushing"
+	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches 
+
+	modprobe brd rd_nr=1 rd_size=$((BRD_SIZE * 1048576))
+	
+	make -C ../src init_no_recompile DS=sl TY=lf  > /dev/null
+	
 }
 
 # Parse options using getopts
@@ -138,6 +152,10 @@ while [[ "$#" -gt 0 ]]; do
             JOBS_NUM="$2"
             shift 
             ;;
+		--brd_size)
+			BRD_SIZE="$2"
+			shift
+			;;
         -h|--help)
             usage
             ;;
@@ -150,20 +168,21 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 echo -e "\nCleaning the logs directory"
-make clean
+make clean > /dev/null
 
 mkdir -p $LOGS_PATH $PLOTS_PATH/histograms $PLOTS_PATH/histograms/write $PLOTS_PATH/histograms/read $PLOTS_PATH/avg $PLOTS_PATH/avg/write $PLOTS_PATH/avg/read
 
 ### DISTRIBUTION + SNIA BENCHMARK ###
 
 ## WRITE TESTS ##
-
+'
 echo -e "\nRunning write tests\n"
 
 for bs in "${WBS_LIST[@]}"; do 
 
 	workload_independent_preconditioning "128"
- 
+	echo -e "Before work\n"
+	free -m 
 	for i in $(seq 1 $RUNS); do
 		echo "Run $i of $RUNS..."
 
@@ -174,24 +193,28 @@ for bs in "${WBS_LIST[@]}"; do
 		make fio_perf_w_opt ID=$IO_DEPTH NJ=$JOBS_NUM IN=$i > "$LOG_FILE"
 		extract_all_metrics "$LOG_FILE" "$i" "$bs" "0" "write"
 	done
-
-	make -C ../src exit DBI=1
-	make -C ../src init_no_recompile DS=sl 
+	echo -e "\n after work"
+	free -m
+	reinit_lsvbd
 done
 
 echo "Data collected in $RESULTS_FILE"
 
 python3 "$AVG_PLOTS_SCRIPT"
 python3 "$HISTOGRAM_PLOTS_SCRIPT" 
-make clean_logs
+make clean_logs > /dev/null
 '
 ## READ TESTS ##
+
 for wbs in "${WBS_LIST[@]}"; do
 	for rbs in "${RBS_LIST[@]}"; do
-  
+		echo -e "\n\nRunning read test for wbs=$wbs rbs=$rbs..."
+		
 		workload_independent_preconditioning "$wbs"
 
 		for i in $(seq 1 $RUNS); do
+
+
 			echo "Run $i of $RUNS..."
 
 			LOG_FILE="$LOGS_PATH/fio_r_run_${i}.log"
@@ -199,9 +222,8 @@ for wbs in "${WBS_LIST[@]}"; do
 			make fio_perf_r_opt RBS=$rbs ID=$IO_DEPTH NJ=$JOBS_NUM IN=$i > "$LOG_FILE"
 			extract_all_metrics "$LOG_FILE" "$i" "$wbs" "$rbs" "read"
 		done
-  
-		make -C ../src exit DBI=1
-		make -C ../src init_no_recompile DS=sl 
+	
+		reinit_lsvbd
 	done
 done 
 
@@ -209,7 +231,7 @@ echo "Data collected in $RESULTS_FILE"
 
 python3 "$AVG_PLOTS_SCRIPT"
 python3 "$HISTOGRAM_PLOTS_SCRIPT" 
-make clean_logs
+make clean_logs > /dev/null
 
 ### LATENCY SNIA BENCHMARK ### TOFIX
 
@@ -228,11 +250,11 @@ for rw_mix in "${RW_MIXES[@]}"; do
 			extract_latency_metrics "$i" "$LOGS_PATH/latency_${bs}_${rw_mix}" "$bs" "$rw_mix"
 		done
 		
-		make -C ../src exit DBI=1
-		make -C ../src init_no_recompile DS=sl 
+		reinit_lsvbd
 	done
 done
 
 python3 "$LATENCY_PLOTS_SCRIPT"
-'
+make clean_logs > /dev/null
+
 echo "Histograms, AVG plots and statistics saved in $PLOTS_PATH"

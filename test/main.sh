@@ -1,7 +1,6 @@
 #!/bin/bash
 
-DEPENDENCY_LIST = ("fio", "make", "perf")
-
+DEPENDENCY_LIST=("fio" "make" "perf")
 BD_NAME="vdb"
 IO_DEPTH=16
 VERIFY="false"
@@ -9,6 +8,7 @@ SETUP="false"
 PERF="false"
 PLOTS="false"
 JOBS_NUM=1
+BRD_SIZE=2
 
 # Function to display help
 usage() {
@@ -32,8 +32,9 @@ check_package() {
 }
 
 check_dependencies() {
-	for package in "${DEPENDENCY_LIST}" 
-		check_package(package)
+	for package in "${DEPENDENCY_LIST}"; do
+		check_package package
+	done
 }
 
 # Parse options using getopts
@@ -63,6 +64,10 @@ while [[ "$#" -gt 0 ]]; do
 			JOBS_NUM="$2"
 			shift 
 			;;
+		--init)
+			BRD_SIZE="$2"
+			shift
+			;;
         -h|--help)
             usage
             ;;
@@ -77,6 +82,10 @@ done
 check_dependencies
 validate_verify_input
 
+free -m
+echo -e "Creating RAM disk"
+modprobe brd rd_nr=1 rd_size=$((BRD_SIZE * 1048576))
+free -m
 mkdir -p plots logs
 
 echo "Block device name: $BD_NAME"
@@ -93,13 +102,14 @@ if [ "$SETUP" == "true" ]; then
 fi
 
 if [ "$PLOTS" == "true" ]; then
-	sudo ./plots.sh  --io_depth $IO_DEPTH --jobs_num $JOBS_NUM
+	sudo ./plots.sh  --io_depth $IO_DEPTH --jobs_num $JOBS_NUM --brd_size $BRD_SIZE
 fi
 
-echo -e "\nPerfofm a block device warm up"
-make fio_perf_w_opt ID=64 NJ=1 
 
 if [ "$PERF" == "true" ]; then
+	echo -e "\nPerfofm a block device warm up"
+	make fio_perf_w_opt ID=64 NJ=1 
+
 	### Run config setup script
 	if [ "$VERIFY" == "true" ]; then
 		./perf.sh --io_depth $IO_DEPTH --jobs_num $JOBS_NUM -v
