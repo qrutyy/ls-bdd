@@ -72,8 +72,7 @@ struct skiplist *skiplist_init(struct kmem_cache *sl_cache)
 		goto alloc_fail;
 
 	atomic_set(&sl->max_lvl, 1);
-	sl->head = node_alloc(HEAD_KEY, HEAD_VALUE, MAX_LVL,
-			      sl_cache);
+	sl->head = node_alloc(HEAD_KEY, HEAD_VALUE, MAX_LVL, sl_cache);
 	return sl;
 
 alloc_fail:
@@ -95,7 +94,10 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache)
 	kfree(sl);
 }
 
-bool skiplist_is_empty(struct skiplist *sl) { return sl->head->next[0] == 0; }
+bool skiplist_is_empty(struct skiplist *sl)
+{
+	return sl->head->next[0] == 0;
+}
 
 /**
  * The `find_preds` function searches for nodes in a skiplist that precede and
@@ -106,8 +108,8 @@ bool skiplist_is_empty(struct skiplist *sl) { return sl->head->next[0] == 0; }
  * `NULL` is returned, and the place for inserting a new node is stored in the
  * `preds` and `succs` arrays.
  */
-static struct skiplist_node *find_preds(struct skiplist_node **preds, struct skiplist_node **succs, s32 n, struct skiplist *sl, sector_t key,
-					enum unlink unlink)
+static struct skiplist_node *find_preds(struct skiplist_node **preds, struct skiplist_node **succs, s32 n, struct skiplist *sl,
+					sector_t key, enum unlink unlink)
 {
 	struct skiplist_node *pred = NULL;
 	struct skiplist_node *node = NULL;
@@ -141,7 +143,6 @@ static struct skiplist_node *find_preds(struct skiplist_node **preds, struct ski
 
 		node = GET_NODE(next);
 		while (node != NULL && level < node->height && node->height <= MAX_LVL) {
-
 			next = node->next[level];
 			// A tag means a node is logically removed but not physically unlinked yet
 			while (HAS_MARK(next)) {
@@ -154,8 +155,7 @@ static struct skiplist_node *find_preds(struct skiplist_node **preds, struct ski
 					next = node->next[level];
 				} else {
 					// Unlink logically removed nodes.
-					pr_debug("Unlinking node: pred = %p, node = %p, new_next = %p\n",
-						 pred, node, STRIP_MARK(next));
+					pr_debug("Unlinking node: pred = %p, node = %p, new_next = %p\n", pred, node, STRIP_MARK(next));
 					other = SYNC_CAS(&pred->next[level], (size_t)node, STRIP_MARK(next));
 					if (other == (size_t)node) {
 						node = STRIP_MARK(next);
@@ -165,8 +165,7 @@ static struct skiplist_node *find_preds(struct skiplist_node **preds, struct ski
 							return find_preds(preds, succs, n, sl, key, unlink);
 						}
 						node = GET_NODE(other);
-						pr_debug("Level %zd(mark): GET_NODE(%zx) returned node = %p\n",
-							 level, next, node);
+						pr_debug("Level %zd(mark): GET_NODE(%zx) returned node = %p\n", level, next, node);
 					}
 					next = (node != NULL) ? node->next[level] : 0;
 				}
@@ -206,8 +205,7 @@ static struct skiplist_node *find_preds(struct skiplist_node **preds, struct ski
 		return node;
 	}
 
-	pr_debug("find_preds: key %lld NOT FOUND (pred = %p, pred_key = %lld), returning NULL\n",
-		  key, pred, pred ? pred->key : -1);
+	pr_debug("find_preds: key %lld NOT FOUND (pred = %p, pred_key = %lld), returning NULL\n", key, pred, pred ? pred->key : -1);
 	return NULL;
 }
 
@@ -227,7 +225,10 @@ struct skiplist_node *skiplist_find_node(struct skiplist *sl, sector_t key)
  * If some node has mark -> remove the mark and skip it.
  */
 
-sector_t skiplist_last(struct skiplist *sl) { return sl->last_key; }
+sector_t skiplist_last(struct skiplist *sl)
+{
+	return sl->last_key;
+}
 
 static void *update_node(struct skiplist_node *node, void *new_val)
 {
@@ -311,8 +312,7 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *v
 	other = SYNC_CAS(&pred->next[0], next,
 			 new_node); // does it change only the lower one?
 	if (other != next) {
-		pr_debug("Skiplist(insert): failed to change pred's link: expected %zx found %zx\n",
-			 next, other);
+		pr_debug("Skiplist(insert): failed to change pred's link: expected %zx found %zx\n", next, other);
 		kfree(new_node);
 		return skiplist_insert(sl, key, value, sl_cache); // retry
 	}
@@ -416,7 +416,8 @@ void skiplist_remove(struct skiplist *sl, sector_t key)
 			old_next = SYNC_CAS(&node->next[level], next, MARK_NODE((struct skiplist_node *)next));
 
 			if (HAS_MARK(old_next)) {
-				pr_debug("Skiplist(remove): %p is already marked for removal by another thread (next %ld)\n", node, old_next);
+				pr_debug("Skiplist(remove): %p is already marked for removal by another thread (next %ld)\n", node,
+					 old_next);
 				if (level == 0)
 					return;
 				break;
@@ -462,4 +463,3 @@ struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t 
 		*prev_key = pred->key;
 	return pred;
 }
-

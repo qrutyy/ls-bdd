@@ -108,3 +108,7 @@ test/FlameGraph
 *.old
 *.folded
 
+test/logs/*
+test/plots/*
+
+.clang-format

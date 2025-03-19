@@ -8,6 +8,8 @@
  * + some refactoring and NULL initialisation.
  */
 
+// JUST STABS, AS LONG AS NO LOCK-FREE B+TREE IS FOUND
+
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/types.h>
@@ -39,16 +41,14 @@ static s32 compare_keys(sector_t lkey, sector_t rkey)
 	return lkey < rkey ? -1 : (lkey == rkey ? 0 : 1);
 }
 
-static struct rbtree_node *__rbtree_underlying_search(struct rb_root *root,
-							 sector_t key)
+static struct rbtree_node *__rbtree_underlying_search(struct rb_root *root, sector_t key)
 {
 	struct rb_node *node = NULL;
 
 	node = root->rb_node;
 
 	while (node) {
-		struct rbtree_node *data =
-			container_of(node, struct rbtree_node, node);
+		struct rbtree_node *data = container_of(node, struct rbtree_node, node);
 		s32 result = compare_keys(key, data->key);
 
 		if (result == -2)
@@ -129,7 +129,7 @@ void rbtree_free(struct rbtree *rbt)
 
 	struct rbtree_node *pos, *node = NULL;
 
-	rbtree_postorder_for_each_entry_safe(pos, node, &(rbt->root), node)
+	rbtree_postorder_for_each_entry_safe (pos, node, &(rbt->root), node)
 		free_rbtree_node(pos);
 
 	kfree(rbt);
@@ -174,8 +174,7 @@ struct rbtree_node *rbtree_last(struct rbtree *rbt)
 	if (!(node->rb_left && node->rb_right))
 		return NULL;
 
-	struct rbtree_node *data =
-			container_of(node, struct rbtree_node, node);
+	struct rbtree_node *data = container_of(node, struct rbtree_node, node);
 	if (!(data->key && data->value))
 		return NULL;
 

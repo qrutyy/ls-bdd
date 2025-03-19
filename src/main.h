@@ -8,13 +8,13 @@
 #define LSBDD_BLKDEV_NAME_PREFIX "lsvbd"
 #define LSBDD_SECTOR_OFFSET 32
 
-static const char *available_ds[] = {"bt", "sl", "ht", "rb"};
+static const char *available_ds[] = { "bt", "sl", "ht", "rb" };
 
 // Returns "ret_val" if el == NULL
-#define IF_NULL_RETURN(el, ret_val)  \
-	do {									  \
-		if (!el)							  \
-			return ret_val;					  \
+#define IF_NULL_RETURN(el, ret_val)                                                                                                        \
+	do {                                                                                                                               \
+		if (!el)                                                                                                                   \
+			return ret_val;                                                                                                    \
 	} while (0)
 
 struct value_redir {
