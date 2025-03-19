@@ -33,7 +33,7 @@ def plot_metric_by_bs(metric, ylabel, filename_prefix):
             if not rw_subset.empty:
                 plt.plot(rw_subset["RunID"], rw_subset[metric], marker='o', linestyle='-', label=f"{rw_mix}")
 
-        plt.xlabel("Test Run")
+        plt.xlabel("Run number")
         plt.ylabel(ylabel)
         plt.title(f"{ylabel} vs. Run (Block Size {bs})")
         plt.legend(title="RW Mix")
@@ -72,7 +72,6 @@ def plot_united_metric(metric, ylabel, filename):
     plt.savefig(save_path)
     plt.close()
     print(f"Saved united plot: {save_path}")
-
 
 # Generate separate latency plots per block size
 plot_metric_by_bs("Avg_LAT", "Average Latency (ms)", "avg_latency")
