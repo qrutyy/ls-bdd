@@ -11,6 +11,12 @@ struct btree {
 	struct btree_head *head;
 };
 
+struct btree_geo {
+	s32 keylen;
+	s32 no_pairs;
+	s32 no_longs;
+};
+
 sector_t btree_last_no_rep(struct btree_head *head, struct btree_geo *geo, unsigned long *key);
 void *btree_get_next(struct btree_head *head, struct btree_geo *geo, unsigned long *key);
 void *btree_get_prev_no_rep(struct btree_head *head, struct btree_geo *geo, unsigned long *key, unsigned long *prev_key);

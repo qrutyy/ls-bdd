@@ -8,6 +8,8 @@
  * + some refactoring and NULL initialisation.
  */
 
+// JUST STABS, AS LONG AS NO LOCK-FREE B+TREE IS FOUND
+
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/types.h>

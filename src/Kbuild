@@ -7,7 +7,6 @@ ccflags-y := 	-Wall					\
 		-g					\
 		-Werror=format-security			\
 		-Werror=implicit-function-declaration   \
-		-DDEBUG 
 
 obj-m := lsbdd.o
 

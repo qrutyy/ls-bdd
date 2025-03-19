@@ -144,8 +144,10 @@ insert_err:
 
 mem_err:
 	pr_err("Memory allocation failed\n");
-	kmem_cache_free(lsbdd_sectors_cache, sectors);
-	kmem_cache_free(lsbdd_value_cache, curr_value);
+	 if (sectors)
+        kmem_cache_free(lsbdd_sectors_cache, sectors);
+    if (curr_value)
+        kmem_cache_free(lsbdd_value_cache, curr_value);
 	return -ENOMEM;
 }
 
@@ -173,7 +175,8 @@ static s32 setup_bio_split(struct bio *clone_bio, struct bio *main_bio, s32 near
 	pr_debug("RECURSIVE READ p2: bs = %u, main to read = %u,  st sec = %llu\n",
 		clone_bio->bi_iter.bi_size, main_bio->bi_iter.bi_size, clone_bio->bi_iter.bi_sector);
 
-	submit_bio(split_bio);
+	bio_chain(split_bio, clone_bio);
+	submit_bio_noacct(split_bio);
 	pr_debug("Submitted bio first part of splitted main_bio\n\n");
 
 	return nearest_bs;
@@ -246,7 +249,7 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 	s32 to_read_in_clone = 0;
 	s16 status = 0;
 
-	sectors = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
+	sectors = kmem_cache_alloc(lsbdd_sectors_cache, GFP_KERNEL);
 	if (!sectors)
 		goto mem_err;
 
@@ -713,10 +716,9 @@ static s32  lsbdd_set_redirect_bd(const char *arg, const struct kernel_param *kp
 static inline void lsbdd_ds_cache_destroy(void)
 {
 	kmem_cache_destroy(cache_mng->ht_cache);
+	kmem_cache_destroy(cache_mng->sl_cache);
+	// to add rb-tree and b+ caches 
 	kfree(cache_mng);
-	// kmem_cache_create("skiplist_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
-//	kmem_cache_create("rbtree_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
-//	kmem_cache_create("btree_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
 }
 
 static s32  __init lsbdd_init(void)
@@ -773,6 +775,7 @@ static void __exit lsbdd_exit(void)
 
 	list_for_each_entry_safe(entry, tmp, &bd_list, list) {
 		list_del(&entry->list);
+		kfree(entry->sel_data_struct);
 		kfree(entry);
 	}
 
@@ -781,7 +784,6 @@ static void __exit lsbdd_exit(void)
 	lsbdd_ds_cache_destroy();
 
 	bioset_exit(bdd_pool);
-	kfree(bdd_pool);
 	unregister_blkdev(bdd_major, LSBDD_BLKDEV_NAME_PREFIX);
 
 	pr_debug("BDR module exited\n");

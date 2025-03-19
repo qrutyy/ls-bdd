@@ -7,11 +7,7 @@
 #include <linux/slab.h>
 #include "btree-utils.h"
 
-struct btree_geo {
-	s32 keylen;
-	s32 no_pairs;
-	s32 no_longs;
-};
+// JUST STABS, AS LONG AS NO LOCK-FREE B+TREE IS FOUND
 
 static s32 longcmp(const unsigned long *l1, const unsigned long *l2, size_t n)
 {
