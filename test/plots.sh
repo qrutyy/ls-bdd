@@ -18,7 +18,7 @@ WBS_LIST=("4K" "8K")
 RBS_LIST=("4K" "8K" "16K")
 
 LATENCY_WRBS_LIST=("8K" "4K") ## SNIA recommends 0.5K also, need some convertion
-RW_MIXES=("65-35") ## Write to read ops ratio
+RW_MIXES=("100-0" "65-35" "0-100") ## Write to read ops ratio
 
 # Function to prioritize all the fio processes (including forks in case of numjobs > 1)
 # UPD: mb no need in it
