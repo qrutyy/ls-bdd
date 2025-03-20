@@ -203,7 +203,7 @@ echo "Data collected in $RESULTS_FILE"
 python3 "$AVG_PLOTS_SCRIPT"
 python3 "$HISTOGRAM_PLOTS_SCRIPT" 
 make clean_logs > /dev/null
-'
+
 ## READ TESTS ##
 
 for wbs in "${WBS_LIST[@]}"; do
@@ -232,10 +232,9 @@ echo "Data collected in $RESULTS_FILE"
 python3 "$AVG_PLOTS_SCRIPT"
 python3 "$HISTOGRAM_PLOTS_SCRIPT" 
 make clean_logs > /dev/null
-
+'
 ### LATENCY SNIA BENCHMARK ### TOFIX
 
-echo "# BS RW_MIX AVG_LATENCY MAX_LATENCY" > "$RESULTS_FILE"
 echo "Starting SNIA Latency Benchmark..."
 
 for rw_mix in "${RW_MIXES[@]}"; do
@@ -255,6 +254,6 @@ for rw_mix in "${RW_MIXES[@]}"; do
 done
 
 python3 "$LATENCY_PLOTS_SCRIPT"
-make clean_logs > /dev/null
+#make clean_logs > /dev/null
 
 echo "Histograms, AVG plots and statistics saved in $PLOTS_PATH"
