@@ -14,11 +14,12 @@ HISTOGRAM_PLOTS_SCRIPT="fio_distr_plots.py"
 AVG_PLOTS_SCRIPT="avg_plots.py"
 LATENCY_PLOTS_SCRIPT="lat_plots.py"
 
-WBS_LIST=("4K" "8K")
-RBS_LIST=("4K" "8K" "16K")
+BS_LIST=("4K" "8K" "16K")
+# RBS_LIST=("4K" "8K" "16K") 
+# Can be used to benchmark read operations (bio splits)
 
-LATENCY_WRBS_LIST=("8K" "4K") ## SNIA recommends 0.5K also, need some convertion
-RW_MIXES=("100-0" "65-35" "0-100") ## Write to read ops ratio
+LATENCY_WRBS_LIST=("4K" "8K" "16K") ## SNIA recommends 0.5K also, need some convertion
+RW_MIXES=("0-100" "65-35" "100-0") ## Write to read ops ratio
 
 # Function to prioritize all the fio processes (including forks in case of numjobs > 1)
 # UPD: mb no need in it
@@ -135,6 +136,7 @@ reinit_lsvbd() {
 	echo -e "\nPage cache and Dentry flushing"
 	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches 
 
+	modprobe -r brd
 	modprobe brd rd_nr=1 rd_size=$((BRD_SIZE * 1048576))
 	
 	make -C ../src init_no_recompile DS=sl TY=lf  > /dev/null
@@ -175,14 +177,13 @@ mkdir -p $LOGS_PATH $PLOTS_PATH/histograms $PLOTS_PATH/histograms/write $PLOTS_P
 ### DISTRIBUTION + SNIA BENCHMARK ###
 
 ## WRITE TESTS ##
-'
+
 echo -e "\nRunning write tests\n"
 
-for bs in "${WBS_LIST[@]}"; do 
+for bs in "${BS_LIST[@]}"; do 
 
 	workload_independent_preconditioning "128"
-	echo -e "Before work\n"
-	free -m 
+
 	for i in $(seq 1 $RUNS); do
 		echo "Run $i of $RUNS..."
 
@@ -193,8 +194,6 @@ for bs in "${WBS_LIST[@]}"; do
 		make fio_perf_w_opt ID=$IO_DEPTH NJ=$JOBS_NUM IN=$i > "$LOG_FILE"
 		extract_all_metrics "$LOG_FILE" "$i" "$bs" "0" "write"
 	done
-	echo -e "\n after work"
-	free -m
 	reinit_lsvbd
 done
 
@@ -206,25 +205,21 @@ make clean_logs > /dev/null
 
 ## READ TESTS ##
 
-for wbs in "${WBS_LIST[@]}"; do
-	for rbs in "${RBS_LIST[@]}"; do
-		echo -e "\n\nRunning read test for wbs=$wbs rbs=$rbs..."
+for bs in "${BS_LIST[@]}"; do
+	echo -e "\n\nRunning read test for rbs=$rbs..."
 		
-		workload_independent_preconditioning "$wbs"
+	workload_independent_preconditioning "$bs"
 
-		for i in $(seq 1 $RUNS); do
+	for i in $(seq 1 $RUNS); do
+		echo "Run $i of $RUNS..."
 
+		LOG_FILE="$LOGS_PATH/fio_r_run_${i}.log"
 
-			echo "Run $i of $RUNS..."
-
-			LOG_FILE="$LOGS_PATH/fio_r_run_${i}.log"
-
-			make fio_perf_r_opt RBS=$rbs ID=$IO_DEPTH NJ=$JOBS_NUM IN=$i > "$LOG_FILE"
-			extract_all_metrics "$LOG_FILE" "$i" "$wbs" "$rbs" "read"
-		done
-	
-		reinit_lsvbd
+		make fio_perf_r_opt RBS=$rbs ID=$IO_DEPTH NJ=$JOBS_NUM IN=$i > "$LOG_FILE"
+		extract_all_metrics "$LOG_FILE" "$i" "$bs" "$bs" "read"
 	done
+	
+	reinit_lsvbd
 done 
 
 echo "Data collected in $RESULTS_FILE"
@@ -232,7 +227,7 @@ echo "Data collected in $RESULTS_FILE"
 python3 "$AVG_PLOTS_SCRIPT"
 python3 "$HISTOGRAM_PLOTS_SCRIPT" 
 make clean_logs > /dev/null
-'
+
 ### LATENCY SNIA BENCHMARK ### TOFIX
 
 echo "Starting SNIA Latency Benchmark..."
