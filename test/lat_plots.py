@@ -1,10 +1,15 @@
+import arparse
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
 
+parser = argparse.ArgumentParser(description="Generate average plots from fio results.")
+parser.add_argument("--raw", action="store_true", help="Save plots to the 'raw' directory")
+args = parser.parse_args()
+
 LAT_RESULTS_FILE = "logs/fio_lat_results.dat"
-PLOTS_PATH = "./plots/latency"
+PLOTS_PATH = "./plots/latency/raw" if args.raw else "./plots/latency"
 
 df = pd.read_csv(LAT_RESULTS_FILE, sep="\s+", skiprows=0, names=[
     "RunID", "BS", "Avg_SLAT", "Avg_CLAT", "Avg_LAT",

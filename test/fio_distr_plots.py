@@ -1,12 +1,16 @@
+import argparse
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import matplotlib.pyplot as plt
 import os
 
-RESULTS_FILE = "logs/fio_results.dat"
-PLOTS_PATH = "./plots/histograms"
+parser = argparse.ArgumentParser(description="Generate average plots from fio results.")
+parser.add_argument("--raw", action="store_true", help="Save plots to the 'raw' directory")
+args = parser.parse_args()
 
+RESULTS_FILE = "logs/fio_results.dat"
+PLOTS_PATH = "./plots/histograms/raw" if args.raw else "./plots/histograms"
 
 df = pd.read_csv(RESULTS_FILE, sep=r"\s+", skiprows=0, names=["RunID", "WBS", "RBS", "BW", "IOPS", "SLAT", "CLAT", "LAT", "MODE"])
 
