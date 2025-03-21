@@ -1,4 +1,4 @@
-import arparse
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -11,7 +11,7 @@ args = parser.parse_args()
 LAT_RESULTS_FILE = "logs/fio_lat_results.dat"
 PLOTS_PATH = "./plots/latency/raw" if args.raw else "./plots/latency"
 
-df = pd.read_csv(LAT_RESULTS_FILE, sep="\s+", skiprows=0, names=[
+df = pd.read_csv(LAT_RESULTS_FILE, sep=r"\s+", skiprows=0, names=[
     "RunID", "BS", "Avg_SLAT", "Avg_CLAT", "Avg_LAT",
     "Max_SLAT", "Max_CLAT", "Max_LAT",
     "P95_SLAT", "P95_CLAT", "P95_LAT", "RW_MIX"

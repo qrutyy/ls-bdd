@@ -1,9 +1,12 @@
 #!/bin/bash
 
 JOBS_NUM=4
-IO_DEPTH=16
-RUNS=4
+IO_DEPTH=32
+RUNS=25
 BRD_SIZE=2
+DAST="sl"
+TYPE="lf"
+
 
 LOGS_PATH="logs"
 PLOTS_PATH="./plots"
@@ -41,7 +44,8 @@ prepare_env() {
     echo -e "\nCleaning the logs directory"
     make clean > /dev/null
     mkdir -p $LOGS_PATH $PLOTS_PATH/histograms/{write,read,raw/{write,read}} \
-        $PLOTS_PATH/avg/{write,read,raw/{write,read}}
+        $PLOTS_PATH/avg/{write,read,raw/{write,read} \ 
+		$PLOTS_PATH/latency/raw}
 }
 
 reinit_lsvbd() {
@@ -52,12 +56,12 @@ reinit_lsvbd() {
 	modprobe -r brd
     modprobe brd rd_nr=1 rd_size=$((BRD_SIZE * 1048576))
     
-	make -C ../src init_no_recompile DS=sl TY=lf > /dev/null
+	make -C ../src init_no_recompile DS=${DAST} TY=${TYPE} > /dev/null
 }
 
 workload_independent_preconditioning() {
     local wbs=$1
-    fio --name=prep --rw=write --bs=${wbs}K --numjobs=1 --iodepth=1 --size=2G \
+    fio --name=prep --rw=write --bs=${wbs}K --numjobs=1 --iodepth=1 --size=${BRD_SIZE}G \
         --filename=/dev/lsvbd1 --direct=1 --output="$LOGS_PATH/preconditioning.log"
 }
 
@@ -72,17 +76,13 @@ extract_all_metrics() {
 	    local bw=$(grep -oP 'WRITE: bw=[0-9]+MiB/s \(\K[0-9]+' "$log_file" | head -1)
 		if [[ -z "$bw" ]]; then
 			bw_gb="$(grep -oP 'WRITE: bw=.*\(([0-9]+\.[0-9]+)GB/s\)' "$log_file" | grep -oP '[0-9]+\.[0-9]+' | tail -n1)"
-			echo $bw_gb
 			bw=$(echo "$bw_gb * 1000" | bc)
-			echo $bw
 		fi
 	else
 		local bw=$(grep -oP 'READ: bw=[0-9]+MiB/s \(\K[0-9]+' "$log_file" | head -1)
 		if [[ -z "$bw" ]]; then
 			bw_gb="$(grep -oP 'READ: bw=.*\(([0-9]+\.[0-9]+)GB/s\)' "$log_file" | grep -oP '[0-9]+\.[0-9]+' | tail -n1)"
-			echo $bw_gb
 			bw=$(echo "$bw_gb * 1000" | bc)
-			echo $bw
 		fi
 	fi
 
@@ -143,7 +143,7 @@ run_tests() {
     for mode in "write" "read"; do
         echo -e "\nRunning $mode tests on $device\n"
         for bs in "${BS_LIST[@]}"; do
-            workload_independent_preconditioning "128"
+            workload_independent_preconditioning "$bs"
             for i in $(seq 1 $RUNS); do
                 echo "Run $i of $RUNS..."
                 log_file="$LOGS_PATH/fio_${mode:0:1}_run_${i}.log"
