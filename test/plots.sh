@@ -14,9 +14,10 @@ HISTOGRAM_PLOTS_SCRIPT="fio_distr_plots.py"
 AVG_PLOTS_SCRIPT="avg_plots.py"
 LATENCY_PLOTS_SCRIPT="lat_plots.py"
 
-BS_LIST=("4K" "8K" "16K")
+BS_LIST=("4K" "8K" "16K" "32K")
 # RBS_LIST=("4K" "8K" "16K") 
 # Can be used to benchmark read operations (bio splits)
+# Not used in benchmarking bc its kinda more related to optional functionality
 
 LATENCY_WRBS_LIST=("4K" "8K" "16K") ## SNIA recommends 0.5K also, need some convertion
 RW_MIXES=("0-100" "65-35" "100-0") ## Write to read ops ratio
@@ -34,6 +35,30 @@ prioritise_fio() {
 usage() {
     echo "Usage: $0 [--io_depth number] [--jobs_num number]"
     exit 1
+}
+
+prepare_env() {
+    echo -e "\nCleaning the logs directory"
+    make clean > /dev/null
+    mkdir -p $LOGS_PATH $PLOTS_PATH/histograms/{write,read,raw/{write,read}} \
+        $PLOTS_PATH/avg/{write,read,raw/{write,read}}
+}
+
+reinit_lsvbd() {
+    make -C ../src exit DBI=1 > /dev/null
+    
+	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
+    
+	modprobe -r brd
+    modprobe brd rd_nr=1 rd_size=$((BRD_SIZE * 1048576))
+    
+	make -C ../src init_no_recompile DS=sl TY=lf > /dev/null
+}
+
+workload_independent_preconditioning() {
+    local wbs=$1
+    fio --name=prep --rw=write --bs=${wbs}K --numjobs=1 --iodepth=1 --size=2G \
+        --filename=/dev/lsvbd1 --direct=1 --output="$LOGS_PATH/preconditioning.log"
 }
 
 extract_all_metrics() {
@@ -111,144 +136,81 @@ extract_latency_metrics() {
     echo "$run_id $bs $avg_slat $avg_clat $avg_lat $max_slat $max_clat $max_lat $p95_slat $p95_clat $p95_lat $rw_mix" >> "$LAT_RESULTS_FILE"
 }
 
-run_latency_test() {
-    local bs=$1
-    local rw_mix=$2
-    local log_file="$LOGS_PATH/latency_${bs}_${rw_mix}"
-    
-    echo "Running latency test: Block Size=$bs, RW Mix=$rw_mix..."
-	rw_mix_read=$(echo "$rw_mix" | cut -d'-' -f1)
-	rw_mix_write=$(echo "$rw_mix" | cut -d'-' -f2)
-	
-	fio --name=latency_test --rw=randrw --rwmixread=${rw_mix_read} --rwmixwrite=${rw_mix_write} --bs=${bs} --numjobs=1 --iodepth=1 --time_based --runtime=3 --direct=1 --write_lat_log=$log_file --ioengine=io_uring --filename=/dev/lsvbd1
+run_tests() {
+    local device=$1 is_raw=$2 mode log_file fs_flag extra_args
+    fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=ram0" || echo "")
+
+    for mode in "write" "read"; do
+        echo -e "\nRunning $mode tests on $device\n"
+        for bs in "${BS_LIST[@]}"; do
+            workload_independent_preconditioning "128"
+            for i in $(seq 1 $RUNS); do
+                echo "Run $i of $RUNS..."
+                log_file="$LOGS_PATH/fio_${mode:0:1}_run_${i}.log"
+                extra_args=$([[ $mode == "read" ]] && echo "RBS=$bs" || echo "")
+
+                make fio_perf_${mode:0:1}_opt $fs_flag ID=$IO_DEPTH NJ=$JOBS_NUM IN=$i $extra_args > "$log_file"
+                extract_all_metrics "$log_file" "$i" "$bs" "$([[ $mode == "write" ]] && echo "0" || echo "$bs")" "$mode"
+            done
+            reinit_lsvbd
+        done
+
+        echo "Data collected in $RESULTS_FILE"
+        python3 "$AVG_PLOTS_SCRIPT" $([[ $is_raw -eq 1 ]] && echo "--raw")
+        python3 "$HISTOGRAM_PLOTS_SCRIPT" $([[ $is_raw -eq 1 ]] && echo "--raw")
+        make clean_logs > /dev/null
+    done
 }
 
-workload_independent_preconditioning() {
-	local wbs=$1
-    echo "Running workload independent pre-conditioning..."
-    fio --name=prep --rw=write --bs=${wbs}K --numjobs=1 --iodepth=1 --size=2G --filename=/dev/lsvbd1 --direct=1 --output="$LOGS_PATH/preconditioning.log"
+run_latency_tests() {
+    local device=$1 is_raw=$2 bs rw_mix log_file
+
+    echo "Starting SNIA Latency Benchmark on $device..."
+    for rw_mix in "${RW_MIXES[@]}"; do
+        for bs in "${LATENCY_WRBS_LIST[@]}"; do
+            echo -e "\nPerforming a block device warm-up..."
+            workload_independent_preconditioning "$bs"
+
+            for i in $(seq 1 $RUNS); do
+                echo "Run $i of $RUNS..."
+                log_file="$LOGS_PATH/latency_${bs}_${rw_mix}"
+                fio --name=latency_test --rw=randrw --rwmixread=${rw_mix%-*} --rwmixwrite=${rw_mix#*-} \
+                    --bs=${bs} --numjobs=1 --iodepth=1 --time_based --runtime=3 --direct=1 \
+                    --write_lat_log=$log_file --ioengine=io_uring --filename=/dev/$device > /dev/null
+                extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
+            done
+
+            reinit_lsvbd
+        done
+    done
+
+    python3 "$LATENCY_PLOTS_SCRIPT" $([[ $is_raw -eq 1 ]] && echo "--raw")
+    make clean_logs > /dev/null
 }
 
-# add data-structure
-reinit_lsvbd() {
-	make -C ../src exit DBI=1 > /dev/null
-
-	echo -e "\nPage cache and Dentry flushing"
-	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches 
-
-	modprobe -r brd
-	modprobe brd rd_nr=1 rd_size=$((BRD_SIZE * 1048576))
-	
-	make -C ../src init_no_recompile DS=sl TY=lf  > /dev/null
-	
-}
-
-# Parse options using getopts
+# Parse options
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --io_depth)
-            IO_DEPTH="$2"
-            shift 
-            ;;
-        --jobs_num)
-            JOBS_NUM="$2"
-            shift 
-            ;;
-		--brd_size)
-			BRD_SIZE="$2"
-			shift
-			;;
-        -h|--help)
-            usage
-            ;;
-        *)
-            echo "Unknown option: $1"
-            usage
-            ;;
+        --io_depth) IO_DEPTH="$2"; shift ;;
+        --jobs_num) JOBS_NUM="$2"; shift ;;
+        --brd_size) BRD_SIZE="$2"; shift ;;
+        -h|--help) echo "Usage: $0 [--io_depth number] [--jobs_num number]"; exit 1 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
     esac
     shift
 done
 
+prepare_env
+
+# Run tests for LSVBD
+run_tests "lsvbd1" 0
+run_latency_tests "lsvbd1" 0
+
+# Run tests for RAMDISK (raw mode)
+run_tests "ram0" 1
+run_latency_tests "ram0" 1
+
+echo "Histograms, AVG plots, and statistics saved in $PLOTS_PATH"
+
 echo -e "\nCleaning the logs directory"
 make clean > /dev/null
-
-mkdir -p $LOGS_PATH $PLOTS_PATH/histograms $PLOTS_PATH/histograms/write $PLOTS_PATH/histograms/read $PLOTS_PATH/avg $PLOTS_PATH/avg/write $PLOTS_PATH/avg/read
-
-### DISTRIBUTION + SNIA BENCHMARK ###
-
-## WRITE TESTS ##
-
-echo -e "\nRunning write tests\n"
-
-for bs in "${BS_LIST[@]}"; do 
-
-	workload_independent_preconditioning "128"
-
-	for i in $(seq 1 $RUNS); do
-		echo "Run $i of $RUNS..."
-
-		LOG_FILE="$LOGS_PATH/fio_w_run_${i}.log"
-		# LOG_FILE is used for simpler iops and bw results parsing
-		# Latency is parsed from fio generated log files
-
-		make fio_perf_w_opt ID=$IO_DEPTH NJ=$JOBS_NUM IN=$i > "$LOG_FILE"
-		extract_all_metrics "$LOG_FILE" "$i" "$bs" "0" "write"
-	done
-	reinit_lsvbd
-done
-
-echo "Data collected in $RESULTS_FILE"
-
-python3 "$AVG_PLOTS_SCRIPT"
-python3 "$HISTOGRAM_PLOTS_SCRIPT" 
-make clean_logs > /dev/null
-
-## READ TESTS ##
-
-for bs in "${BS_LIST[@]}"; do
-	echo -e "\n\nRunning read test for rbs=$rbs..."
-		
-	workload_independent_preconditioning "$bs"
-
-	for i in $(seq 1 $RUNS); do
-		echo "Run $i of $RUNS..."
-
-		LOG_FILE="$LOGS_PATH/fio_r_run_${i}.log"
-
-		make fio_perf_r_opt RBS=$rbs ID=$IO_DEPTH NJ=$JOBS_NUM IN=$i > "$LOG_FILE"
-		extract_all_metrics "$LOG_FILE" "$i" "$bs" "$bs" "read"
-	done
-	
-	reinit_lsvbd
-done 
-
-echo "Data collected in $RESULTS_FILE"
-
-python3 "$AVG_PLOTS_SCRIPT"
-python3 "$HISTOGRAM_PLOTS_SCRIPT" 
-make clean_logs > /dev/null
-
-### LATENCY SNIA BENCHMARK ### TOFIX
-
-echo "Starting SNIA Latency Benchmark..."
-
-for rw_mix in "${RW_MIXES[@]}"; do
-    for bs in "${LATENCY_WRBS_LIST[@]}"; do
-
-		echo -e "\nPerfofm a block device warm up"
-		workload_independent_preconditioning "$bs"
-		
-		for i in $(seq 1 $RUNS); do
-			echo "Run $i of $RUNS..."
-			run_latency_test "$bs" "$rw_mix"
-			extract_latency_metrics "$i" "$LOGS_PATH/latency_${bs}_${rw_mix}" "$bs" "$rw_mix"
-		done
-		
-		reinit_lsvbd
-	done
-done
-
-python3 "$LATENCY_PLOTS_SCRIPT"
-#make clean_logs > /dev/null
-
-echo "Histograms, AVG plots and statistics saved in $PLOTS_PATH"
