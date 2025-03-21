@@ -31,8 +31,13 @@ def plot_metric(metric, ylabel, filename):
     for mode in df["MODE"].unique():
         for (wbs, rbs), subset in df.groupby(["WBS", "RBS"]):
             subset = subset[subset["MODE"] == mode].sort_values(by="RunID")
+            if rbs == 0:
+                label_f = f"WBS={wbs}"
+            else:
+                label_f = f"WBS={wbs}, RBS={rbs}"
+
             if not subset.empty:
-                plt.plot(subset["RunID"], subset[metric], marker='o', linestyle='-', linewidth=2, color=colors[i % len(colors)], label=f"WBS={wbs}, RBS={rbs}")
+                plt.plot(subset["RunID"], subset[metric], marker='o', linestyle='-', linewidth=2, color=colors[i % len(colors)], label=label_f)
             i += 1
 
         if plt.gca().has_data():
