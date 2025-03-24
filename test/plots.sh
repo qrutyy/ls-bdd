@@ -7,7 +7,6 @@ BRD_SIZE=2
 DAST="sl"
 TYPE="lf"
 
-
 LOGS_PATH="logs"
 PLOTS_PATH="./plots"
 RESULTS_FILE="logs/fio_results.dat"
@@ -22,7 +21,7 @@ BS_LIST=("4K" "8K" "16K" "32K")
 # Can be used to benchmark read operations (bio splits)
 # Not used in benchmarking bc its kinda more related to optional functionality
 
-LATENCY_WRBS_LIST=("4K" "8K" "16K") ## SNIA recommends 0.5K also, need some convertion
+LATENCY_WRBS_LIST=("4K" "8K" "16K" "32K") ## SNIA recommends 0.5K also, need some convertion
 RW_MIXES=("0-100" "65-35" "100-0") ## Write to read ops ratio
 
 # Function to prioritize all the fio processes (including forks in case of numjobs > 1)
@@ -139,6 +138,8 @@ extract_latency_metrics() {
 run_tests() {
     local device=$1 is_raw=$2 mode log_file fs_flag extra_args
     fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=ram0" || echo "")
+	
+	echo -e "Starting Read and Write operations Benchmark on $device...\n"
 
     for mode in "write" "read"; do
         echo -e "\nRunning $mode tests on $device\n"
@@ -165,7 +166,7 @@ run_tests() {
 run_latency_tests() {
     local device=$1 is_raw=$2 bs rw_mix log_file
 
-    echo "Starting SNIA Latency Benchmark on $device..."
+    echo -e "Starting SNIA-complied Latency Benchmark on $device...\n"
     for rw_mix in "${RW_MIXES[@]}"; do
         for bs in "${LATENCY_WRBS_LIST[@]}"; do
             echo -e "\nPerforming a block device warm-up..."
@@ -175,8 +176,9 @@ run_latency_tests() {
                 echo "Run $i of $RUNS..."
                 log_file="$LOGS_PATH/latency_${bs}_${rw_mix}"
                 fio --name=latency_test --rw=randrw --rwmixread=${rw_mix%-*} --rwmixwrite=${rw_mix#*-} \
-                    --bs=${bs} --numjobs=1 --iodepth=1 --time_based --runtime=3 --direct=1 \
-                    --write_lat_log=$log_file --ioengine=io_uring --filename=/dev/$device > /dev/null
+                    --bs=${bs} --numjobs=1 --iodepth=1 --time_based --runtime=30 --direct=1 --hipri=1 \
+                    --write_lat_log=$log_file --ioengine=io_uring --registerfiles=1 \
+					--filename=/dev/$device > /dev/null
                 extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
             done
 

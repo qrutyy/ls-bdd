@@ -10,9 +10,9 @@ FS?=1000
 # IO engine to use in FIO (libaio\io_uring)
 IO?=io_uring 
 # Number of fio jobs to run
-NJ?=1
+NJ?=4
 # IO depth num
-ID?=1
+ID?=32
 # INDEX
 IN?=""
 # Fio targets filename
