@@ -43,7 +43,7 @@ for mode in df["MODE"].unique():
                 if rbs == 0: 
                     base_title = f"(WBS={wbs})"
                 else: 
-                    base_title = f"(RBS={rbs} after WBS={wbs})"
+                    base_title = f"(RBS={rbs})"
 
                 if label == "BW":
                     plt.xlabel("Bandwidth (MB/s)")

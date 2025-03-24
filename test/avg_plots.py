@@ -11,6 +11,8 @@ args = parser.parse_args()
 RESULTS_FILE = "logs/fio_results.dat"
 PLOTS_PATH = "./plots/avg/raw" if args.raw else "./plots/avg"
 
+DEVICE = "ram0" if args.raw else "lsvbd1"
+
 colors = ['green', 'red', 'blue', 'brown', 'purple']
 
 df = pd.read_csv(RESULTS_FILE, sep=r"\s+", skiprows=0, names=["RunID", "WBS", "RBS", "BW", "IOPS", "SLAT", "CLAT", "LAT", "MODE"])
@@ -49,7 +51,10 @@ def plot_metric(metric, ylabel, filename):
 
         plt.ylabel(ylabel)
         plt.xlabel("Run number")
-        plt.title(f"Throughput of {mode} operations ({metric.lower()})\n")
+        if (mode == "bw"):
+            plt.title(f"Throughput of {mode} operations with {DEVICE}\n")
+        else:
+             plt.title(f"Total number of {mode} operations per second (IOPS) with {DEVICE}\n")
         plt.savefig(save_path)
         plt.clf()
         print(f"Saved: {save_path}")

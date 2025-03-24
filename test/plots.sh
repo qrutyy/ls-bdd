@@ -12,7 +12,7 @@ PLOTS_PATH="./plots"
 RESULTS_FILE="logs/fio_results.dat"
 LAT_RESULTS_FILE="logs/fio_lat_results.dat"
 
-HISTOGRAM_PLOTS_SCRIPT="fio_distr_plots.py"
+HISTOGRAM_PLOTS_SCRIPT="distr_plots.py"
 AVG_PLOTS_SCRIPT="avg_plots.py"
 LATENCY_PLOTS_SCRIPT="lat_plots.py"
 
