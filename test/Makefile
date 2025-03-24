@@ -35,10 +35,10 @@ fio_perf:
 	make fio_perf_r_clean
 
 fio_perf_w_opt:
-	$(MAKE) fio_perf_template MODE=randwrite BS=$(WBS) EXTRA_OPTS="--time_based --runtime=30 --cmdprio_percentage=100 --registerfiles=1 --fixedbufs=0 --hipri=0  --cpus_allowed_policy=shared --prio=0 "
+	$(MAKE) fio_perf_template MODE=randwrite BS=$(WBS) EXTRA_OPTS="--time_based --runtime=30 --cmdprio_percentage=100 --registerfiles=1 --fixedbufs=1 --hipri=0  --cpus_allowed_policy=shared --prio=0 "
 
 fio_perf_r_opt:
-	$(MAKE) fio_perf_template MODE=randread BS=$(RBS) EXTRA_OPTS="--time_based --runtime=30 --cmdprio_percentage=100 --registerfiles=1 --fixedbufs=0 --hipri=0  --cpus_allowed_policy=shared --prio=0"
+	$(MAKE) fio_perf_template MODE=randread BS=$(RBS) EXTRA_OPTS="--time_based --runtime=30 --cmdprio_percentage=100 --registerfiles=1 --fixedbufs=1 --hipri=0  --cpus_allowed_policy=shared --prio=0"
 
 fio_perf_wr_opt:
 	$(MAKE) fio_perf_template MODE=randwrite BS=$(WBS) EXTRA_OPTS="--size=$(FS)M --cmdprio_percentage=100 --registerfiles=1 --hipri=0"

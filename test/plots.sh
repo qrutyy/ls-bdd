@@ -176,9 +176,9 @@ run_latency_tests() {
                 echo "Run $i of $RUNS..."
                 log_file="$LOGS_PATH/latency_${bs}_${rw_mix}"
                 fio --name=latency_test --rw=randrw --rwmixread=${rw_mix%-*} --rwmixwrite=${rw_mix#*-} \
-                    --bs=${bs} --numjobs=1 --iodepth=1 --time_based --runtime=30 --direct=1 --hipri=1 \
-                    --write_lat_log=$log_file --ioengine=io_uring --registerfiles=1 \
-					--filename=/dev/$device > /dev/null
+                    --bs=${bs} --numjobs=1 --iodepth=1 --time_based --runtime=30 --direct=1 \
+                    --write_lat_log=$log_file --ioengine=io_uring --registerfiles=1 --hipri=0 \
+					--fixedbufs=1 --filename=/dev/$device > /dev/null
                 extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
             done
 
