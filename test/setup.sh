@@ -98,6 +98,6 @@ echo -e "\nPage cache and Dentry flushing"
 sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
 
 echo -e "\nSwap cache flushing"
-sudo swapoff -a && sudo swapon -a
+sudo swapoff -a
 
 free -m

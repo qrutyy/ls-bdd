@@ -20,7 +20,7 @@ IOPS_BS_LIST=("4K" "8K" "16K" "32K" "64K" "128K")
 # RBS_LIST=("4K" "8K" "16K") 
 # Can be used to benchmark read operations (bio splits)
 # Not used in benchmarking bc its kinda more related to optional functionality
-IOPS_RW_MIXES=("100-0" "95-5" "65-35" "50-50" "35-65" "5-95" "0-100")
+IOPS_RW_MIXES=("100-0" "65-35" "0-100") # SNIA recommends more mixes (like 95-5, 50-50, ...)
 
 LAT_BS_LIST=("2K" "4K" "8K") ## SNIA recommends 0.5K also, need some convertion, replaced it with 2K
 LAT_RW_MIXES=("0-100" "65-35" "100-0") # Write to read ops ratio
@@ -74,10 +74,10 @@ extract_iops_metrics() {
     local bs=$3
     local mix=$4
 
-    local iops=$(grep -oP 'IOPS=\K[0-9]+(\.[0-9]+)?k?' "$log_file" | sed 's/k//g' | awk '{s+=$1} END {print s}')
-    echo "DEBUG: Extracted IOPS='$iops'"
+	local iops=$(grep -oP 'IOPS=\K[0-9]+(\.[0-9]+)?k?' "$log_file" | sed 's/k//g' | awk '{s+=$1} END {print s}')
+	echo "DEBUG: Extracted IOPS='$iops' BW='$bw'"
 
-    echo "$run_id $bs $mix 0 $iops iops" >> "$RESULTS_FILE"
+	echo "$run_id $wbs $rbs $bw $iops 0 0 0 $mode" >> "$RESULTS_FILE"
 }
 
 extract_tp_metrics() {
@@ -151,17 +151,19 @@ extract_latency_metrics() {
 
 run_tp_tests() {
     local device=$1 is_raw=$2 rw_mix log_file fs_flag extra_args
-    fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=ram0" || echo "")
+    fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=nullb0" || echo "")
 	
-	echo -e "Starting Throughput operations Benchmark on $device...\n"
+	echo -e "---Starting Throughput operations Benchmark on $device...---\n"
 
 	for rw_mix in "${TP_RW_MIXES[@]}"; do
-        echo -e "\nRunning $rw_mix tests on $device\n"
+        echo -e "Running $rw_mix tests on $device\n"
 		rwmix_read="${rw_mix%-*}"
 		rwmix_write="${rw_mix#*-}"
 
         for bs in "${TP_BS_LIST[@]}"; do
-            workload_independent_preconditioning "$bs"
+			if [ rw_mix != "0-100" ]; then
+                workload_independent_preconditioning "$bs"
+            fi
 
             for i in $(seq 1 $RUNS); do
                 echo "Run $i of $RUNS..."
@@ -184,18 +186,20 @@ run_tp_tests() {
 
 run_iops_tests() {
     local device=$1 is_raw=$2 rw_mix log_file fs_flag extra_args
-    fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=ram0" || echo "")
+    fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=nullb0" || echo "")
 	
-	echo -e "Starting IOPS Benchmark on $device...\n"
+	echo -e "---Starting IOPS Benchmark on $device...\n---"
 
 	for rw_mix in "${IOPS_RW_MIXES[@]}"; do
-        echo -e "\nRunning $rw_mix tests on $device\n"
+        echo -e "Running $rw_mix tests on $device\n"
 		rwmix_read="${rw_mix%-*}"
 		rwmix_write="${rw_mix#*-}"
 
         for bs in "${IOPS_BS_LIST[@]}"; do
-            workload_independent_preconditioning "$bs"
-            
+    		if [ rw_mix != "0-100" ]; then
+                workload_independent_preconditioning "$bs"
+            fi
+        
 			for i in $(seq 1 $RUNS); do
                 echo "Run $i of $RUNS..."
                 log_file="$LOGS_PATH/fio_${rw_mix:0:1}_run_${i}.log"
@@ -218,11 +222,13 @@ run_iops_tests() {
 run_latency_tests() {
     local device=$1 is_raw=$2 bs rw_mix log_file
 
-    echo -e "Starting SNIA-complied Latency Benchmark on $device...\n"
+    echo -e "---Starting SNIA-complied Latency Benchmark on $device...---\n"
     for rw_mix in "${LAT_RW_MIXES[@]}"; do
         for bs in "${LAT_BS_LIST[@]}"; do
-            echo -e "\nPerforming a block device warm-up..."
-            workload_independent_preconditioning "$bs"
+            echo -e "Performing a block device warm-up..."
+			if [ rw_mix != "0-100" ]; then
+                workload_independent_preconditioning "$bs"
+            fi
 
             for i in $(seq 1 $RUNS); do
                 echo "Run $i of $RUNS..."
@@ -230,7 +236,7 @@ run_latency_tests() {
                 fio --name=latency_test --rw=randrw --rwmixread=${rw_mix%-*} --rwmixwrite=${rw_mix#*-} \
                     --bs=${bs} --numjobs=1 --iodepth=1 --time_based --runtime=10 --direct=1 \
                     --write_lat_log=$log_file --ioengine=io_uring --registerfiles=1 --hipri=0 \
-					--fixedbufs=1 --filename=/dev/$device > /dev/null
+					--cpus_allowed=0-6 --fixedbufs=1 --filename=/dev/$device > /dev/null
                 extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
             done
 
@@ -257,14 +263,14 @@ done
 prepare_env
 
 # Run tests for LSVBD
-run_tp_tests "lsvbd1" 0
+#run_tp_tests "lsvbd1" 0
 run_iops_tests "lsvbd1" 0
 run_latency_tests "lsvbd1" 0
 
 # Run tests for RAMDISK (raw mode)
-run_tp_tests "ram0" 1
-run_iops_tests "ram0" 1
-run_latency_tests "ram0" 1
+run_tp_tests "nullb0" 1
+run_iops_tests "nullb0" 1
+run_latency_tests "nullb0" 1
 
 echo "Histograms, AVG plots, and statistics saved in $PLOTS_PATH"
 

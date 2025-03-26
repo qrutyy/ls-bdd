@@ -59,7 +59,8 @@ fio_perf_mix:
 		--fixedbufs=1 \
 		--prio=0 \
 		--cpus_allowed_policy=shared \
-		--filename=/dev/$(FS)
+		--filename=/dev/$(FS) \
+		--cpus_allowed=0-6
 
 clean:
 	rm -rf *.svg *.data *.folded *.old *.state *.log *.dat
