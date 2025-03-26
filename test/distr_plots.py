@@ -5,66 +5,62 @@ import scipy.stats as stats
 import matplotlib.pyplot as plt
 import os
 
-parser = argparse.ArgumentParser(description="Generate average plots from fio results.")
+parser = argparse.ArgumentParser(description="Generate distribution plots from fio results.")
 parser.add_argument("--raw", action="store_true", help="Save plots to the 'raw' directory")
 args = parser.parse_args()
 
 RESULTS_FILE = "logs/fio_results.dat"
 PLOTS_PATH = "./plots/histograms/raw" if args.raw else "./plots/histograms"
 
-df = pd.read_csv(RESULTS_FILE, sep=r"\s+", skiprows=0, names=["RunID", "WBS", "RBS", "BW", "IOPS", "SLAT", "CLAT", "LAT", "MODE"])
+df = pd.read_csv(RESULTS_FILE, sep=r"\s+", skiprows=0, names=["RunID", "BS", "MIX", "BW", "IOPS", "MODE"])
 
 def clean_numeric(series):
     return pd.to_numeric(series, errors='coerce')
 
 df["BW"] = clean_numeric(df["BW"])
 df["IOPS"] = clean_numeric(df["IOPS"])
+df = df.dropna()
 
 columns = ["BW", "IOPS"]
-
 os.makedirs(PLOTS_PATH, exist_ok=True)
 
-# Process each (WBS, RBS) combination separately
 for mode in df["MODE"].unique():
-    for wbs in df["WBS"].unique():
-        for rbs in df["RBS"].unique():
-            subset = df[(df["WBS"] == wbs) & (df["RBS"] == rbs) & (df["MODE"] == mode)]
+    mode_dir = os.path.join(PLOTS_PATH, mode)
+    os.makedirs(mode_dir, exist_ok=True)
+
+    for bs in df["BS"].unique():
+        for mix in df["MIX"].unique():
+            subset = df[(df["BS"] == bs) & (df["MIX"] == mix) & (df["MODE"] == mode)]
 
             if subset.empty:
-                print(f"Skipping empty dataset for WBS={wbs}, RBS={rbs}")
+                print(f"Skipping empty dataset for BS={bs}, MIX={mix}")
                 continue
 
-            block_plot_path = f"{PLOTS_PATH}"
-            os.makedirs(block_plot_path, exist_ok=True)
-
-            for i, label in enumerate(columns):
+            for label in columns:
                 plt.figure(figsize=(8, 6))
                 plt.hist(subset[label].dropna(), bins=10, edgecolor='black')
-                if rbs == 0: 
-                    base_title = f"(WBS={wbs})"
-                else: 
-                    base_title = f"(RBS={rbs})"
+
+                base_title = f"(BS={bs}, MIX={mix})"
 
                 if label == "BW":
                     plt.xlabel("Bandwidth (MB/s)")
-                    plt.title(f"Histogram of {mode} operations throughput (bw) {base_title}\n")
+                    plt.title(f"Histogram of {mix} operations mix throughput (BW) {base_title}\n")
                 else:
-                    plt.ylabel("IOPS (k/s)")
-                    plt.title(f"Histogram of {mode} operations throughput (iops) {base_title}\n")
+                    plt.xlabel("IOPS (K/s)")
+                    plt.title(f"Histogram of {mix} operations mix throughput (IOPS) {base_title}\n")
 
                 plt.ylabel("Frequency")
                 plt.tight_layout()
-            
-                if (rbs == 0): 
-                    plt.savefig(f"{block_plot_path}/write/{mode}_{label.lower()}_W{wbs}_R{rbs}_histogram.png")
-                else:
-                    plt.savefig(f"{block_plot_path}/read/{mode}_{label.lower()}_W{wbs}_R{rbs}_histogram.png")
 
+                save_path = os.path.join(mode_dir, f"{mode}_{label.lower()}_BS{bs}_MIX{mix}.png")
+                plt.savefig(save_path)
                 plt.close()
+                print(f"Saved: {save_path}")
 
-            # Normality Tests
-            print(f"\n{mode} WBS={wbs}, RBS={rbs} - Normality Tests:")
-            with open(f"{block_plot_path}/{mode}_stats_summary.txt", "w") as f:
+            print(f"\n{mode} BS={bs}, MIX={mix} - Normality Tests:")
+            stats_file = os.path.join(mode_dir, f"{mode}_stats_summary.txt")
+
+            with open(stats_file, "a") as f:
                 for label in columns:
                     data_values = subset[label].dropna().values
 
@@ -75,35 +71,14 @@ for mode in df["MODE"].unique():
                     stat1, p1 = stats.normaltest(data_values)
                     stat2, p2 = stats.shapiro(data_values)
                     normality_result = f"{label} Normality Test: normaltest p={p1:.5f}, shapiro p={p2:.5f}"
- 
+
                     if p1 > 0.05 or p2 > 0.05:
-                        normality_result += f"{label} is likely normally distributed."
+                        normality_result += f" → {label} is likely normally distributed."
                     else:
-                        normality_result += f"{label} is NOT normally distributed."
-               
+                        normality_result += f" → {label} is NOT normally distributed."
+
                     f.write(normality_result + "\n")
                     print(normality_result)
 
+print("Analysis complete. Histograms and statistics saved.")
 
-                # Compute statistics (mean, std, confidence intervals)
-                means = subset[columns].mean()
-                stds = subset[columns].std(ddof=1)
-
-                # Compute 95% confidence intervals
-                conf_intervals = stats.t.ppf(0.975, df=len(subset) - 1) * stats.sem(subset[columns], axis=0)
-
-                def round_to_error(value, error):
-                    if error == 0:
-                        return round(value)
-                    magnitude = -int(np.floor(np.log10(error)))  
-                    rounded_error = round(error, magnitude)
-                    rounded_value = round(value, magnitude)
-                    return rounded_value, rounded_error
-
-                rounded_results = [round_to_error(m, c) for m, c in zip(means, conf_intervals)]
-                rounded_means, rounded_cis = zip(*rounded_results)
-
-                for i, label in enumerate(columns):
-                    f.write(f"{label}: {rounded_means[i]} ± {rounded_cis[i]}\n")
-
-print("Analysis complete. Histograms and statistics saved for each (WBS, RBS) combination.")
