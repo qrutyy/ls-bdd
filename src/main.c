@@ -717,7 +717,7 @@ static s32 lsbdd_set_redirect_bd(const char *arg, const struct kernel_param *kp)
 static inline void lsbdd_ds_cache_destroy(void)
 {
 	kmem_cache_destroy(cache_mng->ht_cache);
-	kmem_cache_destroy(cache_mng->sl_cache);
+	kmem_cache_destroy(cache_mng->sl_cache); // mem leak, bc slab is lost :) 
 	// to add rb-tree and b+ caches
 	kfree(cache_mng);
 }

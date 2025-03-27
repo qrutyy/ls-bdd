@@ -4,7 +4,7 @@ ccflags-y := 	-Wall					\
 		-Wno-unused-parameter			\
 		-Wformat				\
 		-std=gnu18				\
-		-g					\
+		-O2		\
 		-Werror=format-security			\
 		-Werror=implicit-function-declaration   \
 
