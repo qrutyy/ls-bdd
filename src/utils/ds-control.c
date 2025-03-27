@@ -73,18 +73,18 @@ mem_err:
 	return -ENOMEM;
 }
 
-void ds_free(struct data_struct *ds, struct cache_manager *cache_mng)
+void ds_free(struct data_struct *ds, struct cache_manager *cache_mng, struct cache_manager *value_cache)
 {
 	if (ds->type == BTREE_TYPE) {
 		btree_destroy(ds->structure.map_btree->head);
 		ds->structure.map_btree = NULL;
 	}
 	if (ds->type == SKIPLIST_TYPE) {
-		skiplist_free(ds->structure.map_list, cache_mng->sl_cache);
+		skiplist_free(ds->structure.map_list, cache_mng->sl_cache, value_cache);
 		ds->structure.map_list = NULL;
 	}
 	if (ds->type == HASHTABLE_TYPE) {
-		hashtable_free(ds->structure.map_hash, cache_mng->ht_cache);
+		hashtable_free(ds->structure.map_hash, cache_mng->ht_cache, value_cache);
 		ds->structure.map_hash = NULL;
 	}
 	if (ds->type == RBTREE_TYPE) {

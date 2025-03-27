@@ -314,7 +314,7 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 		pr_debug("End of read, Clone: size: %u, sector %llu, to_read = %d\n", clone_bio->bi_iter.bi_size,
 			 clone_bio->bi_iter.bi_sector, to_read_in_clone);
 	}
-
+	kmem_cache_free(lsbdd_sectors_cache, sectors);
 	return 0;
 
 split_err:
@@ -545,7 +545,7 @@ static s8 delete_bd(u16 index)
 		get_list_element_by_index(index)->vbd_disk = NULL;
 	}
 	if (get_list_element_by_index(index)->sel_data_struct) {
-		ds_free(get_list_element_by_index(index)->sel_data_struct, cache_mng);
+		ds_free(get_list_element_by_index(index)->sel_data_struct, cache_mng, lsbdd_value_cache);
 		get_list_element_by_index(index)->sel_data_struct = NULL;
 	}
 
@@ -770,6 +770,7 @@ static void __exit lsbdd_exit(void)
 		kfree(entry);
 	}
 
+	pr_info("destroyed sectors cache");
 	kmem_cache_destroy(lsbdd_sectors_cache);
 	kmem_cache_destroy(lsbdd_value_cache);
 	lsbdd_ds_cache_destroy();

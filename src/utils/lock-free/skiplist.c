@@ -80,7 +80,7 @@ alloc_fail:
 	return NULL;
 }
 
-void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache)
+void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache, struct kmem_cache *lsbdd_value_cache)
 {
 	struct skiplist_node *node = NULL;
 	struct skiplist_node *next = NULL;
@@ -88,6 +88,7 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache)
 	node = GET_NODE(sl->head->next[0]);
 	while (node) {
 		next = STRIP_MARK(node->next[0]);
+		kmem_cache_free(lsbdd_value_cache, node->value);
 		kmem_cache_free(sl_cache, node);
 		node = next;
 	}
