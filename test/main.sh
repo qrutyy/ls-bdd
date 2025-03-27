@@ -1,14 +1,14 @@
 #!/bin/bash
 
 DEPENDENCY_LIST=("fio" "make" "perf")
-BD_NAME="vdb"
-IO_DEPTH=16
+BD_NAME="ram0"
+IO_DEPTH=32
 VERIFY="false"
 SETUP="false"
 PERF="false"
 PLOTS="false"
-JOBS_NUM=1
-BRD_SIZE=2
+JOBS_NUM=6
+BRD_SIZE=5
 
 # Function to display help
 usage() {

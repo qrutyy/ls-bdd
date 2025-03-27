@@ -6,7 +6,7 @@ RO?=randread
 # Write operation type (write/randwrite)
 WO?=randwrite
 # File size (in MB)
-FS?=1000
+FS?=5000
 # IO engine to use in FIO (libaio\io_uring)
 IO?=io_uring 
 # Number of fio jobs to run

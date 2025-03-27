@@ -3,7 +3,7 @@
 JOBS_NUM=6
 IO_DEPTH=32
 RUNS=25
-BRD_SIZE=1
+BRD_SIZE=5
 DAST="sl"
 TYPE="lf"
 
@@ -151,7 +151,7 @@ extract_latency_metrics() {
 
 run_tp_tests() {
     local device=$1 is_raw=$2 rw_mix log_file fs_flag extra_args
-    fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=nullb0" || echo "")
+    fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=ram0" || echo "")
 	
 	echo -e "---Starting Throughput operations Benchmark on $device...---\n"
 
@@ -186,7 +186,7 @@ run_tp_tests() {
 
 run_iops_tests() {
     local device=$1 is_raw=$2 rw_mix log_file fs_flag extra_args
-    fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=nullb0" || echo "")
+    fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=ram0" || echo "")
 	
 	echo -e "---Starting IOPS Benchmark on $device...\n---"
 
@@ -263,14 +263,14 @@ done
 prepare_env
 
 # Run tests for LSVBD
-#run_tp_tests "lsvbd1" 0
+run_tp_tests "lsvbd1" 0
 run_iops_tests "lsvbd1" 0
 run_latency_tests "lsvbd1" 0
 
 # Run tests for RAMDISK (raw mode)
-run_tp_tests "nullb0" 1
-run_iops_tests "nullb0" 1
-run_latency_tests "nullb0" 1
+run_tp_tests "ram0" 1
+run_iops_tests "ram0" 1
+run_latency_tests "ram0" 1
 
 echo "Histograms, AVG plots, and statistics saved in $PLOTS_PATH"
 

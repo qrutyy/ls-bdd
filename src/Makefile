@@ -14,7 +14,7 @@ RO?=read
 # Write operation type (write/randwrite)
 WO?=write
 # File size (in MB)
-FS?=1000
+FS?=5000
 # IO engine to use in FIO (libaio\io_uring)
 IO?=libaio 
 # Number of fio jobs to run
@@ -24,7 +24,7 @@ ID?=1
 # Type of data-structures to be used in the driver (lf/sy) 
 TY?=lf
 # End block device name
-BD?=nullb0
+BD?=ram0
 
 # To build modules outside of the kernel tree, we run "make"
 # in the kernel source tree; the Makefile these then includes this

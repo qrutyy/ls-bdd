@@ -12,7 +12,7 @@ args = parser.parse_args()
 RESULTS_FILE = "logs/fio_results.dat"
 PLOTS_PATH = "./plots/avg/raw" if args.raw else "./plots/avg"
 
-DEVICE = "nullb0" if args.raw else "lsvbd1"
+DEVICE = "ram0" if args.raw else "lsvbd1"
 
 colors = ['green', 'red', 'blue', 'brown', 'purple']
 
