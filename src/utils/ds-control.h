@@ -36,7 +36,7 @@ struct cache_manager {
 };
 
 int ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mng);
-void ds_free(struct data_struct *ds, struct cache_manager *cache_mng);
+void ds_free(struct data_struct *ds, struct cache_manager *cache_mng, struct kmem_cache *value_cache);
 void *ds_lookup(struct data_struct *ds, sector_t key);
 void ds_remove(struct data_struct *ds, sector_t key);
 int ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng);

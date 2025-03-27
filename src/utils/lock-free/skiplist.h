@@ -9,7 +9,7 @@
 // SYNC GCC SPECIFIC
 // Can be set as gcc function __sync_val_compare_and_swap, both of them support atomicity so basically it doesn't matter (atomic-gcc.h even has a macro that makes it equal)
 
-#define SYNC_CAS(ptr, old, new) cmpxchg(ptr, old, new)
+#define SYNC_CAS(ptr, old, new) cmpxchg(ptr, old, (__typeof__(*ptr))new)
 #define SYNC_INC(ptr) atomic_inc(ptr)
 #define SYNC_SWAP(ptr, val) xchg(ptr, val)
 

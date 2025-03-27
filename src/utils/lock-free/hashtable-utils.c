@@ -74,7 +74,7 @@ void hashtable_free(struct hashtable *ht, struct kmem_cache *ht_cache, struct km
 		if (el && (u64)el->key > 0 && el->value) {
 			if (likely(el)) {
 				pr_debug("el: %p\n", el);
-				kmem_cache_free(lsbdd_value_cache, el->value)
+				kmem_cache_free(lsbdd_value_cache, el->value);
 				kmem_cache_free(ht_cache, el);
 			} else {
 				pr_err("Attempted to free an invalid object\n");

@@ -258,11 +258,18 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 
 	if (!curr_value) { // Read & Write sector starts aren't equal.
 		status = check_system_bio(redirect_manager, sectors, clone_bio);
-		IF_NULL_RETURN(!status, 0);
+		if (!status) {
+			kmem_cache_free(lsbdd_sectors_cache, sectors);
+			return 0;
+		}
+
 		pr_debug("READ: Sector: %llu isnt mapped\n", sectors->original);
 
 		prev_value = ds_prev(redirect_manager->sel_data_struct, sectors->original, prev_sector);
-		IF_NULL_RETURN(prev_value, 0);
+		if (!prev_value) {
+			kmem_cache_free(lsbdd_sectors_cache, sectors);
+			return 0;
+		}
 
 		sectors->redirect = prev_value->redirected_sector * SECTOR_SIZE + (sectors->original - *prev_sector) * SECTOR_SIZE;
 		to_end_of_block = (prev_value->redirected_sector * SECTOR_SIZE + prev_value->block_size) - sectors->redirect;
@@ -292,7 +299,10 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 		clone_bio->bi_iter.bi_size = (to_read_in_clone <= 0) ? to_end_of_block : to_read_in_clone;
 	} else if (curr_value->redirected_sector) { // Read & Write start sectors are equal.
 		status = check_system_bio(redirect_manager, sectors, clone_bio);
-		IF_NULL_RETURN(!status, 0);
+		if(!status) {
+			kmem_cache_free(lsbdd_sectors_cache, sectors);
+			return 0;
+		}
 
 		pr_debug("Found redirected sector: %llu, rs_bs = %u, main_bs = %u\n", (curr_value->redirected_sector),
 			 curr_value->block_size, main_bio->bi_iter.bi_size);

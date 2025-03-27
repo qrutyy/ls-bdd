@@ -73,7 +73,7 @@ mem_err:
 	return -ENOMEM;
 }
 
-void ds_free(struct data_struct *ds, struct cache_manager *cache_mng, struct cache_manager *value_cache)
+void ds_free(struct data_struct *ds, struct cache_manager *cache_mng, struct kmem_cache *value_cache)
 {
 	if (ds->type == BTREE_TYPE) {
 		btree_destroy(ds->structure.map_btree->head);
