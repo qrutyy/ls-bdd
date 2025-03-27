@@ -35,7 +35,7 @@ jobs:
     - name: Run checkpatch.pl on C/H files
       run: |
         find . \( -name '*.c' -o -name '*.h' \) -print0 | \
-        xargs -0 -n1 --no-run-if-empty ./checkpatch.pl --no-tree --terse --file
+        xargs -0 -n1 --no-run-if-empty ./checkpatch.pl --no-tree 
         # Warning: checkpatch should be executable and placed in current dir (./checkpatch.pl)
 
     - name: Set up Python and install Black

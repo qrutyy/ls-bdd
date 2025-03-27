@@ -48,8 +48,8 @@ Although, if you need more customizable fio testing - you can check `test/fio/` 
 
 In case of performance measuring `test/main.sh` and future analysis can be used. For example:
 ```
-make init DS=sl TY=lf BD=ram0
-cd ../test && ./main.sh -s -c --io_depth 16 --jobs_num 4 --bd_name ram0
+make init DS=sl TY=lf BD=<finite storage device>
+cd ../test && ./main.sh -s -c --io_depth 16 --jobs_num 4 --bd_name <finite storage device>
 ```
 It is able to run fio tests with pattern verification, plot generation (fio2gnuplot), flamegraph generation and system-side optimisation. For more information about modes usage - see source code or run `./test/main.sh -h`. 
 

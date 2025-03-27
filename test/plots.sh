@@ -75,7 +75,7 @@ extract_iops_metrics() {
     local mix=$4
 
 	local iops=$(grep -oP 'IOPS=\K[0-9]+(\.[0-9]+)?k?' "$log_file" | sed 's/k//g' | awk '{s+=$1} END {print s}')
-	echo "DEBUG: Extracted IOPS='$iops' BW='$bw'"
+	echo "DEBUG: Extracted IOPS='$iops'"
 
 	echo "$run_id $wbs $rbs $bw $iops 0 0 0 $mode" >> "$RESULTS_FILE"
 }
