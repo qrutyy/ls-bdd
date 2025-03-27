@@ -388,7 +388,7 @@ mem_err:
 	return skiplist_insert(sl, key, value, sl_cache);
 }
 
-void skiplist_remove(struct skiplist *sl, sector_t key)
+void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd_value_cache)
 {
 	struct skiplist_node *preds[MAX_LVL];
 	struct skiplist_node *node = NULL;
@@ -434,7 +434,7 @@ void skiplist_remove(struct skiplist *sl, sector_t key)
 
 	// unlink the node
 	find_preds(NULL, NULL, 0, sl, key, FORCE_UNLINK);
-
+	kmem_cache_free(lsbdd_value_cache, val);
 	kfree(node); // was a rcu_defer_free;
 
 	return;

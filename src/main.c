@@ -119,7 +119,7 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 	if (old_value) {
 		pr_debug("WRITE: remove old mapping key %lld old_val: %lld, new_val %lld\n", sectors->original,
 			 old_value->redirected_sector, sectors->redirect);
-		ds_remove(current_redirect_manager->sel_data_struct, sectors->original);
+		ds_remove(current_redirect_manager->sel_data_struct, sectors->original, lsbdd_value_cache);
 	} else {
 		sectors->redirect = atomic64_fetch_add(curr_value->block_size / SECTOR_SIZE, &next_free_sector);
 		curr_value->redirected_sector = sectors->redirect;

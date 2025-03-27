@@ -121,7 +121,7 @@ void *ds_lookup(struct data_struct *ds, sector_t key)
 	return NULL;
 }
 
-void ds_remove(struct data_struct *ds, sector_t key)
+void ds_remove(struct data_struct *ds, sector_t key, struct kmem_cache *value_cache)
 {
 	u64 *kp = NULL;
 
@@ -129,7 +129,7 @@ void ds_remove(struct data_struct *ds, sector_t key)
 	if (ds->type == BTREE_TYPE)
 		btree_remove(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
 	if (ds->type == SKIPLIST_TYPE)
-		skiplist_remove(ds->structure.map_list, key);
+		skiplist_remove(ds->structure.map_list, key, value_cache);
 	if (ds->type == HASHTABLE_TYPE)
 		hashtable_remove(ds->structure.map_hash, key);
 	if (ds->type == RBTREE_TYPE)
