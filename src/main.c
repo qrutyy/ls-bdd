@@ -97,8 +97,6 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 	struct value_redir *old_value = NULL;
 	struct value_redir *curr_value = NULL;
 
-	// i guess this allocation can be deleted.... (if it will affect latency a lot)
-	// btw it was made only for readability reason ;)
 	sectors = kmem_cache_alloc(lsbdd_sectors_cache, GFP_KERNEL);
 	curr_value = kmem_cache_alloc(lsbdd_value_cache, GFP_KERNEL);
 
@@ -112,6 +110,9 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 	curr_value->block_size = main_bio->bi_iter.bi_size;
 
 	old_value = ds_lookup(current_redirect_manager->sel_data_struct, sectors->original);
+	
+	sectors->redirect = atomic64_fetch_add(curr_value->block_size / SECTOR_SIZE, &next_free_sector); // always get new pba
+	curr_value->redirected_sector = sectors->redirect;
 
 	pr_debug("WRITE: Old rs %p\n", old_value);
 	pr_debug("WRITE: key: %llu, sec: %llu\n", sectors->original, curr_value->redirected_sector);
@@ -120,9 +121,6 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 		pr_debug("WRITE: remove old mapping key %lld old_val: %lld, new_val %lld\n", sectors->original,
 			 old_value->redirected_sector, sectors->redirect);
 		ds_remove(current_redirect_manager->sel_data_struct, sectors->original, lsbdd_value_cache);
-	} else {
-		sectors->redirect = atomic64_fetch_add(curr_value->block_size / SECTOR_SIZE, &next_free_sector);
-		curr_value->redirected_sector = sectors->redirect;
 	}
 
 	status = ds_insert(current_redirect_manager->sel_data_struct, sectors->original, curr_value, cache_mng);
@@ -258,7 +256,8 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 
 	if (!curr_value) { // Read & Write sector starts aren't equal.
 		status = check_system_bio(redirect_manager, sectors, clone_bio);
-		if (!status) {
+		pr_debug(" status %d\n", status);
+		if (status) {
 			kmem_cache_free(lsbdd_sectors_cache, sectors);
 			return 0;
 		}
