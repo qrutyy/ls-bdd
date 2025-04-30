@@ -1,17 +1,36 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 /*
- * Originail author: Daniel Vlasenco @spisladqo
- *
  * Last modified by Mikhail Gavrilenko on 11.03.25
  * Changes:
  * Add remove, get_last, get_prev methods
  * Fixed some issues with remove. Modified the TAIL_VALUE and data types that
  * appear in structur. Implement lock-free concurrency. (@chen--oRanGe)
+ *
+ * Added safe memory reclamation based on a lock-free stack.
  */
 
 #include "skiplist.h"
 #include <linux/random.h>
+#include <linux/atomic.h>
+
+static void add_to_removed_stack(struct skiplist *sl, struct skiplist_node *node) {
+	long old_head; 
+	long new_head = (long)node;
+
+	if (!node)
+		return;
+	
+	old_head = atomic_long_read(&sl->removed_stack_head);
+
+	do {
+		node->removed_link = (struct skiplist_node *)old_head;
+
+	} while (atomic_long_cmpxchg(&sl->removed_stack_head, old_head, new_head));
+
+	pr_debug("Pushed node %p with key %llu", node, node->key);
+	return;
+}
 
 /**
  * Generates random level for inserting the node.
@@ -56,6 +75,7 @@ static struct skiplist_node *node_alloc(sector_t key, void *value, s32 height, s
 	node->key = key;
 	node->value = value;
 	node->height = height;
+	node->removed_link = NULL;
 	return node;
 
 alloc_fail:
@@ -84,6 +104,7 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache, struct kmem
 {
 	struct skiplist_node *node = NULL;
 	struct skiplist_node *next = NULL;
+	struct skiplist_node *removed_node_head = NULL;
 
 	node = GET_NODE(sl->head->next[0]);
 	while (node) {
@@ -92,7 +113,31 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache, struct kmem
 		kmem_cache_free(sl_cache, node);
 		node = next;
 	}
+	removed_node_head = (struct skiplist_node *)atomic_long_xchg(&sl->removed_stack_head, 0);
+
+	pr_debug("Freeing nodes from the removed stack...\n");
+    node = removed_node_head;
+	while (node) {
+        next = node->removed_link; 
+
+        pr_debug("  Freeing removed node %p (key %lld)\n", node, node->key);
+		if (node->value && lsbdd_value_cache) {
+			kmem_cache_free(lsbdd_value_cache, node->value);
+		}
+		kmem_cache_free(sl_cache, node);
+		node = next; 
+	}
+    pr_debug("Finished freeing nodes from removed stack.\n");
+
+	if (sl->head) {
+        pr_debug("Freeing head node %p\n", sl->head);
+		kmem_cache_free(sl_cache, sl->head);
+        sl->head = NULL;
+	}
+
+    pr_debug("Freeing skiplist structure %p\n", sl);
 	kfree(sl);
+	pr_info("Skiplist cleanup finished.\n");
 }
 
 bool skiplist_is_empty(struct skiplist *sl)
@@ -159,6 +204,7 @@ static struct skiplist_node *find_preds(struct skiplist_node **preds, struct ski
 					pr_debug("Unlinking node: pred = %p, node = %p, new_next = %p\n", pred, node, STRIP_MARK(next));
 					other = SYNC_CAS(&pred->next[level], (size_t)node, STRIP_MARK(next));
 					if (other == (size_t)node) {
+						add_to_removed_stack(sl, node);
 						node = STRIP_MARK(next);
 					} else {
 						if (HAS_MARK(other)) {
@@ -409,7 +455,7 @@ void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd
 	  */
 	old_next = 0;
 	for (level = node->height - 1; level >= 0; --level) {
-		ssize_t next;
+		ssize_t next = 0;
 		old_next = node->next[level];
 		do {
 			pr_debug("Skiplist(remove): marking node at level %ld (next %ld)\n", level, old_next);
@@ -434,8 +480,8 @@ void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd
 
 	// unlink the node
 	find_preds(NULL, NULL, 0, sl, key, FORCE_UNLINK);
-	kmem_cache_free(lsbdd_value_cache, val);
-	kfree(node); // was a rcu_defer_free;
+//	kmem_cache_free(lsbdd_value_cache, val);
+//	kfree(node); // was a rcu_defer_free, works for now, but with high mt can cause use-after-free; 
 
 	return;
 }
