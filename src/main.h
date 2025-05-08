@@ -30,7 +30,3 @@ struct bd_manager {
 	struct list_head list;
 };
 
-struct sectors {
-	sector_t original;
-	sector_t redirect;
-};
