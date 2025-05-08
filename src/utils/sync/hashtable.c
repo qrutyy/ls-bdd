@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 #include <linux/hashtable.h>
-#include "hashtable-utils.h"
+#include "hashtable.h"
 #include <linux/slab.h>
 
 struct hashtable *hashtable_init(struct kmem_cache *ht_cache)

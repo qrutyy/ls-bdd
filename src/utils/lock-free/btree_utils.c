@@ -5,13 +5,9 @@
 #include <linux/cache.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
-#include "btree-utils.h"
+#include "btree_utils.h"
 
-struct btree_geo {
-	s32 keylen;
-	s32 no_pairs;
-	s32 no_longs;
-};
+// JUST STABS, AS LONG AS NO LOCK-FREE B+TREE IS FOUND
 
 static s32 longcmp(const unsigned long *l1, const unsigned long *l2, size_t n)
 {
@@ -80,12 +76,12 @@ sector_t btree_last_no_rep(struct btree_head *head, struct btree_geo *geo, unsig
 	unsigned long *node = head->node;
 
 	if (height == 0)
-		return NULL;
+		return 0;
 
 	for (; height > 1; height--)
 		node = bval(geo, node, 0);
 
-	return bkey(geo, node, 0);
+	return *bkey(geo, node, 0);
 }
 
 void *btree_get_next(struct btree_head *head, struct btree_geo *geo, unsigned long *key)
