@@ -13,20 +13,38 @@
 #include "skiplist.h"
 #include <linux/random.h>
 #include <linux/atomic.h>
+#include "marked_pointers.h"
+#include "atomic_ops.h"
+
+#define GET_NODE(x) ((struct skiplist_node *)(x))
+// cleans the pointer from the mark
+#define STRIP_MARK(x) ((struct skiplist_node *)STRIP_TAG((x), 0x1))
+// check marked_pointers if you are confused
 
 static void add_to_removed_stack(struct skiplist *sl, struct skiplist_node *node) {
-	long old_head; 
+	long old_head;
+	long current_head_val;
 	long new_head = (long)node;
 
 	if (!node)
 		return;
 	
-	old_head = atomic_long_read(&sl->removed_stack_head);
-
+	old_head = ATOMIC_LREAD(&sl->removed_stack_head);
+	//if (((struct skiplist_node *)old_head)->key == node->key) 
+	//	return;
+	
 	do {
-		node->removed_link = (struct skiplist_node *)old_head;
+        node->removed_link = (struct skiplist_node *)old_head; // Set next pointer
 
-	} while (atomic_long_cmpxchg(&sl->removed_stack_head, old_head, new_head));
+        current_head_val = ATOMIC_LCAS(&sl->removed_stack_head, old_head, new_head);
+
+        if (current_head_val == old_head) {
+            break; // Success! Exit loop.
+        }
+
+        old_head = current_head_val;
+
+    } while (true); 
 
 	pr_debug("Pushed node %p with key %llu", node, node->key);
 	return;
@@ -50,9 +68,9 @@ static s32 random_levels(struct skiplist *sl)
 		return 1;
 	if (levels > MAX_LVL)
 		levels = MAX_LVL;
-	if (levels > atomic_read(&sl->max_lvl)) {
-		SYNC_INC(&sl->max_lvl);
-		levels = atomic_read(&sl->max_lvl);
+	if (levels > ATOMIC_LREAD(&sl->max_lvl)) {
+		ATOMIC_INC(&sl->max_lvl);
+		levels = ATOMIC_LREAD(&sl->max_lvl);
 		pr_debug("Skiplist(random_levels): increased high water mark to %d\n", levels);
 	}
 	return levels;
@@ -91,7 +109,8 @@ struct skiplist *skiplist_init(struct kmem_cache *sl_cache)
 	if (!sl)
 		goto alloc_fail;
 
-	atomic_set(&sl->max_lvl, 1);
+	atomic64_set(&sl->max_lvl, 1);
+	atomic64_set(&sl->removed_stack_head, 0);
 	sl->head = node_alloc(HEAD_KEY, HEAD_VALUE, MAX_LVL, sl_cache);
 	return sl;
 
@@ -102,26 +121,31 @@ alloc_fail:
 
 void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache, struct kmem_cache *lsbdd_value_cache)
 {
+	BUG_ON(!lsbdd_value_cache || !sl_cache);
 	struct skiplist_node *node = NULL;
 	struct skiplist_node *next = NULL;
 	struct skiplist_node *removed_node_head = NULL;
-
+	
 	node = GET_NODE(sl->head->next[0]);
 	while (node) {
 		next = STRIP_MARK(node->next[0]);
-		kmem_cache_free(lsbdd_value_cache, node->value);
+		if (node->value)
+			kmem_cache_free(lsbdd_value_cache, node->value);
+
 		kmem_cache_free(sl_cache, node);
 		node = next;
 	}
-	removed_node_head = (struct skiplist_node *)atomic_long_xchg(&sl->removed_stack_head, 0);
+	
+	removed_node_head = (struct skiplist_node *)ATOMIC_LSWAP(&sl->removed_stack_head, 0);
 
 	pr_debug("Freeing nodes from the removed stack...\n");
     node = removed_node_head;
 	while (node) {
+		pr_debug("start\n");
         next = node->removed_link; 
 
-        pr_debug("  Freeing removed node %p (key %lld)\n", node, node->key);
-		if (node->value && lsbdd_value_cache) {
+		if (node->value) {
+			pr_debug("  Freeing removed node %p (key %lld)\n", node, node->key);
 			kmem_cache_free(lsbdd_value_cache, node->value);
 		}
 		kmem_cache_free(sl_cache, node);
@@ -134,10 +158,13 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *sl_cache, struct kmem
 		kmem_cache_free(sl_cache, sl->head);
         sl->head = NULL;
 	}
-
+	
     pr_debug("Freeing skiplist structure %p\n", sl);
 	kfree(sl);
 	pr_info("Skiplist cleanup finished.\n");
+
+	pr_info("Destroying cache\n");
+	kmem_cache_destroy(sl_cache);
 }
 
 bool skiplist_is_empty(struct skiplist *sl)
@@ -163,10 +190,10 @@ static struct skiplist_node *find_preds(struct skiplist_node **preds, struct ski
 	size_t next, other = 0;
 
 	pred = sl->head;
-	pr_debug("find_preds: searching for key %lld in skiplist (head: %p, max_lvl: %d)\n", key, pred, atomic_read(&sl->max_lvl));
+	pr_debug("find_preds: searching for key %lld in skiplist (head: %p, max_lvl: %d)\n", key, pred, ATOMIC_LREAD(&sl->max_lvl));
 
 	// Traverse the levels of <sl> from the top level to the bottom
-	for (ssize_t level = atomic_read(&sl->max_lvl) - 1; level >= 0; --level) {
+	for (ssize_t level = ATOMIC_LREAD(&sl->max_lvl) - 1; level >= 0; --level) {
 		if (!pred) {
 			pr_debug("find_preds: pred is NULL at level %ld\n", level);
 			BUG();
@@ -202,9 +229,8 @@ static struct skiplist_node *find_preds(struct skiplist_node **preds, struct ski
 				} else {
 					// Unlink logically removed nodes.
 					pr_debug("Unlinking node: pred = %p, node = %p, new_next = %p\n", pred, node, STRIP_MARK(next));
-					other = SYNC_CAS(&pred->next[level], (size_t)node, STRIP_MARK(next));
+					other = SYNC_LCAS(&pred->next[level], (size_t)node, STRIP_MARK(next));
 					if (other == (size_t)node) {
-						add_to_removed_stack(sl, node);
 						node = STRIP_MARK(next);
 					} else {
 						if (HAS_MARK(other)) {
@@ -293,7 +319,7 @@ static void *update_node(struct skiplist_node *node, void *new_val)
 	  * If another thread removed the node but it is not unlinked yet and we used a SWAP, we could replace 0 with our value.
 	  * Then another thread that is updating the value could think it succeeded and return our value even though it should return 0.
 	  */
-	if (old_val == SYNC_CAS(&node->value, old_val, new_val)) {
+	if (old_val == SYNC_LCAS(&node->value, old_val, new_val)) {
 		pr_debug("Skilist(update_node): the CAS succeeded. updated the value of the node\n");
 		return old_val;
 	}
@@ -302,7 +328,7 @@ static void *update_node(struct skiplist_node *node, void *new_val)
 	return update_node(node, new_val); // tail call (retry)
 }
 
-struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *value, struct kmem_cache *sl_cache)
+struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *value, struct kmem_cache *sl_cache, struct kmem_cache *lsbdd_value_cache)
 {
 	pr_debug("Skiplist(insert): key %lld skiplist %p\n", key, sl);
 	pr_debug("Skiplist(insert): new value %p\n", value);
@@ -327,11 +353,35 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *v
 	// If there is already an node in the skiplist that matches the key just update its value.
 	if (old_node != NULL) {
 		ret_val = update_node(old_node, value);
-		if (ret_val != 0)
-			return ret_val;
+		if (IS_ERR(ret_val)) { // Обрабатываем ошибку от update_node
+			if (PTR_ERR(ret_val) == -EAGAIN) {
+				pr_debug("Skiplist(insert): update_node failed CAS for key %lld, retrying insert.\n", key);
+				// Повторяем всю операцию вставки
+				return skiplist_insert(sl, key, value, sl_cache, lsbdd_value_cache); // tail call
+			} else {
+				// Другая ошибка
+				pr_warn("Skiplist(insert): update_node returned unexpected error %ld for key %lld\n", PTR_ERR(ret_val), key);
+				// Не освобождаем 'value', возвращаем ошибку вызывающему коду
+				return ret_val;
+			}
+		} else if (ret_val == NULL) { // update_node увидел, что узел удаляется
+			pr_debug("Skiplist(insert): update_node returned NULL for key %lld (node likely removed), retrying insert.\n", key);
+			// Повторяем всю операцию вставки
+			return skiplist_insert(sl, key, value, sl_cache, lsbdd_value_cache); // tail call
+		} else {
+			// УСПЕШНОЕ ОБНОВЛЕНИЕ: ret_val содержит СТАРОЕ значение
+			pr_debug("Skiplist(insert): Successfully updated node %p (key %lld). Old value was %p.\n", old_node, key, ret_val);
 
-		// If we lose a race with a thread removing the node we tried to update then we have to retry.
-		return skiplist_insert(sl, key, value, sl_cache); // tail call
+			// ОСВОБОЖДАЕМ СТАРОЕ ЗНАЧЕНИЕ, которое нам вернули
+			if (lsbdd_value_cache) {
+				kmem_cache_free(lsbdd_value_cache, ret_val);
+			} else {
+				pr_warn("Skiplist(insert): lsbdd_value_cache is NULL, cannot free old value %p - LEAKING MEMORY\n", ret_val);
+			}
+
+			// Возвращаем признак успеха (например, 0)
+			return 0;
+		}
 	}
 
 	pr_debug("Skiplist(insert): attempting to insert a new node between %p and %p, height %d\n", preds[0], nexts[0], n);
@@ -356,12 +406,12 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *v
 	new_node->next[0] = (size_t)next;
 
 	pr_debug("Before cas: next = %zx, new_node = %p\n", next, new_node);
-	other = SYNC_CAS(&pred->next[0], next,
+	other = SYNC_LCAS(&pred->next[0], next,
 			 new_node); // does it change only the lower one?
 	if (other != next) {
 		pr_debug("Skiplist(insert): failed to change pred's link: expected %zx found %zx\n", next, other);
 		kfree(new_node);
-		return skiplist_insert(sl, key, value, sl_cache); // retry
+		return skiplist_insert(sl, key, value, sl_cache, lsbdd_value_cache); // retry
 	}
 	pr_debug("Skiplist(insert): other = %zx new_node = %p next = %zx, pred = %p\n", other, new_node, next, pred);
 	pr_debug("Skiplist(insert): successfully inserted a new node %p at the bottom level\n", new_node);
@@ -379,7 +429,7 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *v
 			BUG_ON(!(new_node->next[level] == (size_t)nexts[level] || new_node->next[level] == MARK_NODE(nexts[level])));
 			pr_debug("Skiplist(insert): attempting to insert the new node between %p and %p\n", pred, nexts[level]);
 
-			other = SYNC_CAS(&pred->next[level], next, new_node);
+			other = SYNC_LCAS(&pred->next[level], next, new_node);
 			/** despite other info, ibm sets the return as "initial value of the
 			  * variable that __p points to successfully linked <new_node> with
 			  * prev at the current <level> */
@@ -404,7 +454,7 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *v
 				pr_debug("Skiplist(insert): attempting to update "
 					 "the new node's link from %ld to %p\n",
 					 old_next, nexts[i]);
-				other = SYNC_CAS(&new_node->next[i], old_next, nexts[i]);
+				other = SYNC_LCAS(&new_node->next[i], old_next, nexts[i]);
 				BUG_ON(!(other == old_next || other == MARK_NODE(old_next)));
 
 				// If another thread is removing this node we
@@ -431,7 +481,7 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *v
 
 mem_err:
 	pr_warn("Failed to allocate node, retrying\n");
-	return skiplist_insert(sl, key, value, sl_cache);
+	return skiplist_insert(sl, key, value, sl_cache, lsbdd_value_cache);
 }
 
 void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd_value_cache)
@@ -443,7 +493,7 @@ void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd
 	ssize_t level = 0;
 	pr_debug("Skiplist(remove): removing node with key %lld from skiplist %p\n", key, sl);
 
-	node = find_preds(preds, NULL, atomic_read(&sl->max_lvl), sl, key, ASSIST_UNLINK);
+	node = find_preds(preds, NULL, ATOMIC_LREAD(&sl->max_lvl), sl, key, ASSIST_UNLINK);
 	if (node == NULL) {
 		pr_debug("Skiplist(remove: remove failed, an node with a matching key does not exist in the skiplist");
 		return;
@@ -460,7 +510,7 @@ void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd
 		do {
 			pr_debug("Skiplist(remove): marking node at level %ld (next %ld)\n", level, old_next);
 			next = old_next;
-			old_next = SYNC_CAS(&node->next[level], next, MARK_NODE((struct skiplist_node *)next));
+			old_next = SYNC_LCAS(&node->next[level], next, MARK_NODE((struct skiplist_node *)next));
 
 			if (HAS_MARK(old_next)) {
 				pr_debug("Skiplist(remove): %p is already marked for removal by another thread (next %ld)\n", node,
@@ -475,12 +525,13 @@ void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd
 	/* Atomically swap out the node's value in case another thread is updating the node while we are removing it.
 	  * This establishes which operation occurs first logically, the update or the remove.
 	  */
-	val = SYNC_SWAP(&node->value, 0);
+	val = SYNC_LSWAP(&node->value, 0);
 	pr_debug("Skiplist(remove): replaced node %p's value with 0\n", node);
 
+	add_to_removed_stack(sl, node);
 	// unlink the node
 	find_preds(NULL, NULL, 0, sl, key, FORCE_UNLINK);
-//	kmem_cache_free(lsbdd_value_cache, val);
+	kmem_cache_free(lsbdd_value_cache, val);
 //	kfree(node); // was a rcu_defer_free, works for now, but with high mt can cause use-after-free; 
 
 	return;
@@ -491,7 +542,7 @@ struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t 
 	struct skiplist_node *node = NULL;
 	size_t next;
 
-	for (ssize_t level = atomic_read(&sl->max_lvl) - 1; level >= 0; --level) {
+	for (ssize_t level = ATOMIC_LREAD(&sl->max_lvl) - 1; level >= 0; --level) {
 		while (1) {
 			next = pred->next[level];
 			node = GET_NODE(next);
