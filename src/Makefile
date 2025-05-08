@@ -25,6 +25,9 @@ ID?=1
 TY?=lf
 # End block device name
 BD?=ram0
+# RamDisk sizes
+RD_SIZE_GB?=5
+RD_SIZE_B := $(shell echo "$(RD_SIZE_GB) * 1048576" | bc)
 
 # To build modules outside of the kernel tree, we run "make"
 # in the kernel source tree; the Makefile these then includes this
@@ -53,6 +56,9 @@ set:
 	echo -n "1 /dev/$(BD)" > /sys/module/$(name)/parameters/set_redirect_bd
 #	**index** - postfix for a 'device in the middle' (prefix is 'lsvbd'), **bd** - to which block device to redirect
 
+ramd:
+	modprobe brd rd_nr=1 rd_size=$(RD_SIZE_B)
+
 lint:
 	find . -name "*.c" -o -name "*.h" | xargs ./checkpatch.pl -f --no-tree
 
@@ -80,10 +86,10 @@ init_no_recompile:
 
 fio_verify:
 	# Write and verify test
-	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(WO) --size=$(FS)M --verify_state_save=1 --bssplit=$(WBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0 --numjobs=$(NJ) --serialize_overlap=1
+	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(WO) --size=$(FS)M --verify_state_save=1 --bssplit=$(WBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0 --numjobs=$(NJ) --serialize_overlap=1 --offset=5%
 
 	# Read and verify test 
-	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(RO) --size=$(FS)M --verify_state_save=1 --bssplit=$(RBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 --numjobs=$(NJ) --serialize_overlap=1
+	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(RO) --size=$(FS)M --verify_state_save=1 --bssplit=$(RBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 --numjobs=$(NJ) --serialize_overlap=1 --offset=5%
 
 .PHONY: modules modules_install clean
 

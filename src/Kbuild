@@ -4,7 +4,7 @@ ccflags-y := 	-Wall					\
 		-Wno-unused-parameter			\
 		-Wformat				\
 		-std=gnu18				\
-		-O2		\
+		-O3 \
 		-Werror=format-security			\
 		-Werror=implicit-function-declaration   \
 
@@ -21,6 +21,6 @@ endif
 # Add dynamical include path for the ds-control headers.
 ccflags-y += -I$(PWD)/$(DIR)
 
-lsbdd-objs := main.o utils/ds-control.o \
-              $(DIR)/btree-utils.o $(DIR)/skiplist.o \
-              $(DIR)/hashtable-utils.o $(DIR)/rbtree.o
+lsbdd-objs := main.o utils/ds_control.o \
+	$(DIR)/btree_utils.o $(DIR)/skiplist.o \
+	$(DIR)/hashtable.o $(DIR)/rbtree.o $(DIR)/lf_list.o
