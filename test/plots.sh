@@ -22,7 +22,7 @@ IOPS_BS_LIST=("4K" "8K" "16K" "32K" "64K" "128K")
 # Not used in benchmarking bc its kinda more related to optional functionality
 IOPS_RW_MIXES=("100-0" "65-35" "0-100") # SNIA recommends more mixes (like 95-5, 50-50, ...)
 
-LAT_BS_LIST=("2K" "4K" "8K") ## SNIA recommends 0.5K also, need some convertion, replaced it with 2K
+LAT_BS_LIST=("4K" "8K") ## SNIA recommends 0.5K also, need some convertion, replaced it with 2K
 LAT_RW_MIXES=("0-100" "65-35" "100-0") # Write to read ops ratio
 
 TP_BS_LIST=("128K" "1024K") 
@@ -77,7 +77,7 @@ extract_iops_metrics() {
 	local iops=$(grep -oP 'IOPS=\K[0-9]+(\.[0-9]+)?k?' "$log_file" | sed 's/k//g' | awk '{s+=$1} END {print s}')
 	echo "DEBUG: Extracted IOPS='$iops'"
 
-	echo "$run_id $wbs $rbs $bw $iops 0 0 0 $mode" >> "$RESULTS_FILE"
+	echo "$run_id $bs $mix 0 $iops iops" >> "$RESULTS_FILE"
 }
 
 extract_tp_metrics() {
@@ -236,7 +236,7 @@ run_latency_tests() {
                 fio --name=latency_test --rw=randrw --rwmixread=${rw_mix%-*} --rwmixwrite=${rw_mix#*-} \
                     --bs=${bs} --numjobs=1 --iodepth=1 --time_based --runtime=30 --direct=1 \
                     --write_lat_log=$log_file --ioengine=io_uring --registerfiles=1 --hipri=0 \
-					--cpus_allowed=0-6 --fixedbufs=1 --filename=/dev/$device > /dev/null
+					--cpus_allowed=0-5 --fixedbufs=1 --filename=/dev/$device > /dev/null
                 extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
             done
 

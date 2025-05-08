@@ -22,7 +22,7 @@ RWMIX_WRITE?=50
 
 
 fio_perf_template:
-	fio --name=test --ioengine=$(IO) --iodepth=$(ID) --rw=$(MODE) --bssplit=$(BS)k/100 --direct=1 --filename=/dev/$(FS) --numjobs=$(NJ) --write_bw_log=logs/write$(IN) --write_lat_log=logs/write$(IN) --write_iops_log=logs/write$(IN) --per_job_logs=0 $(EXTRA_OPTS)
+	fio --name=test --ioengine=$(IO) --iodepth=$(ID) --rw=$(MODE) --bssplit=$(BS)k/100 --direct=1 --filename=/dev/$(FS) --numjobs=$(NJ) --write_bw_log=logs/write$(IN) --write_lat_log=logs/write$(IN) --write_iops_log=logs/write$(IN) --per_job_logs=0 $(EXTRA_OPTS) --offset=16k
 
 fio_perf_r_clean:
 	$(MAKE) fio_perf_template MODE=randread BS=$(WBS) 
@@ -61,6 +61,7 @@ fio_perf_mix:
 		--cpus_allowed_policy=shared \
 		--filename=/dev/$(FS) \
 		--cpus_allowed=0-5
+		--offset=16k
 
 clean:
 	rm -rf *.svg *.data *.folded *.old *.state *.log *.dat
