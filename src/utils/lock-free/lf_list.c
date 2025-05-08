@@ -188,9 +188,10 @@ struct lf_list_node *lf_list_lookup(struct lf_list *list, sector_t key, struct l
 
 	
     pr_debug("lf_list_lookup: Searching for key %llu in list %p\n", key, list);
-	if (!key)
+	if (!key) {
 		pr_debug("lf_list_lookup: Search for key 0 occured\n");
 		return NULL;
+	}
 
 retry_search_outer:
     retry_count++;
@@ -294,10 +295,6 @@ struct lf_list_node *lf_list_add(struct lf_list *list, sector_t key, void *val, 
     struct lf_list_node *left = NULL, *right = NULL;
     struct lf_list_node *new_node = NULL;
 	
-	if (!key) {
-		return NULL;
-	}
-
 	new_node = node_alloc(key, val, NULL, list_node_cache);
 	
     while (1) {

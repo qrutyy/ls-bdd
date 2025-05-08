@@ -51,7 +51,7 @@ fio_perf_mix:
 		--bs=$(BS) \
 		--numjobs=$(NJ) \
 		--iodepth=$(ID) \
-		--time_based --runtime=30 \
+		--time_based --runtime=10 \
 		--direct=1 \
 		--ioengine=$(IO) \
 		--registerfiles=1 \
@@ -60,7 +60,7 @@ fio_perf_mix:
 		--prio=0 \
 		--cpus_allowed_policy=shared \
 		--filename=/dev/$(FS) \
-		--cpus_allowed=0-5
+		--cpus_allowed=0-3
 		--offset=16k
 
 clean:

@@ -58,6 +58,9 @@ struct lf_list_node *hashtable_insert(struct hashtable *ht, sector_t key, void *
 	struct lf_list_node *el = NULL;
 	
 	BUG_ON(!ht || !value);
+	if (!key) {
+		return NULL;
+	}
 	
 	el = lf_list_add(ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)], key, value, lsbdd_node_cache);
 	if (!el) {
@@ -136,7 +139,7 @@ struct lf_list_node *hashtable_prev(struct hashtable *ht, sector_t key, sector_t
 		list = ht->head[hash_min(min(BUCKET_NUM - 1, ht->max_bck_num), HT_MAP_BITS)];
 		node = lf_list_lookup(list, key, &left_node);
 		pr_info("Found node in prev bucket: %p, key = %llu\n", node, node->key);
-		if (!left_node);
+		if (!left_node)
 			return NULL;
 	}
 	

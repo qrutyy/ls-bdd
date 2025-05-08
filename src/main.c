@@ -4,7 +4,7 @@
 #include <linux/blkdev.h>
 #include <linux/list.h>
 #include <linux/moduleparam.h>
-#include "utils/ds-control.h"
+#include "utils/ds_control.h"
 #include "main.h"
 
 MODULE_DESCRIPTION("Log-Structured virtual Block Device Driver module");

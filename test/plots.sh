@@ -2,7 +2,7 @@
 
 JOBS_NUM=6
 IO_DEPTH=32
-RUNS=25
+RUNS=3
 BRD_SIZE=5
 DAST="sl"
 TYPE="lf"
@@ -153,7 +153,7 @@ run_tp_tests() {
     local device=$1 is_raw=$2 rw_mix log_file fs_flag extra_args
     fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=ram0" || echo "")
 	
-	echo -e "---Starting Throughput operations Benchmark on $device...---\n"
+	echo -e "\n---Starting Throughput operations Benchmark on $device...---\n"
 
 	for rw_mix in "${TP_RW_MIXES[@]}"; do
         echo -e "Running $rw_mix tests on $device\n"

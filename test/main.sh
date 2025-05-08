@@ -24,6 +24,11 @@ validate_verify_input() {
     fi
 }
 
+install_deps() {
+	echo -e "Installing dependencies:\n"
+	./install.sh
+}
+
 check_package() {
 	if [ ! command -v $1 &> /dev/null ]; then
 		echo "Error: '$1' is not installed. Please install it and try again."
@@ -79,6 +84,7 @@ while [[ "$#" -gt 0 ]]; do
 	shift
 done
 
+install_deps
 check_dependencies
 validate_verify_input
 
