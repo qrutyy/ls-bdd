@@ -22,6 +22,7 @@ struct value_redir {
 	u32 block_size;
 };
 
+// Block device manager structure for saving the linked meta data
 struct bd_manager {
 	char *vbd_name;
 	struct gendisk *vbd_disk;

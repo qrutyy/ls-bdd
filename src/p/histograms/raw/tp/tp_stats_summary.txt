@@ -1,0 +1,8 @@
+BW Normality Test: normaltest p=0.00000, shapiro p=0.00000 → BW is NOT normally distributed.
+IOPS Normality Test: normaltest p=nan, shapiro p=1.00000 → IOPS is likely normally distributed.
+BW Normality Test: normaltest p=0.09843, shapiro p=0.33576 → BW is likely normally distributed.
+IOPS Normality Test: normaltest p=nan, shapiro p=1.00000 → IOPS is likely normally distributed.
+BW Normality Test: normaltest p=0.00000, shapiro p=0.00001 → BW is NOT normally distributed.
+IOPS Normality Test: normaltest p=nan, shapiro p=1.00000 → IOPS is likely normally distributed.
+BW Normality Test: normaltest p=0.61465, shapiro p=0.39547 → BW is likely normally distributed.
+IOPS Normality Test: normaltest p=nan, shapiro p=1.00000 → IOPS is likely normally distributed.
