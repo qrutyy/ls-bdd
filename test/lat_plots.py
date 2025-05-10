@@ -9,7 +9,7 @@ parser.add_argument("--raw", action="store_true", help="Save plots to the 'raw' 
 args = parser.parse_args()
 
 LAT_RESULTS_FILE = "logs/fio_lat_results.dat"
-PLOTS_PATH = "./plots/latency/raw" if args.raw else "./plots/latency"
+PLOTS_PATH = "./plots/latency/raw" if args.raw else "./plots/latency/vbd"
 
 df = pd.read_csv(LAT_RESULTS_FILE, sep=r"\s+", skiprows=0, names=[
     "RunID", "BS", "Avg_SLAT", "Avg_CLAT", "Avg_LAT",

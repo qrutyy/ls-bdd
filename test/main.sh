@@ -7,7 +7,7 @@ VERIFY="false"
 SETUP="false"
 PERF="false"
 PLOTS="false"
-JOBS_NUM=6
+JOBS_NUM=4
 BRD_SIZE=5
 
 # Function to display help
@@ -89,9 +89,9 @@ check_dependencies
 validate_verify_input
 
 free -m
-echo -e "Creating RAM disk"
-modprobe brd rd_nr=1 rd_size=$((BRD_SIZE * 1048576))
-free -m
+#echo -e "Creating RAM disk"
+#modprobe brd rd_nr=1 rd_size=$((BRD_SIZE * 1048576))
+#free -m
 mkdir -p plots logs
 
 echo "Block device name: $BD_NAME"

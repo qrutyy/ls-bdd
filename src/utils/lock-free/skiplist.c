@@ -148,10 +148,8 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *lsbdd_node_cache, str
 	while (node) {
 		next = STRIP_MARK(node->next[0]);
 		if (node->value) {
-			pr_info("1111\n");
 			kmem_cache_free(lsbdd_value_cache, node->value);
 		}
-		pr_info("1\n");
 		kmem_cache_free(lsbdd_node_cache, node);
 		node = next;
 	}
@@ -161,14 +159,12 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *lsbdd_node_cache, str
 	pr_debug("Freeing nodes from the removed stack...\n");
     node = removed_node_head;
 	while (node) {
-		pr_debug("start\n");
         next = node->removed_link; 
 
 		if (node->value) {
 			pr_info("Freeing removed node %p (key %lld)\n", node, node->key);
 			kmem_cache_free(lsbdd_value_cache, node->value);
 		}
-		pr_info("2\n");
 		kmem_cache_free(lsbdd_node_cache, node);
 		node = next; 
 	}

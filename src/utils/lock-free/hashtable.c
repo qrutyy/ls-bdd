@@ -99,7 +99,7 @@ void hashtable_free(struct hashtable *ht, struct kmem_cache *lsbdd_node_cache, s
     }
 
     kfree(ht);
-    pr_info("Unsafe Hashtable freed.\n");
+    pr_info("Hashtable freed.\n");
 }
 
 struct lf_list_node *hashtable_find_node(struct hashtable *ht, sector_t key)

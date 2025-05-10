@@ -10,7 +10,7 @@ parser.add_argument("--raw", action="store_true", help="Save plots to the 'raw' 
 args = parser.parse_args()
 
 RESULTS_FILE = "logs/fio_results.dat"
-PLOTS_PATH = "./plots/histograms/raw" if args.raw else "./plots/histograms"
+PLOTS_PATH = "./plots/histograms/raw" if args.raw else "./plots/histograms/vbd"
 
 df = pd.read_csv(RESULTS_FILE, sep=r"\s+", skiprows=0, names=["RunID", "BS", "MIX", "BW", "IOPS", "MODE"])
 

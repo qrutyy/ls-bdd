@@ -1,8 +1,8 @@
 #!/bin/bash
 
-JOBS_NUM=6
+JOBS_NUM=4
 IO_DEPTH=32
-RUNS=3
+RUNS=25
 BRD_SIZE=5
 DAST="sl"
 TYPE="lf"
@@ -46,9 +46,9 @@ usage() {
 prepare_env() {
     echo -e "\nCleaning the logs directory"
     make clean > /dev/null
-    mkdir -p $LOGS_PATH $PLOTS_PATH/histograms/{iops,tp,raw/{tp,iops}} \
-        $PLOTS_PATH/avg/{tp,iops,raw/{tp,iops}} \ 
-		$PLOTS_PATH/latency/raw
+    mkdir -p $LOGS_PATH $PLOTS_PATH/histograms/{vbd/{tp,iops},raw/{tp,iops}} \
+        $PLOTS_PATH/avg/{vbd/{tp,iops},raw/{tp,iops}} \ 
+		$PLOTS_PATH/latency/{raw,vbd}
 }
 
 reinit_lsvbd() {
@@ -79,32 +79,41 @@ extract_iops_metrics() {
 
 	echo "$run_id $bs $mix 0 $iops iops" >> "$RESULTS_FILE"
 }
-
 extract_tp_metrics() {
     local log_file=$1
     local run_id=$2
     local bs=$3
-	local mix=$4
+    local mix=$4
+    local bw=""
 
-	if [[ "$mix" == "0-100" ]]; then	
-	    local bw=$(grep -oP 'WRITE: bw=[0-9]+MiB/s \(\K[0-9]+' "$log_file" | head -1)
-		if [[ -z "$bw" ]]; then
-			bw_gb="$(grep -oP 'WRITE: bw=.*\(([0-9]+\.[0-9]+)GB/s\)' "$log_file" | grep -oP '[0-9]+\.[0-9]+' | tail -n1)"
-			bw=$(echo "$bw_gb * 1000" | bc)
-		fi
-	else
-		local bw=$(grep -oP 'READ: bw=[0-9]+MiB/s \(\K[0-9]+' "$log_file" | head -1)
-		if [[ -z "$bw" ]]; then
-			bw_gb="$(grep -oP 'READ: bw=.*\(([0-9]+\.[0-9]+)GB/s\)' "$log_file" | grep -oP '[0-9]+\.[0-9]+' | tail -n1)"
-			bw=$(echo "$bw_gb * 1000" | bc)
-		fi
-	fi
+    local op_type="WRITE"
+    if [[ "$mix" != "0-100" ]]; then
+        op_type="READ"
+    fi
 
-    echo "DEBUG: Extracted BW='$bw'"
+    summary_line=$(grep -A 1 "Run status group 0 (all jobs):" "$log_file" | grep "^\s*${op_type}: bw=")
 
+    if [[ -n "$summary_line" ]]; then
+        bw_gb=$(echo "$summary_line" | grep -oP '\(\K[0-9]+(\.[0-9]+)?(?=GB/s\))' | head -1)
+
+        if [[ -n "$bw_gb" ]]; then
+            bw=$(awk -v val="$bw_gb" 'BEGIN { printf "%.0f", val }')
+        else
+            bw_mb=$(echo "$summary_line" | grep -oP '\(\K[0-9]+(\.[0-9]+)?(?=MB/s\))' | head -1)
+            if [[ -n "$bw_mb" ]]; then
+                bw=$(awk -v val="$bw_mb" 'BEGIN { printf "%.0f", val / 1000 }')
+            fi
+        fi
+    fi
+
+    if [[ -z "$bw" ]]; then
+        echo "ERROR: Could not extract BW (MB/s or GB/s) for run_id=$run_id, bs=$bs, mix=$mix from $log_file"
+		bw="0" # Default (error) value  
+    fi
+
+    echo "DEBUG: Extracted BW='$bw' (target GB/s) for op_type=$op_type"
     echo "$run_id $bs $mix $bw 0 tp" >> "$RESULTS_FILE"
 }
-
 
 extract_latency_metrics() {
     local run_id=$1

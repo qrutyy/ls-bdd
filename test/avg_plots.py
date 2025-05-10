@@ -10,7 +10,7 @@ parser.add_argument("--tp", action="store_true", help="Run throughput plot gener
 args = parser.parse_args()
 
 RESULTS_FILE = "logs/fio_results.dat"
-PLOTS_PATH = "./plots/avg/raw" if args.raw else "./plots/avg"
+PLOTS_PATH = "./plots/avg/raw" if args.raw else "./plots/avg/vbd"
 
 DEVICE = "ram0" if args.raw else "lsvbd1"
 
