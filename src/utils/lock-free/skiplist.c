@@ -128,6 +128,7 @@ struct skiplist *skiplist_init(struct kmem_cache *lsbdd_node_cache)
 	atomic64_set(&sl->max_lvl, 1);
 	atomic64_set(&sl->removed_stack_head, 0);
 	sl->head = node_alloc(HEAD_KEY, HEAD_VALUE, MAX_LVL, lsbdd_node_cache);
+
 	return sl;
 
 alloc_fail:
@@ -146,9 +147,11 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *lsbdd_node_cache, str
 	node = GET_NODE(sl->head->next[0]);
 	while (node) {
 		next = STRIP_MARK(node->next[0]);
-		if (node->value)
+		if (node->value) {
+			pr_info("1111\n");
 			kmem_cache_free(lsbdd_value_cache, node->value);
-
+		}
+		pr_info("1\n");
 		kmem_cache_free(lsbdd_node_cache, node);
 		node = next;
 	}
@@ -162,9 +165,10 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *lsbdd_node_cache, str
         next = node->removed_link; 
 
 		if (node->value) {
-			pr_debug("  Freeing removed node %p (key %lld)\n", node, node->key);
+			pr_info("Freeing removed node %p (key %lld)\n", node, node->key);
 			kmem_cache_free(lsbdd_value_cache, node->value);
 		}
+		pr_info("2\n");
 		kmem_cache_free(lsbdd_node_cache, node);
 		node = next; 
 	}
@@ -172,6 +176,8 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *lsbdd_node_cache, str
 
 	if (sl->head) {
         pr_debug("Freeing head node %p\n", sl->head);
+		if (sl->head->value) 
+			kmem_cache_free(lsbdd_value_cache, sl->head->value);
 		kmem_cache_free(lsbdd_node_cache, sl->head);
         sl->head = NULL;
 	}
@@ -495,7 +501,7 @@ mem_err:
 	return skiplist_insert(sl, key, value, lsbdd_node_cache, lsbdd_value_cache);
 }
 
-void skiplist_remove(struct skiplist *sl, sector_t key)
+void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd_value_cache)
 {
 	struct skiplist_node *preds[MAX_LVL];
 	struct skiplist_node *node = NULL;
@@ -542,6 +548,9 @@ void skiplist_remove(struct skiplist *sl, sector_t key)
 	add_to_removed_stack(sl, node);
 	// unlink the node
 	find_preds(NULL, NULL, 0, sl, key, FORCE_UNLINK);
+	if (val) 
+		kmem_cache_free(lsbdd_value_cache, val);
+	
 
 	return;
 }

@@ -60,12 +60,13 @@ struct hashtable *hashtable_init(struct kmem_cache *lsbdd_node_cache);
  * @param key - LBA sector 
  * @param value - pointer to struct (value_redir) with PBA and meta data 
  * @param lsbdd_node_cache
+ * @param lsbdd_value_cache
  *
  * @return inserted node, NULL if:
  *  - if key == 0
  *  - if failed to insert key (check lf_list_add)
  */
-struct lf_list_node *hashtable_insert(struct hashtable *ht, sector_t key, void *value, struct kmem_cache *lsbdd_node_cache);
+struct lf_list_node *hashtable_insert(struct hashtable *ht, sector_t key, void *value, struct kmem_cache *lsbdd_node_cache, struct kmem_cache *lsbdd_value_cache);
 
 /**
  * Frees the allocated memory and caches.

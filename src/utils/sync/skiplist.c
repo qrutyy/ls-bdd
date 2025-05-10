@@ -315,7 +315,7 @@ void skiplist_print(struct skiplist *sl)
 	}
 }
 
-void skiplist_remove(struct skiplist *sl, sector_t key)
+void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd_value_cache)
 {
 	BUG_ON(!sl);
 

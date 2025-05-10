@@ -11,15 +11,15 @@ MODULE_DESCRIPTION("Log-Structured virtual Block Device Driver module");
 MODULE_AUTHOR("Mikhail Gavrilenko - @qrutyy");
 MODULE_LICENSE("Dual MIT/GPL");
 
-s32 bdd_major;
+s32 bdd_major = 0;
 char sel_ds[LSBDD_MAX_DS_NAME_LEN + 1];
 char ds_type[2 + 1];
 struct bio_set *bdd_pool;
 struct list_head bd_list;
 atomic64_t next_free_sector = ATOMIC_INIT(LSBDD_SECTOR_OFFSET);
 
-static struct kmem_cache *lsbdd_value_cache;
-struct cache_manager *cache_mng;
+static struct kmem_cache *lsbdd_value_cache = NULL;
+struct cache_manager *cache_mng = NULL;
 
 static void vector_add_bd(struct bd_manager *current_bdev_manager)
 {
@@ -758,7 +758,7 @@ static void __exit lsbdd_exit(void)
 
 	pr_info("destroyed value cache");
 	kmem_cache_destroy(lsbdd_value_cache);
-	lsbdd_ds_cache_destroy();
+//	lsbdd_ds_cache_destroy(); node cache was already destroyed in the delete_bd
 
 	bioset_exit(bdd_pool);
 	unregister_blkdev(bdd_major, LSBDD_BLKDEV_NAME_PREFIX);

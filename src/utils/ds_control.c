@@ -157,7 +157,7 @@ void ds_remove(struct data_struct *ds, sector_t key, struct kmem_cache *lsbdd_va
 	if (ds->type == BTREE_TYPE)
 		btree_remove(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
 	if (ds->type == SKIPLIST_TYPE)
-		skiplist_remove(ds->structure.map_list, key);
+		skiplist_remove(ds->structure.map_list, key, lsbdd_value_cache);
 	if (ds->type == HASHTABLE_TYPE)
 		hashtable_remove(ds->structure.map_hash, key, lsbdd_value_cache);
 	if (ds->type == RBTREE_TYPE)
@@ -176,7 +176,7 @@ s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_ma
 	if (ds->type == SKIPLIST_TYPE)
 		skiplist_insert(ds->structure.map_list, key, value, cache_mng->sl_cache, lsbdd_value_cache);
 	if (ds->type == HASHTABLE_TYPE)
-		hashtable_insert(ds->structure.map_hash, key, value, cache_mng->ht_cache);
+		hashtable_insert(ds->structure.map_hash, key, value, cache_mng->ht_cache, lsbdd_value_cache);
 	if (ds->type == RBTREE_TYPE)
 		rbtree_add(ds->structure.map_rbtree, key, value);
 	return 0;

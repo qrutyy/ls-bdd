@@ -84,10 +84,11 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *v
  *
  * @param sl - skiplist 
  * @param key - LBA sector
+ * @param lsbdd_value_cache
  *
  * @return void
  */
-void skiplist_remove(struct skiplist *sl, sector_t key);
+void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd_value_cache);
 
 /**
  * Searches for node with maximum key being smaller than provided one.

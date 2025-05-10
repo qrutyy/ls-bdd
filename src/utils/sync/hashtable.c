@@ -21,9 +21,9 @@ struct hashtable *hashtable_init(struct kmem_cache *lsbdd_node_cache)
 	return hash_table;
 }
 
-struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void *value, struct kmem_cache *lsbdd_node_cache)
+struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void *value, struct kmem_cache *lsbdd_node_cache, struct kmem_cache *lsbdd_value_cache)
 {
-	BUG_ON(!ht || !lsbdd_node_cache);
+	BUG_ON(!ht || !lsbdd_node_cache || !lsbdd_value_cache);
 
 	struct hash_el *el = NULL;
 

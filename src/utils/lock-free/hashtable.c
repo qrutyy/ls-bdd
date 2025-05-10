@@ -52,7 +52,7 @@ struct hashtable *hashtable_init(struct kmem_cache *lsbdd_node_cache) {
     return hash_table;
 }
 
-struct lf_list_node *hashtable_insert(struct hashtable *ht, sector_t key, void *value, struct kmem_cache *lsbdd_node_cache)
+struct lf_list_node *hashtable_insert(struct hashtable *ht, sector_t key, void *value, struct kmem_cache *lsbdd_node_cache, struct kmem_cache *lsbdd_value_cache)
 {
 
 	BUG_ON(!ht || !value || !lsbdd_node_cache);
@@ -64,6 +64,7 @@ struct lf_list_node *hashtable_insert(struct hashtable *ht, sector_t key, void *
 	
 	el = lf_list_add(ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)], key, value, lsbdd_node_cache);
 	if (!el) {
+		kmem_cache_free(lsbdd_value_cache, value);
 		pr_warn("Hashtable: failed to insert key %llu\n", key);
 		return NULL;
 	}
