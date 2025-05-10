@@ -7,10 +7,16 @@
 #include "hashtable.h"
 #include "skiplist.h"
 #include "rbtree.h"
+
+#ifdef LF_MODE
 #include "lf_list.h"
+#endif 
+
 
 s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mng)
 {
+	BUG_ON(!ds || !cache_mng);
+
 	struct btree *btree_map = NULL;
 	struct btree_head *root = NULL;
 	struct rbtree *rbtree_map = NULL;
@@ -53,7 +59,12 @@ s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mn
 		ds->type = SKIPLIST_TYPE;
 		ds->structure.map_list = skiplist;
 	} else if (!strncmp(sel_ds, ht, 2)) {
+		#ifdef LF_MODE
 		cache_mng->ht_cache = kmem_cache_create("lsbdd_hashtable_cache", sizeof(struct lf_list_node), 0, SLAB_HWCACHE_ALIGN, NULL);
+		#endif
+		#ifdef SY_MODE
+		cache_mng->ht_cache = kmem_cache_create("lsbdd_hashtable_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+		#endif
 		if (!cache_mng->ht_cache) {
 			pr_err("ERROR DS_INIT: hastable cache not initialized!\n");
 	        return -1;
@@ -84,16 +95,18 @@ mem_err:
 	return -ENOMEM;
 }
 
-void ds_free(struct data_struct *ds, struct cache_manager *cache_mng, struct kmem_cache *value_cache)
+void ds_free(struct data_struct *ds, struct cache_manager *cache_mng, struct kmem_cache *lsbdd_value_cache)
 {
+	BUG_ON(!ds || !cache_mng || !lsbdd_value_cache);
+
 	if (ds->type == BTREE_TYPE) {
 		btree_destroy(ds->structure.map_btree->head);
 		ds->structure.map_btree = NULL;
 	} else if (ds->type == SKIPLIST_TYPE) {
-		skiplist_free(ds->structure.map_list, cache_mng->sl_cache, value_cache);
+		skiplist_free(ds->structure.map_list, cache_mng->sl_cache, lsbdd_value_cache);
 		ds->structure.map_list = NULL;
 	} else if (ds->type == HASHTABLE_TYPE) {
-		hashtable_free(ds->structure.map_hash, cache_mng->ht_cache, value_cache);
+		hashtable_free(ds->structure.map_hash, cache_mng->ht_cache, lsbdd_value_cache);
 		ds->structure.map_hash = NULL;
 	} else if (ds->type == RBTREE_TYPE) {
 		rbtree_free(ds->structure.map_rbtree);
@@ -103,8 +116,15 @@ void ds_free(struct data_struct *ds, struct cache_manager *cache_mng, struct kme
 
 void *ds_lookup(struct data_struct *ds, sector_t key)
 {
+	BUG_ON(!ds);
+
 	struct skiplist_node *sl_node = NULL;
+	#ifdef LF_MODE
 	struct lf_list_node *hm_node = NULL;
+	#endif
+	#ifdef SY_MODE
+	struct hash_el *hm_node = NULL;
+	#endif
 	struct rbtree_node *rb_node = NULL;
 	u64 *kp = NULL;
 
@@ -127,30 +147,34 @@ void *ds_lookup(struct data_struct *ds, sector_t key)
 	return NULL;
 }
 
-void ds_remove(struct data_struct *ds, sector_t key, struct kmem_cache *value_cache)
+void ds_remove(struct data_struct *ds, sector_t key, struct kmem_cache *lsbdd_value_cache)
 {
+	BUG_ON(!ds || !lsbdd_value_cache);
+
 	u64 *kp = NULL;
 
 	kp = &key;
 	if (ds->type == BTREE_TYPE)
 		btree_remove(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
 	if (ds->type == SKIPLIST_TYPE)
-		skiplist_remove(ds->structure.map_list, key, value_cache);
+		skiplist_remove(ds->structure.map_list, key);
 	if (ds->type == HASHTABLE_TYPE)
-		hashtable_remove(ds->structure.map_hash, key, value_cache);
+		hashtable_remove(ds->structure.map_hash, key, lsbdd_value_cache);
 	if (ds->type == RBTREE_TYPE)
 		rbtree_remove(ds->structure.map_rbtree, key);
 }
 
-s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng, struct kmem_cache *value_cache)
+s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng, struct kmem_cache *lsbdd_value_cache)
 {
+	BUG_ON(!ds || !cache_mng || !lsbdd_value_cache);
+
 	u64 *kp = NULL;
 	kp = &key;
 
 	if (ds->type == BTREE_TYPE)
 		return btree_insert(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp, value, GFP_KERNEL);
 	if (ds->type == SKIPLIST_TYPE)
-		skiplist_insert(ds->structure.map_list, key, value, cache_mng->sl_cache, value_cache);
+		skiplist_insert(ds->structure.map_list, key, value, cache_mng->sl_cache, lsbdd_value_cache);
 	if (ds->type == HASHTABLE_TYPE)
 		hashtable_insert(ds->structure.map_hash, key, value, cache_mng->ht_cache);
 	if (ds->type == RBTREE_TYPE)
@@ -160,7 +184,13 @@ s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_ma
 
 sector_t ds_last(struct data_struct *ds, sector_t key)
 {
+	BUG_ON(!ds);
+	#ifdef LF_MODE
 	struct lf_list_node *hm_node = NULL;
+#endif
+	#ifdef SY_MODE
+	struct hash_el *hm_node = NULL;
+	#endif 
 	struct rbtree_node *rb_node = NULL;
 	u64 *kp = NULL;
 
@@ -187,8 +217,15 @@ sector_t ds_last(struct data_struct *ds, sector_t key)
 
 void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key)
 {
+	BUG_ON(!ds);
+
 	struct skiplist_node *sl_node = NULL;
+#ifdef LF_MODE
 	struct lf_list_node *hm_node = NULL;
+#endif
+	#ifdef SY_MODE
+	struct hash_el *hm_node = NULL;
+	#endif 
 	struct rbtree_node *rb_node = NULL;
 	u64 *kp = NULL;
 
@@ -216,6 +253,8 @@ void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key)
 
 s32 ds_empty_check(struct data_struct *ds)
 {
+	BUG_ON(!ds);
+
 	if (ds->type == BTREE_TYPE && ds->structure.map_btree->head->height == 0)
 		return 1;
 	if (ds->type == SKIPLIST_TYPE && skiplist_is_empty(ds->structure.map_list))

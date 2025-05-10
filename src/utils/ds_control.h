@@ -1,6 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+// SPDX-License-Identifier: GPL-2.0-only
 
-#pragma once
+#ifndef DS_CONTROL_H
+#define DS_CONTROL_H
+
+// General data structures API
 
 #include <linux/types.h>
 
@@ -35,6 +38,8 @@ struct cache_manager {
 	struct kmem_cache *rb_cache;
 };
 
+// pretty intuitive, specific data structure methods used in ds_control.c got more detailed docs ;)
+
 int ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mng);
 void ds_free(struct data_struct *ds, struct cache_manager *cache_mng, struct kmem_cache *value_cache);
 void *ds_lookup(struct data_struct *ds, sector_t key);
@@ -43,3 +48,5 @@ int ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_ma
 sector_t ds_last(struct data_struct *ds, sector_t key);
 void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key);
 int ds_empty_check(struct data_struct *ds);
+
+#endif

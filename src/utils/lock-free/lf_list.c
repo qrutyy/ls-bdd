@@ -16,7 +16,7 @@
  * It is used only inside the lf_list_remove function to decrease possible corruption cases. 
  * Theorethically - it can be used in lookup, when the physical help/unlink happens, but thats a Jimmy Neutron's task.
  *
- * !Note: uses long, bc of the atomic_long_t removed_stack_head. We provide atomic head update.
+ * !Note: uses s64, bc of the atomic64_t removed_stack_head. We provide atomic head update.
  * Its the only one for multiple threads, so it can be accessed from multiple threads at one time. 
  * 
  * @param list - general list structure
@@ -28,8 +28,8 @@ static void add_to_removed_stack(struct lf_list *list, struct lf_list_node *node
 {
 	BUG_ON(!node_to_add || !list); 
 
-	long old_head_val;
-	long new_head_ptr_val = (long)node_to_add;
+	s64 old_head_val;
+	s64 new_head_ptr_val = (s64)node_to_add;
 
 	pr_debug("add_to_removed_stack: Attempting to add node %p (key %llu)\n", node_to_add, node_to_add->key);
 
@@ -171,12 +171,6 @@ void lf_list_free(struct lf_list *list, struct kmem_cache *lsbdd_node_cache, str
 		kfree(list);
 	}
 	pr_info("Linked list cleanup finished.\n");
-}
-
-// intuitive
-static int get_list_size(struct lf_list *list)
-{
-    return atomic64_read(&list->size);
 }
 
 struct lf_list_node *lf_list_lookup(struct lf_list *list, sector_t key, struct lf_list_node **left_node_out)

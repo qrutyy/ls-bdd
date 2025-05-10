@@ -4,8 +4,10 @@
 #include "hashtable.h"
 #include <linux/slab.h>
 
-struct hashtable *hashtable_init(struct kmem_cache *ht_cache)
+struct hashtable *hashtable_init(struct kmem_cache *lsbdd_node_cache)
 {
+	BUG_ON(!lsbdd_node_cache);
+
 	struct hashtable *hash_table = NULL;
 	struct hash_el *last_hel = NULL;
 
@@ -19,8 +21,10 @@ struct hashtable *hashtable_init(struct kmem_cache *ht_cache)
 	return hash_table;
 }
 
-struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void *value, struct kmem_cache *ht_cache)
+struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void *value, struct kmem_cache *lsbdd_node_cache)
 {
+	BUG_ON(!ht || !lsbdd_node_cache);
+
 	struct hash_el *el = NULL;
 
 	el = kzalloc(sizeof(struct hash_el), GFP_KERNEL); // #TODO fix mem error, handle outside.
@@ -31,18 +35,23 @@ struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void *value
 
 	el->key = key;
 	el->value = value;
+
 	hlist_add_head(&el->node, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)]);
+	
 	ht->max_bck_num = BUCKET_NUM;
 	if (ht->last_el->key < key)
 		ht->last_el = el;
 	return el;
 }
 
-void hashtable_free(struct hashtable *ht, struct kmem_cache *ht_cache)
+void hashtable_free(struct hashtable *ht, struct kmem_cache *lsbdd_node_cache, struct kmem_cache *lsbdd_value_cache)
 {
+	// TODO: fix deallocation
+	BUG_ON(!ht || !lsbdd_node_cache || !lsbdd_value_cache);
+
 	s32 bckt_iter = 0;
-	struct hash_el *el;
-	struct hlist_node *tmp;
+	struct hash_el *el = NULL;
+	struct hlist_node *tmp = NULL;
 
 	hash_for_each_safe (ht->head, bckt_iter, tmp, el, node) {
 		if (el) {
@@ -56,7 +65,9 @@ void hashtable_free(struct hashtable *ht, struct kmem_cache *ht_cache)
 
 struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key)
 {
-	struct hash_el *el;
+	BUG_ON(!ht);
+
+	struct hash_el *el = NULL;
 
 	pr_debug("Hashtable: bucket_val %llu", BUCKET_NUM);
 
@@ -69,8 +80,10 @@ struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key)
 
 struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *prev_key)
 {
+	BUG_ON(!ht);
+
 	struct hash_el *prev_max_node = kzalloc(sizeof(struct hash_el), GFP_KERNEL);
-	struct hash_el *el;
+	struct hash_el *el = NULL;
 
 	hlist_for_each_entry (el, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)], node) {
 		if (el && el->key <= key && el->key > prev_max_node->key)
@@ -94,8 +107,10 @@ struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *pre
 	return prev_max_node;
 }
 
-void hashtable_remove(struct hashtable *ht, sector_t key)
+void hashtable_remove(struct hashtable *ht, sector_t key, struct kmem_cache *lsbdd_value_cache)
 {
+	BUG_ON(!ht || !lsbdd_value_cache);
+
 	struct hlist_node *ht_node = NULL;
 
 	ht_node = &hashtable_find_node(ht, key)->node;
@@ -104,5 +119,6 @@ void hashtable_remove(struct hashtable *ht, sector_t key)
 
 bool hashtable_is_empty(struct hashtable *ht)
 {
+	BUG_ON(!ht);
 	return hash_empty(ht->head);
 }

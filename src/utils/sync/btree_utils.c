@@ -7,15 +7,9 @@
 #include <linux/slab.h>
 #include "btree_utils.h"
 
-struct btree_geo {
-	s32 keylen;
-	s32 no_pairs;
-	s32 no_longs;
-};
-
 static s32 longcmp(const unsigned long *l1, const unsigned long *l2, size_t n)
 {
-	size_t i;
+	size_t i = 0;
 
 	for (i = 0; i < n; i++) {
 		if (l1[i] < l2[i])
@@ -47,8 +41,8 @@ static s32 keycmp(struct btree_geo *geo, unsigned long *node, int pos, unsigned 
 
 static void dec_key(struct btree_geo *geo, unsigned long *key)
 {
-	unsigned long val;
-	s32 i;
+	unsigned long val = 0;
+	size_t i = 0;
 
 	for (i = geo->keylen - 1; i >= 0; i--) {
 		val = key[i];
@@ -60,7 +54,7 @@ static void dec_key(struct btree_geo *geo, unsigned long *key)
 
 static s32 keyzero(struct btree_geo *geo, unsigned long *key)
 {
-	s32 i;
+	size_t i = 0;
 
 	for (i = 0; i < geo->keylen; i++)
 		if (key[i])
@@ -80,18 +74,18 @@ sector_t btree_last_no_rep(struct btree_head *head, struct btree_geo *geo, unsig
 	unsigned long *node = head->node;
 
 	if (height == 0)
-		return NULL;
+		return 0;
 
 	for (; height > 1; height--)
 		node = bval(geo, node, 0);
 
-	return bkey(geo, node, 0);
+	return *bkey(geo, node, 0);
 }
 
 void *btree_get_next(struct btree_head *head, struct btree_geo *geo, unsigned long *key)
 {
-	s32 i, height;
-	unsigned long *node, *oldnode;
+	s32 i = 0, height = 0;
+	unsigned long *node = NULL, *oldnode = NULL;
 	unsigned long *retry_key = NULL;
 
 	if (keyzero(geo, key))
@@ -140,8 +134,8 @@ miss:
 
 void *btree_get_prev_no_rep(struct btree_head *head, struct btree_geo *geo, unsigned long *key, unsigned long *prev_key)
 {
-	s32 i, height;
-	unsigned long *node, *oldnode;
+	s32 i = 0, height = 0;
+	unsigned long *node = NULL, *oldnode = NULL;
 	unsigned long *retry_key = NULL;
 
 	if (keyzero(geo, key))
