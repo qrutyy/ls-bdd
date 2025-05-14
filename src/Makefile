@@ -1,5 +1,5 @@
 CONFIG_MODULE_SIG=n
-name = lsbdd
+name=lsbdd
 
 # Delete Block device Index
 DBI?=1
@@ -37,11 +37,11 @@ RD_SIZE_B := $(shell echo "$(RD_SIZE_GB) * 1048576" | bc)
 
 ifeq ($(KERNELRELEASE),)
 
-    # Assume the source tree is where the running kernel was built
-    # You should set KERNELDIR in the environment if it's elsewhere
-    KERNELDIR ?= /lib/modules/$(shell uname -r)/build
-    # The current directory is passed to sub-makes as argument
-    PWD := $(shell pwd)
+	# Assume the source tree is where the running kernel was built
+	# You should set KERNELDIR in the environment if it's elsewhere
+	KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+	# The current directory is passed to sub-makes as argument
+	PWD := $(shell pwd)
 
 modules:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules

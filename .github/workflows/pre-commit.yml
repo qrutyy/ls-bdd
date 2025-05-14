@@ -1,0 +1,40 @@
+name: pre-commit
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - master
+      - main
+    paths:
+      - '.pre-commit-config.yaml'
+      - '.pre-commit-hooks.yaml'
+      - 'Makefile'
+      - 'makefile'
+      - 'GNUmakefile'
+      - '**.mk'
+      - '**.make'
+  push:
+    paths:
+      - '.pre-commit-config.yaml'
+      - '.pre-commit-hooks.yaml'
+      - 'Makefile'
+      - 'makefile'
+      - 'GNUmakefile'
+      - '**.mk'
+      - '**.make'
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 'stable' 
+      id: go
+    - uses: pre-commit/action@v3.0.1
+      # The default is 'pre-commit run --all-files'.
+
