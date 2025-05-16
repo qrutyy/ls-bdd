@@ -30,4 +30,3 @@ struct bd_manager {
 	struct data_struct *sel_data_struct;
 	struct list_head list;
 };
-

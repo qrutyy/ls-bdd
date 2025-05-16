@@ -10,7 +10,7 @@
 
 #ifdef LF_MODE
 #include "lf_list.h"
-#endif 
+#endif
 
 
 s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mng)
@@ -190,7 +190,7 @@ sector_t ds_last(struct data_struct *ds, sector_t key)
 #endif
 	#ifdef SY_MODE
 	struct hash_el *hm_node = NULL;
-	#endif 
+	#endif
 	struct rbtree_node *rb_node = NULL;
 	u64 *kp = NULL;
 
@@ -225,7 +225,7 @@ void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key)
 #endif
 	#ifdef SY_MODE
 	struct hash_el *hm_node = NULL;
-	#endif 
+	#endif
 	struct rbtree_node *rb_node = NULL;
 	u64 *kp = NULL;
 

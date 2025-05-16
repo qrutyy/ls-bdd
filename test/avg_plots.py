@@ -32,7 +32,7 @@ def plot_tp(df):
     plt.figure(figsize=(8, 6))
     df = df[df["MODE"] == "tp"]
 
-    for bs in df["BS"].unique(): 
+    for bs in df["BS"].unique():
         for mix in df["MIX"].unique():
             subset = df[(df["BS"] == bs) & (df["MODE"] == "tp") & (df["MIX"] == mix)].sort_values(by="RunID")
 
@@ -61,7 +61,7 @@ def plot_tp(df):
 def plot_iops(df):
     df = df[df["MODE"] == "iops"]
 
-    for bs in df["BS"].unique(): 
+    for bs in df["BS"].unique():
         plt.figure(figsize=(8, 6))
         for mix in df["MIX"].unique():
             subset = df[(df["MODE"] == "iops") & (df["BS"] == bs) & (df["MIX"] == mix)].sort_values(by="RunID")
@@ -70,7 +70,7 @@ def plot_iops(df):
 
             label_f = f"BS={bs}, MIX={mix}"
 
-            plt.plot(subset["RunID"], subset["IOPS"], marker='o', linestyle='-', linewidth=2, 
+            plt.plot(subset["RunID"], subset["IOPS"], marker='o', linestyle='-', linewidth=2,
                      color=colors[hash(mix) % len(colors)], label=label_f)
 
         if plt.gca().has_data():
@@ -93,4 +93,3 @@ else:
     plot_iops(df)
 
 print("Analysis complete. Graphs saved.")
-

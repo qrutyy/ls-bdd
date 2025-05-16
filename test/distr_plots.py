@@ -81,4 +81,3 @@ for mode in df["MODE"].unique():
                     print(normality_result)
 
 print("Analysis complete. Histograms and statistics saved.")
-

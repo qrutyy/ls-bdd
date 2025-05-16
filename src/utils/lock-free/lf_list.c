@@ -12,21 +12,21 @@
 #define MAX_LOOKUP_RETRIES 10000
 
 /**
- * Adds the node to removed stack by replacing the head with the node. 
- * It is used only inside the lf_list_remove function to decrease possible corruption cases. 
+ * Adds the node to removed stack by replacing the head with the node.
+ * It is used only inside the lf_list_remove function to decrease possible corruption cases.
  * Theorethically - it can be used in lookup, when the physical help/unlink happens, but thats a Jimmy Neutron's task.
  *
  * !Note: uses s64, bc of the atomic64_t removed_stack_head. We provide atomic head update.
- * Its the only one for multiple threads, so it can be accessed from multiple threads at one time. 
- * 
+ * Its the only one for multiple threads, so it can be accessed from multiple threads at one time.
+ *
  * @param list - general list structure
- * @param node - node to removed node 
+ * @param node - node to removed node
  *
  * @return void
  */
 static void add_to_removed_stack(struct lf_list *list, struct lf_list_node *node_to_add)
 {
-	BUG_ON(!node_to_add || !list); 
+	BUG_ON(!node_to_add || !list);
 
 	s64 old_head_val;
 	s64 new_head_ptr_val = (s64)node_to_add;
@@ -51,7 +51,7 @@ static void add_to_removed_stack(struct lf_list *list, struct lf_list_node *node
 }
 
 /**
- * Allocates the node and initialises it. 
+ * Allocates the node and initialises it.
  * Memory allocation fail is handled in callers.
  *
  * @param key - LBA sector_t
@@ -109,13 +109,13 @@ void lf_list_free(struct lf_list *list, struct kmem_cache *lsbdd_node_cache, str
 		if (node == last_freed_node_addr) { // List structure corruption check
 			pr_warn("lf_list_free: Attempting to double-free node %p (key %llu) in main list. Skipping.\n", node, node->key);
 		} else {
-			if (node->value) { 
+			if (node->value) {
 				kmem_cache_free(lsbdd_value_cache, node->value);
-				node->value = NULL; 
+				node->value = NULL;
 			}
 			pr_debug("lf_list_free: Freeing node %p (key %llu) from main list\n", node, node->key);
 			kmem_cache_free(lsbdd_node_cache, node);
-			last_freed_node_addr = node; 
+			last_freed_node_addr = node;
 		}
 		node = next;
 	}
@@ -123,22 +123,22 @@ void lf_list_free(struct lf_list *list, struct kmem_cache *lsbdd_node_cache, str
 
 	removed_node_head = (struct lf_list_node *)ATOMIC_LSWAP(&list->removed_stack_head, 0); // null to list->removed_node_head
 	node = removed_node_head;
-	last_freed_node_addr = NULL; 
+	last_freed_node_addr = NULL;
 	pr_debug("lf_list_free: Starting removed_stack traversal from node %p\n", node);
 	while (node) {
 		next = node->removed_link;
 
-		if (node == last_freed_node_addr) { 
+		if (node == last_freed_node_addr) {
 			pr_warn("lf_list_free: Attempting to double-free node %p (key %llu) in removed_stack. Skipping.\n", node, node->key);
 		} else {
-			if (node->value) { 
+			if (node->value) {
 				kmem_cache_free(lsbdd_value_cache, node->value);
 				node->value = NULL;
 				pr_debug("Freed value\n");
 			}
 			pr_debug("lf_list_free: Freeing node %p (key %llu) from removed_stack\n", node, node->key);
 			kmem_cache_free(lsbdd_node_cache, node);
-			last_freed_node_addr = node; 
+			last_freed_node_addr = node;
 		}
 		node = next;
 	}
@@ -176,11 +176,11 @@ void lf_list_free(struct lf_list *list, struct kmem_cache *lsbdd_node_cache, str
 struct lf_list_node *lf_list_lookup(struct lf_list *list, sector_t key, struct lf_list_node **left_node_out)
 {
     struct lf_list_node *left_node_next_snap = NULL; // Used for detecting the concurrent modifications of the "window"
-    struct lf_list_node *right_node = NULL; 
+    struct lf_list_node *right_node = NULL;
 	struct lf_list_node *t = NULL, *t_next = NULL;
     u32 retry_count = 0;
 
-	
+
     pr_debug("lf_list_lookup: Searching for key %llu in list %p\n", key, list);
 	if (!key) {
 		pr_debug("lf_list_lookup: Search for key 0 occured\n");
@@ -191,35 +191,35 @@ retry_search_outer:
     retry_count++;
     if (retry_count > MAX_LOOKUP_RETRIES) {
         pr_warn("lf_list_lookup: MAX_RETRIES (outer) for key %llu! list %p\n", key, list);
-        return NULL; 
+        return NULL;
     }
 
-    (*left_node_out) = list->head; 
-    left_node_next_snap = list->head->next; 
+    (*left_node_out) = list->head;
+    left_node_next_snap = list->head->next;
     t = list->head; // Current node being examined (predecessor candidate)
-    t_next = t->next; 
+    t_next = t->next;
 
     pr_debug("lf_list_lookup: Outer retry %d: t=%p (key %llu), t_next=%p\n",
              retry_count, t, t->key, t_next);
 
     // Find the window (left_node, right_node) where left_node->key < key <= right_node->key
-    while (HAS_MARK(t_next) || (t != list->tail && t->key < key)) { 
+    while (HAS_MARK(t_next) || (t != list->tail && t->key < key)) {
 
         if (t == STRIP_MARK(t_next)) { // Cause of infinite loops (linked list structure corruption)
              pr_err("lf_list_lookup: Inner loop stalled! t=%p points to itself? t_next=%p. Aborting.\n", t, t_next);
-             return NULL; 
+             return NULL;
         }
 
         // If t_next is not marked, it's a potential candidate for left_node_next_snap
         if (!HAS_MARK(t_next)) {
-            (*left_node_out) = t; 
-            left_node_next_snap = t_next; 
+            (*left_node_out) = t;
+            left_node_next_snap = t_next;
             pr_debug("lf_list_lookup: Inner loop: Updated left_node=%p (key %llu), left_next_snap=%p\n", *left_node_out, (*left_node_out)->key, left_node_next_snap);
         } else {
             pr_debug("lf_list_lookup: Inner loop: Skipping marked t_next %p (from t=%p)\n", t_next, t);
         }
 
-        t = STRIP_MARK(t_next); // Move t further 
+        t = STRIP_MARK(t_next); // Move t further
 
         if (t == list->tail) {
             pr_debug("lf_list_lookup: Inner loop: Reached tail (t == list->tail).\n");
@@ -288,9 +288,9 @@ struct lf_list_node *lf_list_add(struct lf_list *list, sector_t key, void *val, 
 {
     struct lf_list_node *left = NULL, *right = NULL;
     struct lf_list_node *new_node = NULL;
-	
+
 	new_node = node_alloc(key, val, NULL, list_node_cache);
-	
+
     while (1) {
         right = lf_list_lookup(list, key, &left);
 		if (right == NULL) {
@@ -319,15 +319,15 @@ bool lf_list_remove(struct lf_list *list, sector_t key)
     struct lf_list_node *left = NULL;
     while (1) {
         struct lf_list_node *right = lf_list_lookup(list, key, &left);
-		if (!right) { 
+		if (!right) {
             pr_warn("lf_list_remove: lookup failed for key %llu (returned NULL). Cannot remove.\n", key);
-            return false; 
+            return false;
         }
 
         if ((right == list->tail) || (right->key != key)) {
 			pr_debug("Right %p key %llu \n", right, right->key);
 			pr_debug("Left %p key %llu \n", left, left->key);
-            return false; 
+            return false;
         }
 
         struct lf_list_node *right_succ = right->next;
@@ -335,7 +335,7 @@ bool lf_list_remove(struct lf_list *list, sector_t key)
         if (HAS_MARK(right_succ)) {
             // Node 'right' is already logically deleted or deletion is in progress.
             pr_debug("lf_list_remove: Node %p (key %llu) already marked. Consider removed.\n", right, right->key);
-            return true; 
+            return true;
         }
 
         // Try to mark 'right->next' to logically delete 'right'
@@ -347,4 +347,3 @@ bool lf_list_remove(struct lf_list *list, sector_t key)
         // CAS failed: right->next changed. Loop and retry.
     }
 }
-

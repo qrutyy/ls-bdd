@@ -1,6 +1,13 @@
-# use github's pre-commit-hooks library to detect issues
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.1.0
     hooks:
+      - id: end-of-file-fixer
+        name: Fix End of Files
+        description: "Ensures that a file is either empty, or ends with one newline."
+        files: \.(c|h|py)$
+  
       - id: trailing-whitespace
+        name: Trim Trailing Whitespace
+        description: "This hook trims trailing whitespace." 
+        files: \.(c|h|py)$

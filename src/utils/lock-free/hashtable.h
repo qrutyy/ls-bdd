@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only 
+// SPDX-License-Identifier: GPL-2.0-only
 
 #ifndef HASHTABLE_H
 #define HASHTABLE_H
@@ -9,11 +9,11 @@
 #include <linux/slab.h>
 #include "lf_list.h"
 
-/** 
- * SMP modification of basic kernel hashtable using lock-free linked list (not doubly though). 
- * Kernel hashtable is based on the doubly linked list, organising it in form of buckets. 
- * 
- * In this modification - lock-free singly linked list is used as the base structure. 
+/**
+ * SMP modification of basic kernel hashtable using lock-free linked list (not doubly though).
+ * Kernel hashtable is based on the doubly linked list, organising it in form of buckets.
+ *
+ * In this modification - lock-free singly linked list is used as the base structure.
  * Memory reclamation system is tied up to it. It uses an additional stack that collects physically removed nodes and stores them until the hashtable_free is called.
  * NOTE!: doubly linked list potentially could help us get prev elements faster (in case of the same bucket), but such struggle doesn't worth the effort.
  */
@@ -57,8 +57,8 @@ struct hashtable *hashtable_init(struct kmem_cache *lsbdd_node_cache);
  * Inserts node with provided key-value pair into the hashtable.
  *
  * @param ht - hashtable structure
- * @param key - LBA sector 
- * @param value - pointer to struct (value_redir) with PBA and meta data 
+ * @param key - LBA sector
+ * @param value - pointer to struct (value_redir) with PBA and meta data
  * @param lsbdd_node_cache
  * @param lsbdd_value_cache
  *
@@ -84,10 +84,10 @@ void hashtable_free(struct hashtable *ht, struct kmem_cache *lsbdd_node_cache, s
  * Searches for node with provided key in the hashtable.
  *
  * @param ht - hastable structure
- * @param key - LBA sector 
+ * @param key - LBA sector
  *
  * @return node on success, NULL if:
- *  - found node with other key 
+ *  - found node with other key
  *  - if lf_list_lookup failed
  */
 struct lf_list_node *hashtable_find_node(struct hashtable *ht, sector_t key);

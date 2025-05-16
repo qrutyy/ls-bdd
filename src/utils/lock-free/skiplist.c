@@ -22,15 +22,15 @@
 // check marked_pointers if you are confused
 
 /**
- * Adds the node to removed stack by replacing the head with the node. 
- * It is used only inside the skiplist_remove function to decrease possible corruption cases. 
+ * Adds the node to removed stack by replacing the head with the node.
+ * It is used only inside the skiplist_remove function to decrease possible corruption cases.
  * Theorethically - it can be used in lookup, when the physical help/unlink happens, but thats a Jimmy Neutron's task.
  *
  * !Note: uses s64, bc of the atomic64_t removed_stack_head. We provide atomic head update.
- * Its the only one for multiple threads, so it can be accessed from multiple threads at one time. 
- * 
+ * Its the only one for multiple threads, so it can be accessed from multiple threads at one time.
+ *
  * @param list - general list structure
- * @param node - node to removed node 
+ * @param node - node to removed node
  *
  * @return void
  */
@@ -43,19 +43,19 @@ static void add_to_removed_stack(struct skiplist *sl, struct skiplist_node *node
 
 	if (!node)
 		return;
-	
+
 	old_head = ATOMIC_LREAD(&sl->removed_stack_head);
-	
+
 	do {
         node->removed_link = (struct skiplist_node *)old_head; // Set next pointer
         current_head_val = ATOMIC_LCAS(&sl->removed_stack_head, old_head, new_head);
 
-        if (current_head_val == old_head) 
+        if (current_head_val == old_head)
             break; // Success
-        
+
         old_head = current_head_val;
 
-    } while (true); 
+    } while (true);
 
 	pr_debug("Pushed node %p with key %llu", node, node->key);
 	return;
@@ -143,7 +143,7 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *lsbdd_node_cache, str
 	struct skiplist_node *node = NULL;
 	struct skiplist_node *next = NULL;
 	struct skiplist_node *removed_node_head = NULL;
-	
+
 	node = GET_NODE(sl->head->next[0]);
 	while (node) {
 		next = STRIP_MARK(node->next[0]);
@@ -153,31 +153,31 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *lsbdd_node_cache, str
 		kmem_cache_free(lsbdd_node_cache, node);
 		node = next;
 	}
-	
+
 	removed_node_head = (struct skiplist_node *)ATOMIC_LSWAP(&sl->removed_stack_head, 0);
 
 	pr_debug("Freeing nodes from the removed stack...\n");
     node = removed_node_head;
 	while (node) {
-        next = node->removed_link; 
+        next = node->removed_link;
 
 		if (node->value) {
 			pr_info("Freeing removed node %p (key %lld)\n", node, node->key);
 			kmem_cache_free(lsbdd_value_cache, node->value);
 		}
 		kmem_cache_free(lsbdd_node_cache, node);
-		node = next; 
+		node = next;
 	}
     pr_debug("Finished freeing nodes from removed stack.\n");
 
 	if (sl->head) {
         pr_debug("Freeing head node %p\n", sl->head);
-		if (sl->head->value) 
+		if (sl->head->value)
 			kmem_cache_free(lsbdd_value_cache, sl->head->value);
 		kmem_cache_free(lsbdd_node_cache, sl->head);
         sl->head = NULL;
 	}
-	
+
     pr_debug("Freeing skiplist structure %p\n", sl);
 	kfree(sl);
 	pr_debug("Skiplist cleanup finished.\n");
@@ -373,7 +373,7 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *v
 	// If there is already an node in the skiplist that matches the key just update its value.
 	if (old_node != NULL) {
 		ret_val = update_node(old_node, value);
-		if (IS_ERR(ret_val)) { 
+		if (IS_ERR(ret_val)) {
 			if (PTR_ERR(ret_val) == -EAGAIN) {
 				pr_debug("Skiplist(insert): update_node failed CAS for key %lld, retrying insert.\n", key);
 				return skiplist_insert(sl, key, value, lsbdd_node_cache, lsbdd_value_cache); // tail call
@@ -381,7 +381,7 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *v
 				pr_warn("Skiplist(insert): update_node returned unexpected error %ld for key %lld\n", PTR_ERR(ret_val), key);
 				return ret_val;
 			}
-		} else if (ret_val == NULL) { 
+		} else if (ret_val == NULL) {
 			pr_debug("Skiplist(insert): update_node returned NULL for key %lld (node likely removed), retrying insert.\n", key);
 			return skiplist_insert(sl, key, value, lsbdd_node_cache, lsbdd_value_cache); // tail call
 		} else {
@@ -544,9 +544,9 @@ void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd
 	add_to_removed_stack(sl, node);
 	// unlink the node
 	find_preds(NULL, NULL, 0, sl, key, FORCE_UNLINK);
-	if (val) 
+	if (val)
 		kmem_cache_free(lsbdd_value_cache, val);
-	
+
 
 	return;
 }

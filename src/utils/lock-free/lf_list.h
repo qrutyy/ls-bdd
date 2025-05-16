@@ -4,7 +4,7 @@
 #define LF_LIST_H
 
 #include "marked_pointers.h"
- 
+
 struct lf_list_node {
 	struct lf_list_node *next;
 	struct lf_list_node *removed_link;
@@ -27,7 +27,7 @@ struct lf_list {
  */
 struct lf_list *lf_list_init(struct kmem_cache *lsbdd_node_cache);
 /**
- * Frees the memory allocated for linked list. 
+ * Frees the memory allocated for linked list.
  *
  * @param list - pointer to general list structure
  * @param lsbdd_node_cache - node cache
@@ -38,7 +38,7 @@ struct lf_list *lf_list_init(struct kmem_cache *lsbdd_node_cache);
 void lf_list_free(struct lf_list *list, struct kmem_cache *lsbdd_node_cache, struct kmem_cache *lsbdd_value_cache);
 
 /**
- * Adds element to the list in sorted (ascending) order. 
+ * Adds element to the list in sorted (ascending) order.
  *
  * @param list - pointer to general list structure
  * @param key - LBA sector_t
@@ -49,9 +49,9 @@ void lf_list_free(struct lf_list *list, struct kmem_cache *lsbdd_node_cache, str
  */
 struct lf_list_node *lf_list_add(struct lf_list *list, sector_t key, void *val, struct kmem_cache *lf_list_node_cache);
 
-/* The deletion is logical and consists of setting the node mark bit to 1. 
+/* The deletion is logical and consists of setting the node mark bit to 1.
  * After logically deleting the node - it is added into removed_stack for future memory reclamation.
- * Physical deletion (memory reclamation) is handled in list_free. 
+ * Physical deletion (memory reclamation) is handled in list_free.
  *
  * @param list - pointer to general list structure
  * @param key - LBA sector_t
@@ -75,10 +75,10 @@ bool lf_list_remove(struct lf_list *list, sector_t key);
  *
  * @param list - pointer to general list structure
  * @param key - LBA sector_t
- * @param left_node - pointer to left_node location 
+ * @param left_node - pointer to left_node location
  *
- * @return node on success, NULL on error 
+ * @return node on success, NULL on error
  */
 struct lf_list_node *lf_list_lookup(struct lf_list *list, sector_t key, struct lf_list_node **left_node);
 
-#endif 
+#endif

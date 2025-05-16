@@ -33,7 +33,7 @@ struct skiplist {
 };
 
 /**
- * Simply initialises the skiplist. 
+ * Simply initialises the skiplist.
  * Allocates it using cache (lsbdd_node_cache).
  * Adds two-side guards in skiplist.
  *
@@ -45,19 +45,19 @@ struct skiplist *skiplist_init(struct kmem_cache *lsbdd_node_cache);
 
 /**
  * Searches for node with similar key in provided skiplist.
- * 
- * @param sl - skiplist to search in 
- * @param key - LBA sector 
+ *
+ * @param sl - skiplist to search in
+ * @param key - LBA sector
  *
  * @return node on success, NULL on fail (mem alloc fail)
  */
 struct skiplist_node *skiplist_find_node(struct skiplist *sl, sector_t key);
 
 /**
- * Frees the allocated resources of skiplist. 
+ * Frees the allocated resources of skiplist.
  * Deallocates the cache mem by iterating through the general skiplist structure
  *
- * @param sl - skiplist structure 
+ * @param sl - skiplist structure
  * @param lsbdd_node_cache
  * @param lsbdd_value_cache
  *
@@ -84,7 +84,7 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *d
 /**
  * Removes the node from the structure. Frees the allocated mem.
  *
- * @param sl - skiplist 
+ * @param sl - skiplist
  * @param key - LBA sector
  * @param lsbdd_value_cache
  *
@@ -97,9 +97,9 @@ void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd
  *
  * @param sl - skiplist
  * @param key - LBA sector
- * @param prev_key - pointer to prev_key 
+ * @param prev_key - pointer to prev_key
  *
- * @return node on success (with provided key), NULL on fail 
+ * @return node on success (with provided key), NULL on fail
  * !Note: also writes in prev_key the found node's key
  */
 struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t *prev_key);
@@ -110,7 +110,7 @@ struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t 
  */
 sector_t skiplist_last(struct skiplist *sl);
 
-// Checks if the next node from head is NULL 
+// Checks if the next node from head is NULL
 bool skiplist_is_empty(struct skiplist *sl);
 
 #endif

@@ -35,8 +35,8 @@ struct hashtable *hashtable_init(struct kmem_cache *lsbdd_node_cache);
  * Inserts node with provided key-value pair into the hashtable.
  *
  * @param ht - hashtable structure
- * @param key - LBA sector 
- * @param value - pointer to struct (value_redir) with PBA and meta data 
+ * @param key - LBA sector
+ * @param value - pointer to struct (value_redir) with PBA and meta data
  * @param lsbdd_node_cache
  * @param lsbdd_value_cache
  *
@@ -62,7 +62,7 @@ void hashtable_free(struct hashtable *hm, struct kmem_cache *lsbdd_node_cache, s
  * Searches for node with provided key in the hashtable.
  *
  * @param ht - hastable structure
- * @param key - LBA sector 
+ * @param key - LBA sector
  *
  * @return node on success, NULL on fail
  */

@@ -38,7 +38,7 @@ class File:
                 if chunk1 != chunk2:
                     print(f"Mismatch found between {self.path} and {other_file.path}.")
                     return chunk_num
-                if not chunk1:    
+                if not chunk1:
                     break
         print('\033[1m' + f"Files {self.path} and {other_file.path} are identical." + '\033[0m')
         return 0
@@ -99,12 +99,12 @@ class Test:
 
                 self.run_dd_command(f"dd if={input_file.path} of=/dev/{self.vbd_name} oflag=direct bs={write_bs}k count={write_count} seek={seek_offset // write_bs // 1024} skip={seek_offset // write_bs // 1024}")
                 self.run_dd_command(f"dd if=/dev/{self.vbd_name} of={output_file.path} iflag=direct bs={read_bs}k count={read_count} skip={skip_offset // read_bs // 1024} seek={skip_offset // read_bs // 1024}")
-                
+
                 self.test_count += 1
 
                 seek_offset += write_count * write_bs * 1024
                 skip_offset += read_count * read_bs * 1024
-                            
+
             result = input_file.compare(output_file)
             if result != 0:
                 self.errors.append((result, (write_bs, read_bs)))
@@ -123,10 +123,10 @@ class Test:
                 if result != 0:
                     self.errors.append((write_bs, read_bs))
                 self.reinit_driver()
-        else: 
+        else:
             print(f"Mode {self.mode} isn't supported. Check -h for information about available parameters.")
 
-       
+
     @staticmethod
     def run_dd_command(command):
         try:

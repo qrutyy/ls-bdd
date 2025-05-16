@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only 
+// SPDX-License-Identifier: GPL-2.0-only
 
 #ifndef RBTREE_H
 #define RBTREE_H
@@ -30,7 +30,7 @@ struct rbtree {
 struct rbtree *rbtree_init(void);
 
 /**
- * Frees all the RB tree structure. 
+ * Frees all the RB tree structure.
  * Iterates in postorder and deallocates all the nodes and their data.
  *
  * @param rbt - rb tree structure
@@ -51,12 +51,12 @@ void rbtree_free(struct rbtree *rbt);
 void rbtree_add(struct rbtree *rbt, sector_t key, void *value);
 
 /**
- * Removes the node from the rb tree structure.  
+ * Removes the node from the rb tree structure.
  *
  * @param rbt - rb tree structure
  * @param key - LBA sector
  *
- * @return void 
+ * @return void
  * !Note: in case of successfull remove - deallocates the mem.
  */
 void rbtree_remove(struct rbtree *rbt, sector_t key);
@@ -73,7 +73,7 @@ void rbtree_remove(struct rbtree *rbt, sector_t key);
 struct rbtree_node *rbtree_find_node(struct rbtree *rbt, sector_t key);
 
 /**
- * Searches for node with greatest key smaller then provided one. 
+ * Searches for node with greatest key smaller then provided one.
  *
  * @param rbt - rb tree structure
  * @param key - LBA sector
@@ -85,7 +85,7 @@ struct rbtree_node *rbtree_prev(struct rbtree *rbt, sector_t key, sector_t *prev
 
 /**
  * Simply gets the last node by iterating the right side of the tree.
- * !Note: in case it overloads the general performance 
+ * !Note: in case it overloads the general performance
  * - it can be optimised by adding pointer to last el into the rbtree structure.
  *
  * @param rbt - rb tree structure

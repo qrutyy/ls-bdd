@@ -37,7 +37,7 @@ struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void *value
 	el->value = value;
 
 	hlist_add_head(&el->node, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)]);
-	
+
 	ht->max_bck_num = BUCKET_NUM;
 	if (ht->last_el->key < key)
 		ht->last_el = el;

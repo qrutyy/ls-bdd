@@ -28,7 +28,7 @@ df = df.dropna()
 def plot_metric_by_bs(metric, ylabel, filename_prefix):
     """Generate separate plots for each block size"""
     unique_bs = df["BS"].unique()
-    
+
     for bs in unique_bs:
         plt.figure(figsize=(8, 6))
         subset = df[df["BS"] == bs]
@@ -81,10 +81,10 @@ def plot_united_metric(metric, ylabel, filename):
 def plot_boxplot_latency():
     """Generate boxplot for all the latencies (with and without the outliers)"""
     plt.figure(figsize=(8, 6))
-     
+
     metric_cols = ["Avg_LAT", "Max_LAT", "P95_LAT"]
     latencies = [df[col].dropna() for col in metric_cols]
-    
+
     plt.boxplot(latencies, labels=["Avg_LAT", "Max_LAT", "P95_LAT"], showfliers=True, patch_artist=True)
     plt.ylabel("Latency (ns)")
     plt.title("Latency Distribution with Outliers")
@@ -103,7 +103,7 @@ def plot_boxplot_latency():
     plt.savefig(f"{PLOTS_PATH}/latency_boxplot_without_outliers.png")
     plt.close()
     plt.clf()
-    
+
     print(f"Saved boxplots: {PLOTS_PATH}/latency_boxplot_without_outliers {PLOTS_PATH}/latency_boxplot_with_outliers")
 
 
@@ -115,7 +115,7 @@ plot_metric_by_bs("P95_LAT", "95th Percentile Latency (ns)", "p95_latency")
 # Generate united latency plots (all block sizes together)
 plot_united_metric("Avg_LAT", "Average Latency (ns)", "avg_latency_united")
 plot_united_metric("Max_LAT", "Max Latency (ns)", "max_latency_united")
-plot_united_metric("P95_LAT", "95th Percentile Latency (ns)", "p95_latency_united") 
+plot_united_metric("P95_LAT", "95th Percentile Latency (ns)", "p95_latency_united")
 
 #same for slat
 plot_metric_by_bs("Avg_SLAT", "Average Submission Latency (ns)", "avg_slatency")
@@ -129,4 +129,3 @@ plot_united_metric("P95_SLAT", "95th Percentile Submission Latency (ns)", "p95_s
 plot_boxplot_latency()
 
 print("Latency analysis complete. Graphs saved.")
-
