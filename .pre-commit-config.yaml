@@ -32,3 +32,9 @@ repos:
       - id: shellcheck
         name: Check shell scripts
         files: \.sh$
+  - repo: https://github.com/mrtazz/checkmake
+    rev: 0.2.2
+    hooks:
+    -   id: checkmake
+        name: Check Makefile (+lint)
+        files: Makefile

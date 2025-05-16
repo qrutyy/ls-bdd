@@ -74,3 +74,5 @@ clean_logs:
 clean_plots:
 	rm -rf plots/*/*.png plots/*.png plots/*.txt plots/bw plots/lat plots/iops plots/clat plots/slat plots/bw_iops
 
+.PHONY: all clean test
+

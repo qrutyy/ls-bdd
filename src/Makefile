@@ -91,7 +91,7 @@ fio_verify:
 	# Read and verify test 
 	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(RO) --size=$(FS)M --verify_state_save=1 --bssplit=$(RBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 --numjobs=$(NJ) --serialize_overlap=1 --offset=5%
 
-.PHONY: modules modules_install clean
+.PHONY: all modules modules_install clean test
 
 endif
 
