@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+/* SPDX-License-Identifier: GPL-2.0-only */
 
 #ifndef HASHTABLE_H
 #define HASHTABLE_H
@@ -25,15 +25,16 @@
 #define BUCKET_COUNT (1 << HT_MAP_BITS)
 
 #define MEM_CHECK(ptr)                                                                                                                     \
-	if (!node)                                                                                                                         \
-		goto mem_err;
+	do {																																\
+		if (!ptr)                                                                                                                         \
+			goto mem_err;																												\
+	} while (0)																														  \
 
 // basic iterator over the nodes
-#define lhash_for_each_safe(name, bkt, tmp, obj, member)                                                                                   \
-	for ((bkt) = 0, obj = NULL; obj == NULL && (bkt) < HASH_SIZE(name); (bkt)++)                                                       \
-		llist_for_each_entry_safe (obj, tmp, (struct llist_node *)&name[bkt].first->next, member)
-
-#define DECLARE_LHASHTABLE(name, bits) struct lf_list* name[1 << (bits)]
+#define lhash_for_each_safe(name, bkt, tmp, obj, member)                                      \
+	for ((bkt) = 0, obj = NULL; obj == NULL && (bkt) < HASH_SIZE(name); (bkt)++)          \
+		llist_for_each_entry_safe(obj, tmp, ((struct llist_node *)(&(name)[bkt].first->next)), member)
+#define DECLARE_LHASHTABLE(name, bits) struct lf_list *name[1 << (bits)]
 
 #define lhash_init(hashtable) __lhash_init(hashtable, HASH_SIZE(hashtable))
 

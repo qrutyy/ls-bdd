@@ -34,9 +34,32 @@ jobs:
 
     - name: Run checkpatch.pl on C/H files
       run: |
+        OUTPUT_LOG="checkpatch_full_output.log"
+        # Delete log from previous runs if any
+        rm -f "$OUTPUT_LOG"
+
+        echo "Running checkpatch.pl on all C and H files..."
+        # The `sh -c '...'` wrapper around checkpatch.pl does two things:
+        # 1. Appends both stdout and stderr of checkpatch.pl to $OUTPUT_LOG
+        # 2. `|| true` ensures that sh -c always exits with 0,
+        #    so xargs doesn't exit with 123 if checkpatch.pl found warnings.
+        #    We pass $OUTPUT_LOG as an argument to sh -c, which can then be referenced as $0 within the sh -c script.
         find . \( -name '*.c' -o -name '*.h' \) -print0 | \
-        xargs -0 -n1 --no-run-if-empty ./checkpatch.pl --no-tree 
-        # Warning: checkpatch should be executable and placed in current dir (./checkpatch.pl)
+          xargs -0 -I {} sh -c './checkpatch.pl --no-tree --file "{}" >> "$0" 2>&1 || true' "$OUTPUT_LOG"
+
+        echo "--- Full checkpatch.pl output ---"
+        cat "$OUTPUT_LOG"
+        echo "--- End of checkpatch.pl output ---"
+
+        # Now, check the collected output for any lines indicating more than 0 errors.
+        # grep -E will exit with 0 if a match is found, and 1 otherwise.
+        if grep -E "total: [1-9][0-9]* errors" "$OUTPUT_LOG"; then
+          echo "Checkpatch.pl found ERRORS. Failing the step."
+          exit 1
+        else
+          echo "Checkpatch.pl found 0 errors (warnings may be present). Passing the step."
+          exit 0
+        fi
 
     - name: Set up Python and install Black
       uses: actions/setup-python@v4

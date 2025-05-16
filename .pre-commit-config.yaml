@@ -1,13 +1,34 @@
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.1.0
     hooks:
       - id: end-of-file-fixer
         name: Fix End of Files
-        description: "Ensures that a file is either empty, or ends with one newline."
         files: \.(c|h|py)$
   
       - id: trailing-whitespace
         name: Trim Trailing Whitespace
-        description: "This hook trims trailing whitespace." 
         files: \.(c|h|py)$
+
+      - id: check-yaml
+        name: Check YAML syntax
+        files: \.ya?ml$
+
+      - id: check-executables-have-shebangs
+        name: Check for shebangs in executables
+        files: \.sh$
+
+  - repo: https://github.com/psf/black
+    rev: 23.11.0
+    hooks:
+      - id: black
+        name: Check Python with linter
+        files: \.py$
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.3
+    hooks:
+      - id: shellcheck
+        name: Check shell scripts
+        files: \.sh$

@@ -30,15 +30,15 @@ install_deps() {
 }
 
 check_package() {
-	if [ ! command -v $1 &> /dev/null ]; then
+	if ! command -v "$1" &> /dev/null; then
 		echo "Error: '$1' is not installed. Please install it and try again."
 		./install.sh
 	fi
 }
 
 check_dependencies() {
-	for package in "${DEPENDENCY_LIST}"; do
-		check_package package
+	for package in "${DEPENDENCY_LIST[@]}"; do
+		check_package "$package"
 	done
 }
 
@@ -104,11 +104,11 @@ fi
 
 if [ "$SETUP" == "true" ]; then
 	### Run config setup script
-	./setup.sh --bd_name $BD_NAME --io_depth $IO_DEPTH
+	./setup.sh --bd_name "$BD_NAME" --io_depth "$IO_DEPTH"
 fi
 
 if [ "$PLOTS" == "true" ]; then
-	sudo ./plots.sh  --io_depth $IO_DEPTH --jobs_num $JOBS_NUM --brd_size $BRD_SIZE
+	sudo ./plots.sh  --io_depth "$IO_DEPTH" --jobs_num "$JOBS_NUM" --brd_size "$BRD_SIZE"
 fi
 
 
@@ -118,8 +118,8 @@ if [ "$PERF" == "true" ]; then
 
 	### Run config setup script
 	if [ "$VERIFY" == "true" ]; then
-		./perf.sh --io_depth $IO_DEPTH --jobs_num $JOBS_NUM -v
+		./perf.sh --io_depth "$IO_DEPTH" --jobs_num "$JOBS_NUM" -v
 	else
-		./perf.sh --io_depth $IO_DEPTH --jobs_num $JOBS_NUM
+		./perf.sh --io_depth "$IO_DEPTH" --jobs_num "$JOBS_NUM"
 	fi
 fi

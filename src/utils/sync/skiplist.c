@@ -393,7 +393,7 @@ struct skiplist_node *skiplist_prev(struct skiplist *sl, sector_t key, sector_t 
 	return NULL;
 }
 
-bool inline skiplist_is_empty(struct skiplist *sl)
+inline bool skiplist_is_empty(struct skiplist *sl)
 {
 	BUG_ON(!sl);
 	return sl->head_lvl == 0;

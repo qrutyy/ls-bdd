@@ -50,7 +50,7 @@ s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mn
 		// TODO docs
 		if (!cache_mng->sl_cache) {
 			pr_err("ERROR DS_INIT: skiplist cache not initialized!\n");
-	        return -1;
+			return -1;
 		}
 		skiplist = skiplist_init(cache_mng->sl_cache);
 		if (!skiplist)
@@ -67,7 +67,7 @@ s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mn
 		#endif
 		if (!cache_mng->ht_cache) {
 			pr_err("ERROR DS_INIT: hastable cache not initialized!\n");
-	        return -1;
+			return -1;
 		}
 
 		hash_table = hashtable_init(cache_mng->ht_cache);
@@ -167,8 +167,8 @@ void ds_remove(struct data_struct *ds, sector_t key, struct kmem_cache *lsbdd_va
 s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng, struct kmem_cache *lsbdd_value_cache)
 {
 	BUG_ON(!ds || !cache_mng || !lsbdd_value_cache);
-
 	u64 *kp = NULL;
+
 	kp = &key;
 
 	if (ds->type == BTREE_TYPE)

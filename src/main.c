@@ -11,15 +11,15 @@ MODULE_DESCRIPTION("Log-Structured virtual Block Device Driver module");
 MODULE_AUTHOR("Mikhail Gavrilenko - @qrutyy");
 MODULE_LICENSE("Dual MIT/GPL");
 
-s32 bdd_major = 0;
+s32 bdd_major;
 char sel_ds[LSBDD_MAX_DS_NAME_LEN + 1];
 char ds_type[2 + 1];
 struct bio_set *bdd_pool;
 struct list_head bd_list;
 atomic64_t next_free_sector = ATOMIC_INIT(LSBDD_SECTOR_OFFSET);
 
-static struct kmem_cache *lsbdd_value_cache = NULL;
-struct cache_manager *cache_mng = NULL;
+static struct kmem_cache *lsbdd_value_cache;
+struct cache_manager *cache_mng;
 
 static void vector_add_bd(struct bd_manager *current_bdev_manager)
 {
@@ -30,7 +30,7 @@ static struct bd_manager *get_bd_manager_by_name(char *vbd_name)
 {
 	struct bd_manager *entry = NULL;
 
-	list_for_each_entry (entry, &bd_list, list) {
+	list_for_each_entry(entry, &bd_list, list) {
 		if (!strcmp(entry->vbd_disk->disk_name, vbd_name))
 			return entry;
 	}
@@ -43,7 +43,7 @@ static struct bd_manager *get_list_element_by_index(u16 index)
 	struct bd_manager *entry = NULL;
 	u16 i = 0;
 
-	list_for_each_entry (entry, &bd_list, list) {
+	list_for_each_entry(entry, &bd_list, list) {
 		if (i == index)
 			return entry;
 		i++;
@@ -244,9 +244,8 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 	if (!curr_value) { // Read & Write sector starts aren't equal.
 		status = check_system_bio(redirect_manager, orig_sector, clone_bio);
 		pr_debug(" status %d\n", status);
-		if (status) {
+		if (status)
 			return 0;
-		}
 
 		pr_debug("READ: Sector: %llu isnt mapped\n", orig_sector);
 
@@ -284,9 +283,8 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 		clone_bio->bi_iter.bi_size = (to_read_in_clone <= 0) ? to_end_of_block : to_read_in_clone;
 	} else if (curr_value->redirected_sector) { // Read & Write start sectors are equal.
 		status = check_system_bio(redirect_manager, orig_sector, clone_bio);
-		if (status) {
+		if (status)
 			return 0;
-		}
 
 		pr_debug("Found redirected sector: %llu, rs_bs = %u, main_bs = %u\n", (curr_value->redirected_sector),
 			 curr_value->block_size, main_bio->bi_iter.bi_size);
@@ -561,7 +559,7 @@ static s32 lsbdd_get_vbd_names(char *buf, const struct kernel_param *kp)
 		return 0;
 	}
 
-	list_for_each_entry (current_manager, &bd_list, list) {
+	list_for_each_entry(current_manager, &bd_list, list) {
 		if (current_manager->bd_handler != NULL) {
 			i++;
 			length = sprintf(buf + offset, "%d. %s -> %s\n", i, current_manager->vbd_disk->disk_name,
@@ -750,7 +748,7 @@ static void __exit lsbdd_exit(void)
 			delete_bd(i + 1);
 	}
 
-	list_for_each_entry_safe (entry, tmp, &bd_list, list) {
+	list_for_each_entry_safe(entry, tmp, &bd_list, list) {
 		list_del(&entry->list);
 		kfree(entry->sel_data_struct);
 		kfree(entry);

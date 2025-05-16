@@ -53,7 +53,7 @@ void hashtable_free(struct hashtable *ht, struct kmem_cache *lsbdd_node_cache, s
 	struct hash_el *el = NULL;
 	struct hlist_node *tmp = NULL;
 
-	hash_for_each_safe (ht->head, bckt_iter, tmp, el, node) {
+	hash_for_each_safe(ht->head, bckt_iter, tmp, el, node) {
 		if (el) {
 			hash_del(&el->node);
 			kfree(el);
@@ -71,7 +71,7 @@ struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key)
 
 	pr_debug("Hashtable: bucket_val %llu", BUCKET_NUM);
 
-	hlist_for_each_entry (el, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)], node)
+	hlist_for_each_entry(el, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)], node)
 		if (el != NULL && el->key == key)
 			return el;
 
@@ -85,7 +85,7 @@ struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *pre
 	struct hash_el *prev_max_node = kzalloc(sizeof(struct hash_el), GFP_KERNEL);
 	struct hash_el *el = NULL;
 
-	hlist_for_each_entry (el, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)], node) {
+	hlist_for_each_entry(el, &ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)], node) {
 		if (el && el->key <= key && el->key > prev_max_node->key)
 			prev_max_node = el;
 	}
@@ -93,7 +93,7 @@ struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *pre
 	if (prev_max_node->key == 0) {
 		pr_debug("Hashtable: Element with  is in the prev bucket\n");
 		// mb execute recursively key + mb_size
-		hlist_for_each_entry (el, &ht->head[hash_min(min(BUCKET_NUM - 1, ht->max_bck_num), HT_MAP_BITS)], node) {
+		hlist_for_each_entry(el, &ht->head[hash_min(min(BUCKET_NUM - 1, ht->max_bck_num), HT_MAP_BITS)], node) {
 			if (el && el->key <= key && el->key > prev_max_node->key)
 				prev_max_node = el;
 			pr_debug("Hashtable: prev el key = %llu\n", el->key);

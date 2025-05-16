@@ -47,7 +47,7 @@ prepare_env() {
     echo -e "\nCleaning the logs directory"
     make clean > /dev/null
     mkdir -p $LOGS_PATH $PLOTS_PATH/histograms/{vbd/{tp,iops},raw/{tp,iops}} \
-        $PLOTS_PATH/avg/{vbd/{tp,iops},raw/{tp,iops}} \ 
+        $PLOTS_PATH/avg/{vbd/{tp,iops},raw/{tp,iops}} \
 		$PLOTS_PATH/latency/{raw,vbd}
 }
 
@@ -64,7 +64,7 @@ reinit_lsvbd() {
 
 workload_independent_preconditioning() {
     local wbs=$1
-    fio --name=prep --rw=write --bs=${wbs}K --numjobs=1 --iodepth=1 --size=${BRD_SIZE}G \
+    fio --name=prep --rw=write --bs="${wbs}"K --numjobs=1 --iodepth=1 --size="${BRD_SIZE}"G \
         --filename=/dev/lsvbd1 --direct=1 --output="$LOGS_PATH/preconditioning.log"
 }
 
@@ -74,7 +74,8 @@ extract_iops_metrics() {
     local bs=$3
     local mix=$4
 
-	local iops=$(grep -oP 'IOPS=\K[0-9]+(\.[0-9]+)?k?' "$log_file" | sed 's/k//g' | awk '{s+=$1} END {print s}')
+	local iops
+	iops=$(grep -oP 'IOPS=\K[0-9]+(\.[0-9]+)?k?' "$log_file" | sed 's/k//g' | awk '{s+=$1} END {print s}')
 	echo "DEBUG: Extracted IOPS='$iops'"
 
 	echo "$run_id $bs $mix 0 $iops iops" >> "$RESULTS_FILE"
@@ -123,19 +124,22 @@ extract_latency_metrics() {
 
     calc_avg_latency() {
         local file=$1
-        local result=$(awk -F',' '{sum+=$2; count++} END {if(count>0) print sum/count; else print 0}' "$file")
+        local result
+		result=$(awk -F',' '{sum+=$2; count++} END {if(count>0) print sum/count; else print 0}' "$file")
         echo "$result"
     }
 
     calc_max_latency() {
         local file=$1
-        local result=$(awk -F',' 'BEGIN {max=0} {if($2>max) max=$2} END {print max}' "$file")
+        local result
+		result=$(awk -F',' 'BEGIN {max=0} {if($2>max) max=$2} END {print max}' "$file")
         echo "$result"
     }
 
     calc_95p_latency() {
         local file=$1
-        local result=$(awk -F',' '{print $2}' "$file" | sort -n | awk 'NR > 0 { all[NR] = $1 } END { if (NR > 0) print all[int(NR*0.95)] }')
+        local result
+		result=$(awk -F',' '{print $2}' "$file" | sort -n | awk 'NR > 0 { all[NR] = $1 } END { if (NR > 0) print all[int(NR*0.95)] }')
         echo "$result"
     }
 
@@ -143,17 +147,26 @@ extract_latency_metrics() {
 	local clat_file="${log_file}_clat.1.log"
 	local lat_file="${log_file}_lat.1.log"
 
-    local avg_slat=$(calc_avg_latency "$slat_file")
-    local avg_clat=$(calc_avg_latency "$clat_file")
-    local avg_lat=$(calc_avg_latency "$lat_file")
+    local avg_slat
+	avg_slat=$(calc_avg_latency "$slat_file")
+    local avg_clat
+	avg_clat=$(calc_avg_latency "$clat_file")
+    local avg_lat
+	avg_lat=$(calc_avg_latency "$lat_file")
 
-    local max_slat=$(calc_max_latency "$slat_file")
-    local max_clat=$(calc_max_latency "$clat_file")
-    local max_lat=$(calc_max_latency "$lat_file")
+    local max_slat
+	max_slat=$(calc_max_latency "$slat_file")
+    local max_clat
+	max_clat=$(calc_max_latency "$clat_file")
+    local max_lat
+	max_lat=$(calc_max_latency "$lat_file")
 
-    local p95_slat=$(calc_95p_latency "$slat_file")
-    local p95_clat=$(calc_95p_latency "$clat_file")
-    local p95_lat=$(calc_95p_latency "$lat_file")
+    local p95_slat
+	p95_slat=$(calc_95p_latency "$slat_file")
+    local p95_clat
+	p95_clat=$(calc_95p_latency "$clat_file")
+    local p95_lat
+	p95_lat=$(calc_95p_latency "$lat_file")
 
     echo "$run_id $bs $avg_slat $avg_clat $avg_lat $max_slat $max_clat $max_lat $p95_slat $p95_clat $p95_lat $rw_mix lat" >> "$LAT_RESULTS_FILE"
 }
@@ -170,7 +183,7 @@ run_tp_tests() {
 		rwmix_write="${rw_mix#*-}"
 
         for bs in "${TP_BS_LIST[@]}"; do
-			if [ rw_mix != "0-100" ]; then
+			if [ "$rw_mix" != "0-100" ]; then
                 workload_independent_preconditioning "$bs"
             fi
 
@@ -179,7 +192,7 @@ run_tp_tests() {
                 log_file="$LOGS_PATH/fio_${rw_mix}_run_${i}.log"
                 extra_args=$([[ $rw_mix == "100-0" ]] && echo "RBS=$bs" || echo "")
 
-				make fio_perf_mix $fs_flag RWMIX_READ=$rwmix_read RWMIX_WRITE=$rwmix_write BS=$bs ID=$IO_DEPTH NJ=$JOBS_NUM $extra_args > "$log_file"
+				make fio_perf_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$IO_DEPTH" NJ="$JOBS_NUM" "$extra_args" > "$log_file"
 
                 extract_tp_metrics "$log_file" "$i" "$bs" "$rw_mix"
             done
@@ -187,8 +200,8 @@ run_tp_tests() {
         done
 
         echo "Data collected in $RESULTS_FILE"
-        python3 "$AVG_PLOTS_SCRIPT" $([[ $is_raw -eq 1 ]] && echo "--raw") --tp
-        python3 "$HISTOGRAM_PLOTS_SCRIPT" $([[ $is_raw -eq 1 ]] && echo "--raw")
+        python3 "$AVG_PLOTS_SCRIPT" "$([[ $is_raw -eq 1 ]] && echo "--raw")" --tp
+        python3 "$HISTOGRAM_PLOTS_SCRIPT" "$([[ $is_raw -eq 1 ]] && echo "--raw")"
         make clean_logs > /dev/null
     done
 }
@@ -205,7 +218,7 @@ run_iops_tests() {
 		rwmix_write="${rw_mix#*-}"
 
         for bs in "${IOPS_BS_LIST[@]}"; do
-    		if [ rw_mix != "0-100" ]; then
+			if [ "$rw_mix" != "0-100" ]; then
                 workload_independent_preconditioning "$bs"
             fi
         
@@ -214,7 +227,7 @@ run_iops_tests() {
                 log_file="$LOGS_PATH/fio_${rw_mix:0:1}_run_${i}.log"
                 extra_args=$([[ $rw_mix == "100-0" ]] && echo "RBS=$bs" || echo "")
 			
-				make fio_perf_mix $fs_flag RWMIX_READ=$rwmix_read RWMIX_WRITE=$rwmix_write BS=$bs ID=$IO_DEPTH NJ=$JOBS_NUM $extra_args > "$log_file"
+				make fio_perf_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$IO_DEPTH" NJ="$JOBS_NUM" "$extra_args" > "$log_file"
 
 				extract_iops_metrics "$log_file" "$i" "$bs" "$rw_mix"
             done
@@ -222,8 +235,8 @@ run_iops_tests() {
         done
 
         echo "Data collected in $RESULTS_FILE"
-        python3 "$AVG_PLOTS_SCRIPT" $([[ $is_raw -eq 1 ]] && echo "--raw")
-        python3 "$HISTOGRAM_PLOTS_SCRIPT" $([[ $is_raw -eq 1 ]] && echo "--raw")
+        python3 "$AVG_PLOTS_SCRIPT" "$([[ $is_raw -eq 1 ]] && echo "--raw")"
+        python3 "$HISTOGRAM_PLOTS_SCRIPT" "$([[ $is_raw -eq 1 ]] && echo "--raw")"
         make clean_logs > /dev/null
     done
 }
@@ -235,17 +248,17 @@ run_latency_tests() {
     for rw_mix in "${LAT_RW_MIXES[@]}"; do
         for bs in "${LAT_BS_LIST[@]}"; do
             echo -e "Performing a block device warm-up..."
-			if [ rw_mix != "0-100" ]; then
+			if [ "$rw_mix" != "0-100" ]; then
                 workload_independent_preconditioning "$bs"
             fi
 
             for i in $(seq 1 $RUNS); do
                 echo "Run $i of $RUNS..."
                 log_file="$LOGS_PATH/latency_${bs}_${rw_mix}"
-                fio --name=latency_test --rw=randrw --rwmixread=${rw_mix%-*} --rwmixwrite=${rw_mix#*-} \
-                    --bs=${bs} --numjobs=1 --iodepth=1 --time_based --runtime=30 --direct=1 \
-                    --write_lat_log=$log_file --ioengine=io_uring --registerfiles=1 --hipri=0 \
-					--cpus_allowed=0-5 --fixedbufs=1 --filename=/dev/$device > /dev/null
+				fio --name=latency_test --rw=randrw --rwmixread="${rw_mix%-*}" --rwmixwrite="${rw_mix#*-}" \
+					--bs="${bs}" --numjobs=1 --iodepth=1 --time_based --runtime=30 --direct=1 \
+					--write_lat_log="$log_file" --ioengine=io_uring --registerfiles=1 --hipri=0 \
+					--cpus_allowed=0-5 --fixedbufs=1 --filename=/dev/"$device" > /dev/null
                 extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
             done
 
@@ -253,7 +266,7 @@ run_latency_tests() {
         done
     done
 
-    python3 "$LATENCY_PLOTS_SCRIPT" $([[ $is_raw -eq 1 ]] && echo "--raw")
+	python3 "$LATENCY_PLOTS_SCRIPT" "$([[ $is_raw -eq 1 ]] && echo "--raw")"
     make clean_logs > /dev/null
 }
 

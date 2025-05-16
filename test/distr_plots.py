@@ -5,17 +5,28 @@ import scipy.stats as stats
 import matplotlib.pyplot as plt
 import os
 
-parser = argparse.ArgumentParser(description="Generate distribution plots from fio results.")
-parser.add_argument("--raw", action="store_true", help="Save plots to the 'raw' directory")
+parser = argparse.ArgumentParser(
+    description="Generate distribution plots from fio results."
+)
+parser.add_argument(
+    "--raw", action="store_true", help="Save plots to the 'raw' directory"
+)
 args = parser.parse_args()
 
 RESULTS_FILE = "logs/fio_results.dat"
 PLOTS_PATH = "./plots/histograms/raw" if args.raw else "./plots/histograms/vbd"
 
-df = pd.read_csv(RESULTS_FILE, sep=r"\s+", skiprows=0, names=["RunID", "BS", "MIX", "BW", "IOPS", "MODE"])
+df = pd.read_csv(
+    RESULTS_FILE,
+    sep=r"\s+",
+    skiprows=0,
+    names=["RunID", "BS", "MIX", "BW", "IOPS", "MODE"],
+)
+
 
 def clean_numeric(series):
-    return pd.to_numeric(series, errors='coerce')
+    return pd.to_numeric(series, errors="coerce")
+
 
 df["BW"] = clean_numeric(df["BW"])
 df["IOPS"] = clean_numeric(df["IOPS"])
@@ -38,21 +49,27 @@ for mode in df["MODE"].unique():
 
             for label in columns:
                 plt.figure(figsize=(8, 6))
-                plt.hist(subset[label].dropna(), bins=10, edgecolor='black')
+                plt.hist(subset[label].dropna(), bins=10, edgecolor="black")
 
                 base_title = f"(BS={bs}, MIX={mix})"
 
                 if label == "BW":
                     plt.xlabel("Bandwidth (MB/s)")
-                    plt.title(f"Histogram of {mix} operations mix throughput (BW) {base_title}\n")
+                    plt.title(
+                        f"Histogram of {mix} operations mix throughput (BW) {base_title}\n"
+                    )
                 else:
                     plt.xlabel("IOPS (K/s)")
-                    plt.title(f"Histogram of {mix} operations mix throughput (IOPS) {base_title}\n")
+                    plt.title(
+                        f"Histogram of {mix} operations mix throughput (IOPS) {base_title}\n"
+                    )
 
                 plt.ylabel("Frequency")
                 plt.tight_layout()
 
-                save_path = os.path.join(mode_dir, f"{mode}_{label.lower()}_BS{bs}_MIX{mix}.png")
+                save_path = os.path.join(
+                    mode_dir, f"{mode}_{label.lower()}_BS{bs}_MIX{mix}.png"
+                )
                 plt.savefig(save_path)
                 plt.close()
                 print(f"Saved: {save_path}")
@@ -73,7 +90,9 @@ for mode in df["MODE"].unique():
                     normality_result = f"{label} Normality Test: normaltest p={p1:.5f}, shapiro p={p2:.5f}"
 
                     if p1 > 0.05 or p2 > 0.05:
-                        normality_result += f" → {label} is likely normally distributed."
+                        normality_result += (
+                            f" → {label} is likely normally distributed."
+                        )
                     else:
                         normality_result += f" → {label} is NOT normally distributed."
 

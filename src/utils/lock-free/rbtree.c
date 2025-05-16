@@ -58,13 +58,12 @@ static struct rbtree_node *__rbtree_underlying_search(struct rb_root *root, sect
 		if (result == -2)
 			return NULL;
 
-		if (result < 0) {
+		if (result < 0)
 			node = node->rb_left;
-		} else if (result > 0) {
+		else if (result > 0)
 			node = node->rb_right;
-		} else {
+		else
 			return data;
-		}
 	}
 
 	return NULL;
@@ -132,7 +131,7 @@ void rbtree_free(struct rbtree *rbt)
 
 	struct rbtree_node *pos, *node = NULL;
 
-	rbtree_postorder_for_each_entry_safe (pos, node, &(rbt->root), node)
+	rbtree_postorder_for_each_entry_safe(pos, node, &(rbt->root), node)
 		free_rbtree_node(pos);
 
 	kfree(rbt);
@@ -170,6 +169,7 @@ struct rbtree_node *rbtree_last(struct rbtree *rbt)
 {
 	struct rb_root root = rbt->root;
 	struct rb_node *node = root.rb_node;
+	struct rbtree_node *data = NULL;
 
 	if (!node)
 		return NULL;
@@ -177,16 +177,16 @@ struct rbtree_node *rbtree_last(struct rbtree *rbt)
 	if (!(node->rb_left && node->rb_right))
 		return NULL;
 
-	struct rbtree_node *data = container_of(node, struct rbtree_node, node);
+	data = container_of(node, struct rbtree_node, node);
+
 	if (!(data->key && data->value))
 		return NULL;
 
 	while (node) {
-		if (node->rb_right) {
+		if (node->rb_right)
 			node = node->rb_right;
-		} else {
+		else
 			break;
-		}
 	}
 
 	return container_of(node, struct rbtree_node, node);

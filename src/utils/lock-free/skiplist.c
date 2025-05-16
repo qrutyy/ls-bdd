@@ -34,7 +34,8 @@
  *
  * @return void
  */
-static void add_to_removed_stack(struct skiplist *sl, struct skiplist_node *node) {
+static void add_to_removed_stack(struct skiplist *sl, struct skiplist_node *node)
+{
 	BUG_ON(!sl);
 
 	s64 old_head = 0;
@@ -47,18 +48,17 @@ static void add_to_removed_stack(struct skiplist *sl, struct skiplist_node *node
 	old_head = ATOMIC_LREAD(&sl->removed_stack_head);
 
 	do {
-        node->removed_link = (struct skiplist_node *)old_head; // Set next pointer
-        current_head_val = ATOMIC_LCAS(&sl->removed_stack_head, old_head, new_head);
+		node->removed_link = (struct skiplist_node *)old_head; // Set next pointer
+		current_head_val = ATOMIC_LCAS(&sl->removed_stack_head, old_head, new_head);
 
-        if (current_head_val == old_head)
-            break; // Success
+		if (current_head_val == old_head)
+			break; // Success
 
-        old_head = current_head_val;
+		old_head = current_head_val;
 
-    } while (true);
+	} while (true);
 
 	pr_debug("Pushed node %p with key %llu", node, node->key);
-	return;
 }
 
 /**
@@ -157,9 +157,9 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *lsbdd_node_cache, str
 	removed_node_head = (struct skiplist_node *)ATOMIC_LSWAP(&sl->removed_stack_head, 0);
 
 	pr_debug("Freeing nodes from the removed stack...\n");
-    node = removed_node_head;
+	node = removed_node_head;
 	while (node) {
-        next = node->removed_link;
+		next = node->removed_link;
 
 		if (node->value) {
 			pr_info("Freeing removed node %p (key %lld)\n", node, node->key);
@@ -168,17 +168,17 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *lsbdd_node_cache, str
 		kmem_cache_free(lsbdd_node_cache, node);
 		node = next;
 	}
-    pr_debug("Finished freeing nodes from removed stack.\n");
+	pr_debug("Finished freeing nodes from removed stack.\n");
 
 	if (sl->head) {
-        pr_debug("Freeing head node %p\n", sl->head);
+		pr_debug("Freeing head node %p\n", sl->head);
 		if (sl->head->value)
 			kmem_cache_free(lsbdd_value_cache, sl->head->value);
 		kmem_cache_free(lsbdd_node_cache, sl->head);
-        sl->head = NULL;
+		sl->head = NULL;
 	}
 
-    pr_debug("Freeing skiplist structure %p\n", sl);
+	pr_debug("Freeing skiplist structure %p\n", sl);
 	kfree(sl);
 	pr_debug("Skiplist cleanup finished.\n");
 
@@ -348,7 +348,8 @@ static void *update_node(struct skiplist_node *node, void *new_val)
 	return update_node(node, new_val); // tail call (retry)
 }
 
-struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *value, struct kmem_cache *lsbdd_node_cache, struct kmem_cache *lsbdd_value_cache)
+struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *value, struct kmem_cache *lsbdd_node_cache,
+				      struct kmem_cache *lsbdd_value_cache)
 {
 	pr_debug("Skiplist(insert): key %lld skiplist %p\n", key, sl);
 	pr_debug("Skiplist(insert): new value %p\n", value);
@@ -378,7 +379,8 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *v
 				pr_debug("Skiplist(insert): update_node failed CAS for key %lld, retrying insert.\n", key);
 				return skiplist_insert(sl, key, value, lsbdd_node_cache, lsbdd_value_cache); // tail call
 			} else {
-				pr_warn("Skiplist(insert): update_node returned unexpected error %ld for key %lld\n", PTR_ERR(ret_val), key);
+				pr_warn("Skiplist(insert): update_node returned unexpected error %ld for key %lld\n", PTR_ERR(ret_val),
+					key);
 				return ret_val;
 			}
 		} else if (ret_val == NULL) {
@@ -390,7 +392,8 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *v
 			if (lsbdd_value_cache) {
 				kmem_cache_free(lsbdd_value_cache, ret_val);
 			} else {
-				pr_warn("Skiplist(insert): lsbdd_value_cache is NULL, cannot free old value %p - LEAKING MEMORY\n", ret_val);
+				pr_warn("Skiplist(insert): lsbdd_value_cache is NULL, cannot free old value %p - LEAKING MEMORY\n",
+					ret_val);
 			}
 
 			return 0;
@@ -420,7 +423,7 @@ struct skiplist_node *skiplist_insert(struct skiplist *sl, sector_t key, void *v
 
 	pr_debug("Before cas: next = %zx, new_node = %p\n", next, new_node);
 	other = SYNC_LCAS(&pred->next[0], next,
-			 new_node); // does it change only the lower one?
+			  new_node); // does it change only the lower one?
 	if (other != next) {
 		pr_debug("Skiplist(insert): failed to change pred's link: expected %zx found %zx\n", next, other);
 		kfree(new_node);
@@ -546,7 +549,6 @@ void skiplist_remove(struct skiplist *sl, sector_t key, struct kmem_cache *lsbdd
 	find_preds(NULL, NULL, 0, sl, key, FORCE_UNLINK);
 	if (val)
 		kmem_cache_free(lsbdd_value_cache, val);
-
 
 	return;
 }

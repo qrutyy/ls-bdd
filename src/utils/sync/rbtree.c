@@ -5,7 +5,7 @@
  *
  * Modified by Mikhail Gavrilenko on 14.11.24
  * Changes: rename functions/types, add get_last and get_prev methods
- * + some refactoring and NULL initialisation.
+ * + some style + refactor and NULL initialisation.
  */
 
 #include <linux/slab.h>
