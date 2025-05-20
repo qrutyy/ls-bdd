@@ -74,12 +74,21 @@ extract_iops_metrics() {
     local bs=$3
     local mix=$4
 
-	local iops
-	iops=$(grep -oP 'IOPS=\K[0-9]+(\.[0-9]+)?k?' "$log_file" | sed 's/k//g' | awk '{s+=$1} END {print s}')
-	echo "DEBUG: Extracted IOPS='$iops'"
+    local iops
+    iops=$(grep -oP 'IOPS=\K[0-9]+(\.[0-9]+)?k?' "$log_file" | \
+        awk '{
+            if ($1 ~ /k$/) {
+                sub(/k/, "", $1);
+                s += $1;
+            } else {
+                s += $1 / 1000;
+            }
+        } END { printf "%.3f", s }')
 
-	echo "$run_id $bs $mix 0 $iops iops" >> "$RESULTS_FILE"
+    echo "DEBUG: Extracted IOPS='$iops'"
+    echo "$run_id $bs $mix 0 $iops iops" >> "$RESULTS_FILE"
 }
+
 extract_tp_metrics() {
     local log_file=$1
     local run_id=$2
@@ -172,8 +181,9 @@ extract_latency_metrics() {
 }
 
 run_tp_tests() {
-    local device=$1 is_raw=$2 rw_mix log_file fs_flag extra_args
-    fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=ram0" || echo "")
+    local device=$1 is_raw=$2 rw_mix log_file fs_flag extra_args plot_flag
+	fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=ram0" || echo "")
+	plot_flag=$([[ $is_raw -eq 1 ]] && echo "--raw")
 	
 	echo -e "\n---Starting Throughput operations Benchmark on $device...---\n"
 
@@ -200,8 +210,9 @@ run_tp_tests() {
         done
 
         echo "Data collected in $RESULTS_FILE"
-        python3 "$AVG_PLOTS_SCRIPT" "$([[ $is_raw -eq 1 ]] && echo "--raw")" --tp
-        python3 "$HISTOGRAM_PLOTS_SCRIPT" "$([[ $is_raw -eq 1 ]] && echo "--raw")"
+		echo "$plot_flag"
+        python3 "$AVG_PLOTS_SCRIPT" $plot_flag --tp
+        python3 "$HISTOGRAM_PLOTS_SCRIPT" $plot_flag
         make clean_logs > /dev/null
     done
 }
@@ -209,7 +220,8 @@ run_tp_tests() {
 run_iops_tests() {
     local device=$1 is_raw=$2 rw_mix log_file fs_flag extra_args
     fs_flag=$([[ $is_raw -eq 1 ]] && echo "FS=ram0" || echo "")
-	
+	plot_flag=$([[ $is_raw -eq 1 ]] && echo "--raw")
+
 	echo -e "---Starting IOPS Benchmark on $device...\n---"
 
 	for rw_mix in "${IOPS_RW_MIXES[@]}"; do
@@ -235,14 +247,15 @@ run_iops_tests() {
         done
 
         echo "Data collected in $RESULTS_FILE"
-        python3 "$AVG_PLOTS_SCRIPT" "$([[ $is_raw -eq 1 ]] && echo "--raw")"
-        python3 "$HISTOGRAM_PLOTS_SCRIPT" "$([[ $is_raw -eq 1 ]] && echo "--raw")"
+        python3 "$AVG_PLOTS_SCRIPT" $plot_flag
+        python3 "$HISTOGRAM_PLOTS_SCRIPT" $plot_flag
         make clean_logs > /dev/null
     done
 }
 
 run_latency_tests() {
     local device=$1 is_raw=$2 bs rw_mix log_file
+	plot_flag=$([[ $is_raw -eq 1 ]] && echo "--raw")
 
     echo -e "---Starting SNIA-complied Latency Benchmark on $device...---\n"
     for rw_mix in "${LAT_RW_MIXES[@]}"; do
@@ -258,7 +271,7 @@ run_latency_tests() {
 				fio --name=latency_test --rw=randrw --rwmixread="${rw_mix%-*}" --rwmixwrite="${rw_mix#*-}" \
 					--bs="${bs}" --numjobs=1 --iodepth=1 --time_based --runtime=30 --direct=1 \
 					--write_lat_log="$log_file" --ioengine=io_uring --registerfiles=1 --hipri=0 \
-					--cpus_allowed=0-5 --fixedbufs=1 --filename=/dev/"$device" > /dev/null
+					--cpus_allowed=0-7 --fixedbufs=1 --filename=/dev/"$device" > /dev/null
                 extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
             done
 
@@ -266,7 +279,7 @@ run_latency_tests() {
         done
     done
 
-	python3 "$LATENCY_PLOTS_SCRIPT" "$([[ $is_raw -eq 1 ]] && echo "--raw")"
+	python3 "$LATENCY_PLOTS_SCRIPT" $plot_flag 
     make clean_logs > /dev/null
 }
 

@@ -60,7 +60,7 @@ fio_perf_mix:
 		--prio=0 \
 		--cpus_allowed_policy=shared \
 		--filename=/dev/$(FS) \
-		--cpus_allowed=0-3
+		--cpus_allowed=0-7
 		--offset=16k
 
 clean:

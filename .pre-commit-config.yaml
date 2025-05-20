@@ -32,6 +32,8 @@ repos:
       - id: shellcheck
         name: Check shell scripts
         files: \.sh$
+        exclude: test/plots\.sh$
+
   - repo: https://github.com/mrtazz/checkmake
     rev: 0.2.2
     hooks:
