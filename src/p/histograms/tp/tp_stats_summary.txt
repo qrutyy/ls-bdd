@@ -1,4 +1,0 @@
-BW Normality Test: normaltest p=0.01354, shapiro p=0.02606 → BW is NOT normally distributed.
-IOPS Normality Test: normaltest p=nan, shapiro p=1.00000 → IOPS is likely normally distributed.
-BW Normality Test: normaltest p=0.01828, shapiro p=0.00000 → BW is NOT normally distributed.
-IOPS Normality Test: normaltest p=nan, shapiro p=1.00000 → IOPS is likely normally distributed.
