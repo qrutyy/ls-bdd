@@ -133,8 +133,6 @@ insert_err:
 
 mem_err:
 	pr_err("Memory allocation failed\n");
-	if (curr_value)
-		kmem_cache_free(lsbdd_value_cache, curr_value);
 	return -ENOMEM;
 }
 
@@ -282,10 +280,6 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 		}
 		clone_bio->bi_iter.bi_size = (to_read_in_clone <= 0) ? to_end_of_block : to_read_in_clone;
 	} else if (curr_value->redirected_sector) { // Read & Write start sectors are equal.
-		status = check_system_bio(redirect_manager, orig_sector, clone_bio);
-		if (status)
-			return 0;
-
 		pr_debug("Found redirected sector: %llu, rs_bs = %u, main_bs = %u\n", (curr_value->redirected_sector),
 			 curr_value->block_size, main_bio->bi_iter.bi_size);
 
@@ -768,7 +762,7 @@ static void __exit lsbdd_exit(void)
 		kfree(entry);
 	}
 
-	pr_info("destroyed value cache");
+	pr_info("Destroyed lsbdd_value_cache");
 	kmem_cache_destroy(lsbdd_value_cache);
 	// !NOTE: node cache was already destroyed in the delete_bd
 

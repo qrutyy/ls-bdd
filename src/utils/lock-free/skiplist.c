@@ -182,8 +182,8 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *lsbdd_node_cache, str
 	kfree(sl);
 	pr_debug("Skiplist cleanup finished.\n");
 
-	pr_info("Destroying cache\n");
 	kmem_cache_destroy(lsbdd_node_cache);
+	pr_info("Skiplist: Destroyed lsbdd_node_cache\n");
 }
 
 bool skiplist_is_empty(struct skiplist *sl)

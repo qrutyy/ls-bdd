@@ -135,7 +135,7 @@ void *ds_lookup(struct data_struct *ds, sector_t key)
 
 	kp = &key;
 	switch (ds->type) {
-		case BTREE_TYPE
+		case BTREE_TYPE:
 			return btree_lookup(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
 		case SKIPLIST_TYPE:
 			sl_node = skiplist_find_node(ds->structure.map_list, key);
@@ -261,13 +261,11 @@ void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key)
 			CHECK_FOR_NULL(sl_node);
 			CHECK_VALUE_AND_RETURN(sl_node);
 			break;
-
 		case HASHTABLE_TYPE:
 			hm_node = hashtable_prev(ds->structure.map_hash, key, prev_key);
 			CHECK_FOR_NULL(hm_node);
 			CHECK_VALUE_AND_RETURN(hm_node);
 			break;
-
 		case RBTREE_TYPE:
 			rb_node = rbtree_prev(ds->structure.map_rbtree, key, prev_key);
 			CHECK_FOR_NULL(rb_node);
