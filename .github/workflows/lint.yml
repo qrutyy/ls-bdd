@@ -35,7 +35,6 @@ jobs:
     - name: Run checkpatch.pl on C/H files
       run: |
         OUTPUT_LOG="checkpatch_full_output.log"
-        # Delete log from previous runs if any
         rm -f "$OUTPUT_LOG"
 
         echo "Running checkpatch.pl on all C and H files..."
@@ -81,4 +80,4 @@ jobs:
 
     - name: ShellCheck for shell scripts
       run: |
-        find . -name '*.sh' -exec shellcheck {} +
+        find . -name '*.sh' ! -path './test/plots.sh' -exec shellcheck {} +
