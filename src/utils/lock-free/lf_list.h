@@ -42,7 +42,7 @@ void lf_list_free(struct lf_list *list, struct kmem_cache *lsbdd_node_cache, str
  *
  * @param list - pointer to general list structure
  * @param key - LBA sector_t
- * @param value - pointer to struct (value_redir) with PBA and meta data
+ * @param value - pointer to struct (lsbdd_value_redir) with PBA and meta data
  * @param list_node_cache - node cache ;)
  *
  * @return pointer to inserted node on success, NULL on error

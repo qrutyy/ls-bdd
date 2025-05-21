@@ -69,7 +69,7 @@ void skiplist_free(struct skiplist *sl, struct kmem_cache *lsbdd_node_cache, str
  *
  * @param sl - skiplist structure
  * @param key - LBA sector
- * @param value - pointer to struct (value_redir) with PBA and meta data
+ * @param value - pointer to struct (lsbdd_value_redir) with PBA and meta data
  * @param lsbdd_node_cache
  * @param lsbdd_value_cache
  *

@@ -53,7 +53,7 @@ static void add_to_removed_stack(struct lf_list *list, struct lf_list_node *node
  * Memory allocation fail is handled in callers.
  *
  * @param key - LBA sector_t
- * @param value - pointer to struct (value_redir) with PBA and meta data
+ * @param value - pointer to struct (lsbdd_value_redir) with PBA and meta data
  *
  * @return lf_list_node pointer on success, NULL on error
  */

@@ -17,13 +17,13 @@ static const char *available_ds[] = { "bt", "sl", "ht", "rb" };
 			return ret_val;                                                                                                    \
 	} while (0)
 
-struct value_redir {
+struct lsbdd_value_redir {
 	sector_t redirected_sector;
 	u32 block_size;
 };
 
 // Block device manager structure for saving the linked meta data
-struct bd_manager {
+struct lsbdd_bd_manager {
 	char *vbd_name;
 	struct gendisk *vbd_disk;
 	struct bdev_handle *bd_handler;

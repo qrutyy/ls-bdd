@@ -44,7 +44,7 @@ void rbtree_free(struct rbtree *rbt);
  * For better description - see __rbtree_underlying_insert.
  *
  * @param key - LBA sector
- * @param value -  pointer to structure (value_redir) with PBA and meta data
+ * @param value -  pointer to structure (lsbdd_value_redir) with PBA and meta data
  *
  * @return void
  */
