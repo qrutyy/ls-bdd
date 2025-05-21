@@ -66,7 +66,7 @@ struct lf_list_node *hashtable_insert(struct hashtable *ht, sector_t key, void *
 	el = lf_list_add(ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)], key, value, lsbdd_node_cache);
 	if (!el) {
 		kmem_cache_free(lsbdd_value_cache, value);
-		pr_warn("Hashtable: failed to insert key %llu\n", key);
+		pr_debug("Hashtable: failed to insert key %llu\n", key);
 		return NULL;
 	}
 	/** Note, that there is a lot of buckets (1 * 2 ** 7) ->
@@ -167,7 +167,7 @@ void hashtable_remove(struct hashtable *ht, sector_t key, struct kmem_cache *lsb
 	removed = lf_list_remove(list, key);
 
 	if (!removed) {
-		pr_warn("Hashtable: Tried to remove non-existent key %lld\n", key);
+		pr_debug("Hashtable: Tried to remove non-existent key %lld\n", key);
 	} else {
 		pr_debug("Hashtable: Removed key %lld\n", key);
 		// To update the last_el...?

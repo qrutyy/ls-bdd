@@ -1,9 +1,9 @@
 #!/bin/bash
 
-JOBS_NUM=4
+JOBS_NUM=8
 IO_DEPTH=32
 RUNS=25
-BRD_SIZE=5
+BRD_SIZE=10
 DAST="sl"
 TYPE="lf"
 
@@ -17,12 +17,11 @@ AVG_PLOTS_SCRIPT="avg_plots.py"
 LATENCY_PLOTS_SCRIPT="lat_plots.py"
 
 IOPS_BS_LIST=("4K" "8K" "16K" "32K" "64K" "128K")
-# RBS_LIST=("4K" "8K" "16K") 
 # Can be used to benchmark read operations (bio splits)
 # Not used in benchmarking bc its kinda more related to optional functionality
 IOPS_RW_MIXES=("100-0" "65-35" "0-100") # SNIA recommends more mixes (like 95-5, 50-50, ...)
 
-LAT_BS_LIST=("4K" "8K") ## SNIA recommends 0.5K also, need some convertion, replaced it with 2K
+LAT_BS_LIST=("2K" "4K" "8K") # SNIA recommends 0.5K also
 LAT_RW_MIXES=("0-100" "65-35" "100-0") # Write to read ops ratio
 
 TP_BS_LIST=("128K" "1024K") 
@@ -271,7 +270,7 @@ run_latency_tests() {
 				fio --name=latency_test --rw=randrw --rwmixread="${rw_mix%-*}" --rwmixwrite="${rw_mix#*-}" \
 					--bs="${bs}" --numjobs=1 --iodepth=1 --time_based --runtime=30 --direct=1 \
 					--write_lat_log="$log_file" --ioengine=io_uring --registerfiles=1 --hipri=0 \
-					--cpus_allowed=0-7 --fixedbufs=1 --filename=/dev/"$device" > /dev/null
+					--cpus_allowed=0 --fixedbufs=1 --filename=/dev/"$device" > /dev/null
                 extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
             done
 

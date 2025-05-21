@@ -14,7 +14,7 @@ RO?=read
 # Write operation type (write/randwrite)
 WO?=write
 # File size (in MB)
-FS?=5000
+FS?=10000
 # IO engine to use in FIO (libaio\io_uring)
 IO?=libaio 
 # Number of fio jobs to run
@@ -26,7 +26,7 @@ TY?=lf
 # End block device name
 BD?=ram0
 # RamDisk sizes
-RD_SIZE_GB?=5
+RD_SIZE_GB?=10
 RD_SIZE_B := $(shell echo "$(RD_SIZE_GB) * 1048576" | bc)
 
 # To build modules outside of the kernel tree, we run "make"
