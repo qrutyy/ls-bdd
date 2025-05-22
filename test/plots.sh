@@ -3,7 +3,7 @@
 JOBS_NUM=8
 IO_DEPTH=32
 RUNS=25
-BRD_SIZE=10
+NBD_SIZE=1000
 DAST="sl"
 TYPE="lf"
 
@@ -16,7 +16,7 @@ HISTOGRAM_PLOTS_SCRIPT="distr_plots.py"
 AVG_PLOTS_SCRIPT="avg_plots.py"
 LATENCY_PLOTS_SCRIPT="lat_plots.py"
 
-IOPS_BS_LIST=("4K" "8K" "16K" "32K" "64K" "128K")
+IOPS_BS_LIST=("2K" "4K" "8K" "16K" "32K" "64K" "128K")
 # Can be used to benchmark read operations (bio splits)
 # Not used in benchmarking bc its kinda more related to optional functionality
 IOPS_RW_MIXES=("100-0" "65-35" "0-100") # SNIA recommends more mixes (like 95-5, 50-50, ...)
@@ -55,9 +55,8 @@ reinit_lsvbd() {
     
 	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
     
-	modprobe -r brd
-    modprobe brd rd_nr=1 rd_size=$((BRD_SIZE * 1048576))
-    
+	modprobe -r null_blk
+    modprobe null_blk queue_mode=0 gb=$(NBD_SIZE) bs=4096 irqmode=0 nr_devices=1
 	make -C ../src init_no_recompile DS=${DAST} TY=${TYPE} > /dev/null
 }
 
@@ -204,8 +203,9 @@ run_tp_tests() {
 				make fio_perf_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$IO_DEPTH" NJ="$JOBS_NUM" "$extra_args" > "$log_file"
 
                 extract_tp_metrics "$log_file" "$i" "$bs" "$rw_mix"
+
+				reinit_lsvbd
             done
-            reinit_lsvbd
         done
 
         echo "Data collected in $RESULTS_FILE"
@@ -241,8 +241,9 @@ run_iops_tests() {
 				make fio_perf_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$IO_DEPTH" NJ="$JOBS_NUM" "$extra_args" > "$log_file"
 
 				extract_iops_metrics "$log_file" "$i" "$bs" "$rw_mix"
+
+				reinit_lsvbd
             done
-            reinit_lsvbd
         done
 
         echo "Data collected in $RESULTS_FILE"
@@ -272,9 +273,9 @@ run_latency_tests() {
 					--write_lat_log="$log_file" --ioengine=io_uring --registerfiles=1 --hipri=0 \
 					--cpus_allowed=0 --fixedbufs=1 --filename=/dev/"$device" > /dev/null
                 extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
-            done
 
-            reinit_lsvbd
+				reinit_lsvbd
+            done
         done
     done
 
@@ -301,7 +302,7 @@ run_tp_tests "lsvbd1" 0
 run_iops_tests "lsvbd1" 0
 run_latency_tests "lsvbd1" 0
 
-# Run tests for RAMDISK (raw mode)
+# Run tests for NULLDISK (raw mode)
 run_tp_tests "ram0" 1
 run_iops_tests "ram0" 1
 run_latency_tests "ram0" 1
