@@ -2,7 +2,7 @@
 
 JOBS_NUM=8
 IO_DEPTH=32
-RUNS=3
+RUNS=25
 NBD_SIZE=1000
 DAST="sl"
 TYPE="lf"
@@ -56,7 +56,7 @@ prepare_env() {
 reinit_lsvbd() {
     make -C ../src exit DBI=1 > /dev/null
     
-	# sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
+	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
     
 	modprobe -r null_blk
     modprobe null_blk queue_mode=0 gb=$NBD_SIZE bs=4096 irqmode=0 nr_devices=1
@@ -359,7 +359,7 @@ run_latency_tests() {
                 echo "Run $i of $RUNS..."
                 log_file="$LOGS_PATH/latency_${bs}_${rw_mix}"
 				fio --name=latency_test --rw=randrw --rwmixread="${rw_mix%-*}" --rwmixwrite="${rw_mix#*-}" \
-					--bs="${bs}" --numjobs=1 --iodepth=1 --time_based --runtime=3 --direct=1 \
+					--bs="${bs}" --numjobs=1 --iodepth=1 --time_based --runtime=30 --direct=1 \
 					--write_lat_log="$log_file" --ioengine=io_uring --registerfiles=1 --hipri=0 \
 					--cpus_allowed=0 --fixedbufs=1 --filename=/dev/"$device" > /dev/null
                 extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
