@@ -5,8 +5,7 @@
 ###								###
 
 IO_DEPTH=16
-BD_NAME="vdb"
-BD_SYS_PATH="/sys/block/${BD_NAME}/"
+BD_NAME="nullb0"
 SYSCTL_CONF="/etc/sysctl.conf"
 VBD_NAME="lsvbd1"
 
@@ -32,6 +31,8 @@ while [[ "$#" -gt 0 ]]; do
 	shift
 done
 
+BD_SYS_PATH="/sys/block/${BD_NAME}/"
+
 # Function to display help
 usage() {
     echo "Usage: $0 [--bd_name name_without_/dev/] [--io_depth number]"
@@ -45,8 +46,8 @@ echo -e "\nChecking symbols for lsvbd.ko..."
 sudo cat /proc/kallsyms | grep lsbdd
 
 echo -e "\nChecking current native block device scheduler && setting it to none"
-sudo cat $BD_SYS_PATH/queue/scheduler
-sudo echo "none" | sudo tee "$BD_SYS_PATH"/queue/scheduler > /dev/null
+sudo cat "$BD_SYS_PATH"queue/scheduler
+sudo echo "none" | sudo tee "$BD_SYS_PATH"queue/scheduler > /dev/null
 
 echo -e "\nLower kernel restrictions"
 sudo sysctl kernel.kptr_restrict=0
@@ -62,7 +63,7 @@ echo -e "\nCheck CPU governors"
 cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 
 echo -e "\nCheck queue depth"
-if [ "$(cat $BD_SYS_PATH/queue/nr_requests)" -le "$IO_DEPTH" ]; then
+if [ "$(cat "$BD_SYS_PATH"/queue/nr_requests)" -le "$IO_DEPTH" ]; then
 	echo "$IO_DEPTH" > /sys/block/"$BD_NAME"/queue/nr_requests
 fi
 

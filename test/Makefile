@@ -6,11 +6,11 @@ RO?=randread
 # Write operation type (write/randwrite)
 WO?=randwrite
 # File size (in MB)
-FS?=5000
+FS?=1000000
 # IO engine to use in FIO (libaio\io_uring)
 IO?=io_uring 
 # Number of fio jobs to run
-NJ?=4
+NJ?=8
 # IO depth num
 ID?=32
 # INDEX
@@ -51,7 +51,7 @@ fio_perf_mix:
 		--bs=$(BS) \
 		--numjobs=$(NJ) \
 		--iodepth=$(ID) \
-		--time_based --runtime=10 \
+		--time_based --runtime=30 \
 		--direct=1 \
 		--ioengine=$(IO) \
 		--registerfiles=1 \
