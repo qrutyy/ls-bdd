@@ -245,8 +245,8 @@ run_tp_tests() {
 		fi
 
         for bs in "${TP_BS_LIST[@]}"; do
-			# running warm-up for all the operations in case of rewrite_mode==1 and if the operation is read
-			if [ "$rewrite_mode" == "1" ] || [ "$rwmix_read" == "100" ]; then 
+			# running warm-up for all the operations in case of rewrite_mode==1 
+			if [ "$rewrite_mode" == "1" ]; then 
                 workload_independent_preconditioning "$bs"
             fi
 
@@ -300,8 +300,8 @@ run_iops_tests() {
 		fi
 
         for bs in "${IOPS_BS_LIST[@]}"; do
-			# running warm-up for all the operations in case of rewrite_mode==1 and if the operation is read
-			if [ "$rewrite_mode" == "1" ] || [ "$rwmix_read" == "100" ]; then 
+			# running warm-up for all the operations in case of rewrite_mode==1 
+			if [ "$rewrite_mode" == "1" ]; then 
                 workload_independent_preconditioning "$bs"
             fi
 
@@ -350,8 +350,8 @@ run_latency_tests() {
 
         for bs in "${LAT_BS_LIST[@]}"; do
             echo -e "Performing a block device warm-up..."
-			# running warm-up for all the operations in case of rewrite_mode==1 and if the operation is read
-			if [ "$rewrite_mode" == "1" ] || [ "$rw_mix" == "100-0" ]; then 
+			# running warm-up for all the operations in case of rewrite_mode==1
+			if [ "$rewrite_mode" == "1" ]; then 
 				workload_independent_preconditioning "$bs";
 			fi
 
