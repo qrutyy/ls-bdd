@@ -8,10 +8,13 @@ parser = argparse.ArgumentParser(description="Generate average plots from fio re
 parser.add_argument(
     "--raw", action="store_true", help="Save plots to the 'raw' directory"
 )
+parser.add_argument("--rewrite", action="store_true", help="Rewrite operation mode")
+
 args = parser.parse_args()
 
 LAT_RESULTS_FILE = "logs/fio_lat_results.dat"
 PLOTS_PATH = "./plots/latency/raw" if args.raw else "./plots/latency/vbd"
+PLOTS_PATH += "/rewrite" if args.rewrite else "/non_rewrite"
 
 df = pd.read_csv(
     LAT_RESULTS_FILE,
@@ -65,7 +68,12 @@ def plot_metric_by_bs(metric, ylabel, filename_prefix):
 
         plt.xlabel("Run number")
         plt.ylabel(ylabel)
-        plt.title(f"{ylabel} (Block Size {bs})")
+
+        if args.rewrite:
+            plt.title(f"{ylabel} (Block size {bs}) (with warm up)")
+        else:
+            plt.title(f"{ylabel} (Block size {bs}) (without warm up)")
+
         plt.legend(title="RW Mix")
         plt.grid()
 
@@ -97,7 +105,12 @@ def plot_united_metric(metric, ylabel, filename):
 
     plt.xlabel("Test Run")
     plt.ylabel(ylabel)
-    plt.title(f"{ylabel} (All Block Sizes)")
+
+    if args.rewrite:
+        plt.title(f"{ylabel} (All block sizes) (with warm up)")
+    else:
+        plt.title(f"{ylabel} (All block sizes) (without warm up)")
+
     plt.legend(title="RW Mix (BS)")
     plt.grid()
 
@@ -119,21 +132,29 @@ def plot_boxplot_latency():
 
     plt.boxplot(
         latencies,
-        labels=["Avg_LAT", "Max_LAT", "P95_LAT"],
+        tick_labels=["Avg_LAT", "Max_LAT", "P95_LAT"],
         showfliers=True,
         patch_artist=True,
     )
     plt.ylabel("Latency (ns)")
-    plt.title("Latency Distribution with Outliers")
+
+    if args.rewrite:
+        plt.title("Latency distribution with outliers (with warm up)")
+    else:
+        plt.title("Latency distribution with outliers (without warm up)")
+
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-    plt.axis(
-        [
-            0.5,
-            3.5,
-            df[["Avg_LAT", "Max_LAT", "P95_LAT"]].min().min(),
-            df[["Avg_LAT", "Max_LAT", "P95_LAT"]].max().max(),
-        ]
-    )
+
+    ymin = df[["Avg_LAT", "Max_LAT", "P95_LAT"]].min().min()
+    ymax = df[["Avg_LAT", "Max_LAT", "P95_LAT"]].max().max()
+
+    if np.isfinite(ymin) and np.isfinite(ymax):
+        plt.axis([0.5, 3.5, ymin, ymax])
+    else:
+        print(
+            "Warning: Skipping axis setting due to NaN/Inf values in latency columns."
+        )
+
     plt.savefig(f"{PLOTS_PATH}/latency_boxplot_with_outliers.png")
     plt.close()
     plt.clf()
@@ -141,21 +162,26 @@ def plot_boxplot_latency():
     plt.figure(figsize=(8, 6))
     plt.boxplot(
         latencies,
-        labels=["Avg_LAT", "Max_LAT", "P95_LAT"],
+        tick_labels=["Avg_LAT", "Max_LAT", "P95_LAT"],
         showfliers=False,
         patch_artist=True,
     )
     plt.ylabel("Latency (ns)")
-    plt.title("Latency Distribution without Outliers")
+
+    if args.rewrite:
+        plt.title("Latency distribution with outliers (with warm up)")
+    else:
+        plt.title("Latency distribution with outliers (without warm up)")
+
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-    plt.axis(
-        [
-            0.5,
-            3.5,
-            df[["Avg_LAT", "Max_LAT", "P95_LAT"]].min().min(),
-            df[["Avg_LAT", "Max_LAT", "P95_LAT"]].max().max(),
-        ]
-    )
+
+    if np.isfinite(ymin) and np.isfinite(ymax):
+        plt.axis([0.5, 3.5, ymin, ymax])
+    else:
+        print(
+            "Warning: Skipping axis setting due to NaN/Inf values in latency columns."
+        )
+
     plt.savefig(f"{PLOTS_PATH}/latency_boxplot_without_outliers.png")
     plt.close()
     plt.clf()

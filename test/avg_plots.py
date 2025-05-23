@@ -9,12 +9,13 @@ parser.add_argument(
     "--raw", action="store_true", help="Save plots to the 'raw' directory"
 )
 parser.add_argument("--tp", action="store_true", help="Run throughput plot generator")
+parser.add_argument("--rewrite", action="store_true", help="Rewrite operation mode")
 args = parser.parse_args()
 
 RESULTS_FILE = "logs/fio_results.dat"
 PLOTS_PATH = "./plots/avg/raw" if args.raw else "./plots/avg/vbd"
-
-DEVICE = "ram0" if args.raw else "lsvbd1"
+PLOTS_PATH += "/rewrite" if args.rewrite else "/non_rewrite"
+DEVICE = "nullb0" if args.raw else "lsvbd1"
 
 colors = ["green", "red", "blue", "brown", "purple"]
 
@@ -71,7 +72,11 @@ def plot_tp(df):
 
     plt.ylabel("Bandwidth (MB/s)")
     plt.xlabel("Run number")
-    plt.title(f"Throughput of {mix} operations mix with {DEVICE}\n")
+    if args.rewrite:
+        plt.title(f"Throughput of {mix} operations mix on {DEVICE} (with warm up)\n")
+    else:
+        plt.title(f"Throughput of {mix} operations mix on {DEVICE} (without warm up)\n")
+
     plt.savefig(save_path)
     plt.clf()
     print(f"Saved: {save_path}")
@@ -112,7 +117,14 @@ def plot_iops(df):
 
         plt.ylabel("IOPS (K/s)")
         plt.xlabel("Run number")
-        plt.title(f"Total number of {mix} operations per second (IOPS) with {DEVICE}\n")
+        if args.rewrite:
+            plt.title(
+                f"Total number of {mix} operations per second (IOPS) with {DEVICE} (with warm up)\n"
+            )
+        else:
+            plt.title(
+                f"Total number of {mix} operations per second (IOPS) with {DEVICE} (without warm up)\n"
+            )
         plt.savefig(save_path)
         plt.close()
         print(f"Saved: {save_path}")

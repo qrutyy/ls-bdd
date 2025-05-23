@@ -11,10 +11,13 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--raw", action="store_true", help="Save plots to the 'raw' directory"
 )
+parser.add_argument("--rewrite", action="store_true", help="Rewrite operation mode")
+
 args = parser.parse_args()
 
 RESULTS_FILE = "logs/fio_results.dat"
 PLOTS_PATH = "./plots/histograms/raw" if args.raw else "./plots/histograms/vbd"
+PLOTS_PATH += "/rewrite" if args.rewrite else "/non_rewrite"
 
 df = pd.read_csv(
     RESULTS_FILE,
@@ -60,9 +63,14 @@ for mode in df["MODE"].unique():
                     )
                 else:
                     plt.xlabel("IOPS (K/s)")
-                    plt.title(
-                        f"Histogram of {mix} operations mix throughput (IOPS) {base_title}\n"
-                    )
+                    if args.rewrite:
+                        plt.title(
+                            f"Histogram of {mix} operations mix throughput (IOPS) {base_title} (with warm up)\n"
+                        )
+                    else:
+                        plt.title(
+                            f"Histogram of {mix} operations mix throughput (IOPS) {base_title} (without warm up)\n"
+                        )
 
                 plt.ylabel("Frequency")
                 plt.tight_layout()
