@@ -248,10 +248,6 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 		pr_debug("READ: Sector: %llu isnt mapped\n", orig_sector);
 
 		prev_value = ds_prev(redirect_manager->sel_data_struct, orig_sector, prev_sector);
-		if (!prev_value) {
-			pr_debug("clone sector (redirect): %llu\n", clone_bio->bi_iter.bi_sector);
-			return 0;
-		}
 
 		redirect_sector = prev_value->redirected_sector * SECTOR_SIZE + (orig_sector - *prev_sector) * SECTOR_SIZE;
 		to_end_of_block = (prev_value->redirected_sector * SECTOR_SIZE + prev_value->block_size) - redirect_sector;
