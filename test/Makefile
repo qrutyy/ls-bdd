@@ -58,6 +58,7 @@ fio_perf_mix:
 		--hipri=0 \
 		--fixedbufs=1 \
 		--prio=0 \
+		--norandommap=0 \
 		--cpus_allowed_policy=shared \
 		--filename=/dev/$(FS) \
 		--cpus_allowed=0-7

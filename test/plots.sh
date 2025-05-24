@@ -19,7 +19,7 @@ LATENCY_PLOTS_SCRIPT="lat_plots.py"
 IOPS_BS_LIST=("4K" "8K" "16K" "32K" "64K" "128K") # + 2K by SNIA
 # Can be used to benchmark read operations (bio splits)
 # Not used in benchmarking bc its kinda more related to optional functionality
-IOPS_RW_MIXES=("100-0" "65-35" "0-100") # SNIA recommends more mixes (like 95-5, 50-50, ...)
+IOPS_RW_MIXES=("100-0" "65-35" "0-100") # SNIA recommends more mixes (like 99-5, 50-50, ...)
 
 LAT_BS_LIST=("4K" "8K") # SNIA recommends 0.5K and 2K also
 LAT_RW_MIXES=("0-100" "65-35" "100-0") # Write to read ops ratio
@@ -154,7 +154,7 @@ Extracts current latency metrics fro mthe log file and writes to the general log
 Includes:
 - average latency
 - maximum latency
-- 95 percentile of latency
+- 99 percentile of latency
 
 @param run_id - number of the run (repeat id) 
 @param log_file - path to FIO log_file being the FIO's log gathered with --write_lat_log option
@@ -181,10 +181,10 @@ extract_latency_metrics() {
         echo "$result"
     }
 
-    calc_95p_latency() {
+    calc_99p_latency() {
         local file=$1
         local result
-		result=$(awk -F',' '{print $2}' "$file" | sort -n | awk 'NR > 0 { all[NR] = $1 } END { if (NR > 0) print all[int(NR*0.95)] }')
+		result=$(awk -F',' '{print $2}' "$file" | sort -n | awk 'NR > 0 { all[NR] = $1 } END { if (NR > 0) print all[int(NR*0.99)] }')
         echo "$result"
     }
 
@@ -206,14 +206,14 @@ extract_latency_metrics() {
     local max_lat
 	max_lat=$(calc_max_latency "$lat_file")
 
-    local p95_slat
-	p95_slat=$(calc_95p_latency "$slat_file")
-    local p95_clat
-	p95_clat=$(calc_95p_latency "$clat_file")
-    local p95_lat
-	p95_lat=$(calc_95p_latency "$lat_file")
-	echo -e "DEBUG: extracted \nId:$run_id \nBS:$bs \nAVG_SLAT:$avg_slat AVG_CLAT:$avg_clat AVG_LAT:$avg_lat \nMAX_SLAT:$max_slat MAX_CLAT:$max_clat MAX_LAT:$max_lat \nP95_LAT:$p95_slat P95_CLAT:$p95_clat P95_LAT:$p95_lat \nRW_MIX:$rw_mix\n"
-    echo "$run_id $bs $avg_slat $avg_clat $avg_lat $max_slat $max_clat $max_lat $p95_slat $p95_clat $p95_lat $rw_mix" >> "$LAT_RESULTS_FILE"
+    local p99_slat
+	p99_slat=$(calc_99p_latency "$slat_file")
+    local p99_clat
+	p99_clat=$(calc_99p_latency "$clat_file")
+    local p99_lat
+	p99_lat=$(calc_99p_latency "$lat_file")
+	echo -e "DEBUG: extracted \nId:$run_id \nBS:$bs \nAVG_SLAT:$avg_slat AVG_CLAT:$avg_clat AVG_LAT:$avg_lat \nMAX_SLAT:$max_slat MAX_CLAT:$max_clat MAX_LAT:$max_lat \nP99_LAT:$p99_slat P99_CLAT:$p99_clat P99_LAT:$p99_lat \nRW_MIX:$rw_mix\n"
+    echo "$run_id $bs $avg_slat $avg_clat $avg_lat $max_slat $max_clat $max_lat $p99_slat $p99_clat $p99_lat $rw_mix" >> "$LAT_RESULTS_FILE"
 }
 
 <<docs
@@ -245,8 +245,8 @@ run_tp_tests() {
 		fi
 
         for bs in "${TP_BS_LIST[@]}"; do
-			# running warm-up for all the operations in case of rewrite_mode==1 
 			if [ "$rewrite_mode" == "1" ]; then 
+				# running warm-up for all the operations in case of rewrite_mode==1 
                 workload_independent_preconditioning "$bs"
             fi
 
@@ -300,8 +300,8 @@ run_iops_tests() {
 		fi
 
         for bs in "${IOPS_BS_LIST[@]}"; do
-			# running warm-up for all the operations in case of rewrite_mode==1 
 			if [ "$rewrite_mode" == "1" ]; then 
+				# running warm-up for all the operations in case of rewrite_mode==1 
                 workload_independent_preconditioning "$bs"
             fi
 
@@ -349,9 +349,9 @@ run_latency_tests() {
 		fi
 
         for bs in "${LAT_BS_LIST[@]}"; do
-            echo -e "Performing a block device warm-up..."
-			# running warm-up for all the operations in case of rewrite_mode==1
 			if [ "$rewrite_mode" == "1" ]; then 
+	            echo -e "Performing a block device warm-up..."
+				# running warm-up for all the operations in case of rewrite_mode==1
 				workload_independent_preconditioning "$bs";
 			fi
 
@@ -361,7 +361,7 @@ run_latency_tests() {
 				fio --name=latency_test --rw=randrw --rwmixread="${rw_mix%-*}" --rwmixwrite="${rw_mix#*-}" \
 					--bs="${bs}" --numjobs=1 --iodepth=1 --time_based --runtime=30 --direct=1 \
 					--write_lat_log="$log_file" --ioengine=io_uring --registerfiles=1 --hipri=0 \
-					--cpus_allowed=0 --fixedbufs=1 --filename=/dev/"$device" > /dev/null
+					--cpus_allowed=0 --fixedbufs=1 --filename=/dev/"$device" --norandommap=0 > /dev/null
                 extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
 
 				reinit_lsvbd
