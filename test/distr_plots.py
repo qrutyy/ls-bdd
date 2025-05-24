@@ -57,7 +57,7 @@ for mode in df["MODE"].unique():
                 base_title = f"(BS={bs}, MIX={mix})"
 
                 if label == "BW":
-                    plt.xlabel("Bandwidth (MB/s)")
+                    plt.xlabel("Bandwidth (GB/s)")
                     plt.title(
                         f"Histogram of {mix} operations mix throughput (BW) {base_title}\n"
                     )

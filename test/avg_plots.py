@@ -14,7 +14,7 @@ args = parser.parse_args()
 
 RESULTS_FILE = "logs/fio_results.dat"
 PLOTS_PATH = "./plots/avg/raw" if args.raw else "./plots/avg/vbd"
-PLOTS_PATH += "/rewrite" if args.rewrite else "/non_rewrite"
+PLOTS_PATH = PLOTS_PATH + "/rewrite" if args.rewrite else PLOTS_PATH + "/non_rewrite"
 DEVICE = "nullb0" if args.raw else "lsvbd1"
 
 colors = ["green", "red", "blue", "brown", "purple"]
@@ -70,8 +70,9 @@ def plot_tp(df):
     os.makedirs(mode_dir, exist_ok=True)
     save_path = os.path.join(mode_dir, f"bandwidth_plot.png")
 
-    plt.ylabel("Bandwidth (MB/s)")
+    plt.ylabel("Bandwidth (GB/s)")
     plt.xlabel("Run number")
+
     if args.rewrite:
         plt.title(f"Throughput of {mix} operations mix on {DEVICE} (with warm up)\n")
     else:
@@ -117,6 +118,7 @@ def plot_iops(df):
 
         plt.ylabel("IOPS (K/s)")
         plt.xlabel("Run number")
+
         if args.rewrite:
             plt.title(
                 f"Total number of {mix} operations per second (IOPS) with {DEVICE} (with warm up)\n"
@@ -125,6 +127,7 @@ def plot_iops(df):
             plt.title(
                 f"Total number of {mix} operations per second (IOPS) with {DEVICE} (without warm up)\n"
             )
+
         plt.savefig(save_path)
         plt.close()
         print(f"Saved: {save_path}")
