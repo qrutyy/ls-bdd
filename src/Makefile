@@ -56,7 +56,7 @@ set:
 #	**index** - postfix for a 'device in the middle' (prefix is 'lsvbd'), **bd** - to which block device to redirect
 
 nulld:
-	modprobe null_blk queue_mode=0 gb=$(ND_SIZE_GB) bs=4096 irqmode=0 nr_devices=1
+	modprobe null_blk queue_mode=0 gb=$(ND_SIZE_GB) bs=512 irqmode=0 nr_devices=1
 
 lint:
 	find . -name "*.c" -o -name "*.h" | xargs ./checkpatch.pl -f --no-tree

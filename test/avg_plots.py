@@ -68,7 +68,7 @@ def plot_tp(df):
 
     mode_dir = os.path.join(PLOTS_PATH, "tp")
     os.makedirs(mode_dir, exist_ok=True)
-    save_path = os.path.join(mode_dir, f"bandwidth_plot.png")
+    save_path = os.path.join(mode_dir, f"bandwidth_plot_{bs}_{mix}.png")
 
     plt.ylabel("Bandwidth (GB/s)")
     plt.xlabel("Run number")
@@ -114,7 +114,7 @@ def plot_iops(df):
 
         mode_dir = os.path.join(PLOTS_PATH, "iops")
         os.makedirs(mode_dir, exist_ok=True)
-        save_path = os.path.join(mode_dir, f"iops_plot_{bs}BS.png")
+        save_path = os.path.join(mode_dir, f"iops_plot_{mix}_{bs}BS.png")
 
         plt.ylabel("IOPS (K/s)")
         plt.xlabel("Run number")

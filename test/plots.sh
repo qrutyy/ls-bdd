@@ -59,7 +59,7 @@ reinit_lsvbd() {
 	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
     
 	modprobe -r null_blk
-    modprobe null_blk queue_mode=0 gb=$NBD_SIZE bs=4096 irqmode=0 nr_devices=1
+    modprobe null_blk queue_mode=0 gb=$NBD_SIZE bs=512 irqmode=0 nr_devices=1
 	make -C ../src init_no_recompile DS=${DAST} TY=${TYPE} > /dev/null
 }
 
