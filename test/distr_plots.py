@@ -5,6 +5,11 @@ import scipy.stats as stats
 import matplotlib.pyplot as plt
 import os
 
+"""
+Simply plots the values distribution of different metrics. The result is a histogram in PLOTS_PATH directory.
+Can require some args (depends on your case) - check the parser below.
+"""
+
 parser = argparse.ArgumentParser(
     description="Generate distribution plots from fio results."
 )
@@ -16,15 +21,22 @@ parser.add_argument("--rewrite", action="store_true", help="Rewrite operation mo
 args = parser.parse_args()
 
 RESULTS_FILE = "logs/fio_results.dat"
-PLOTS_PATH = "./plots/histograms/raw" if args.raw else "./plots/histograms/vbd"
+PLOTS_PATH = "./plots/distribution/raw" if args.raw else "./plots/distribution/vbd"
 PLOTS_PATH += "/rewrite" if args.rewrite else "/non_rewrite"
-
-df = pd.read_csv(
-    RESULTS_FILE,
-    sep=r"\s+",
-    skiprows=0,
-    names=["RunID", "BS", "MIX", "BW", "IOPS", "MODE"],
-)
+try:
+    df = pd.read_csv(
+        RESULTS_FILE,
+        sep=r"\s+",
+        skiprows=0,
+        names=["RunID", "BS", "MIX", "BW", "IOPS", "MODE"],
+    )
+except FileNotFoundError:
+    print(f"Error: Results file not found at {LAT_RESULTS_FILE}")
+    exit()
+except pd.errors.ParserError as e:
+    print(f"Error parsing {LAT_RESULTS_FILE}: {e}")
+    print("Please ensure the file format is correct and matches the expected columns.")
+    exit()
 
 
 def clean_numeric(series):
