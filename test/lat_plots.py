@@ -64,6 +64,11 @@ if args.conc_mode:
 
 
 def parse_block_size_for_sorting(bs_str):
+    """
+    Parses a block size string and converts it to bytes for sorting.
+    @param bs_str: The block size string. @type bs_str: str
+    @return: The block size in bytes. @rtype: int
+    """
     bs_str_lower = str(bs_str).lower()
     match = re.match(r"(\d+)([kmgtpbs]*)", bs_str_lower)
     if not match:
