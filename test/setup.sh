@@ -63,7 +63,7 @@ echo -e "\nCheck CPU governors"
 cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 
 echo -e "\nCheck queue depth"
-if [ "$(cat "$BD_SYS_PATH"/queue/nr_requests)" -le "$IO_DEPTH" ]; then
+if [ "$(cat "$BD_SYS_PATH"queue/nr_requests)" -le "$IO_DEPTH" ]; then
 	echo "$IO_DEPTH" > /sys/block/"$BD_NAME"/queue/nr_requests
 fi
 
