@@ -248,6 +248,7 @@ static s32 setup_read_from_clone_segments(struct bio *main_bio, struct bio *clon
 		pr_debug("READ: Sector: %llu isnt mapped\n", orig_sector);
 
 		prev_value = ds_prev(redirect_manager->sel_data_struct, orig_sector, prev_sector);
+		IF_NULL_RETURN(prev_value, 0);
 
 		redirect_sector = prev_value->redirected_sector * SECTOR_SIZE + (orig_sector - *prev_sector) * SECTOR_SIZE;
 		to_end_of_block = (prev_value->redirected_sector * SECTOR_SIZE + prev_value->block_size) - redirect_sector;
@@ -746,7 +747,7 @@ static void __exit lsbdd_exit(void)
 {
 	u16 i = 0;
 	struct lsbdd_bd_manager *entry, *tmp;
-
+	pr_debug("were fucked\n");
 	if (!list_empty(&bd_list)) {
 		while (get_list_element_by_index(i) != NULL)
 			delete_bd(i + 1);
