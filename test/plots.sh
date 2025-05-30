@@ -156,9 +156,12 @@ extract_tp_metrics() {
         echo "ERROR: Could not extract BW (MB/s or GB/s) for run_id=$run_id, bs=$bs, mix=$mix from $log_file"
 		bw="0" # Default (error) value  
     fi
-
+	if [ "$numjobs" == "" ] && [ "$iodepth" == "" ]; then
+		numjobs="0"
+		iodepth="0"
+	fi
     echo "DEBUG: Extracted BW='$bw' (target GB/s) for op_type=$op_type"
-    echo "$run_id $bs $mix $bw 0 tp" >> "$RESULTS_FILE"
+    echo "$run_id $bs $mix $bw 0 tp $iodepth $numjobs" >> "$RESULTS_FILE"
 }
 
 <<docs

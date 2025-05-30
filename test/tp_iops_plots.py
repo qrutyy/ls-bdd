@@ -37,7 +37,7 @@ DEVICE = "nullb0" if args.raw else "lsvbd1"
 
 try:
     plot_colors = plt.get_cmap("tab10", 10).colors
-except AttributeError:
+except AttributeError:  # Matplotlib < 2.0
     plot_colors = [plt.get_cmap("tab10")(i) for i in np.linspace(0, 1, 10)]
 
 
@@ -48,12 +48,16 @@ def parse_block_size_for_sorting(bs_str):
     @return: The block size in bytes.
     """
     bs_str_lower = str(bs_str).lower()
-    match = re.match(r"(\d+)([kmgtpbs]*)", bs_str_lower)
+    match = re.match(r"(\d+)([kmgtp]?)b?", bs_str_lower)
     if not match:
-        return 0
+        return 0  # Or raise error
     num_part = int(match.group(1))
     unit_part = match.group(2)
-    return num_part * 1024
+
+    multipliers = {"k": 1024, "m": 1024**2}
+    if unit_part:
+        return num_part * multipliers.get(unit_part, 1)
+    return num_part
 
 
 def clean_numeric(series):
@@ -90,8 +94,17 @@ def plot_iodepth_numjobs_avg_bars(
         return
 
     df_plot_data = df_for_bs_mix.copy()
-    df_plot_data["IODEPTH"] = df_plot_data["IODEPTH"].astype(int)
-    df_plot_data["NUMJOBS"] = df_plot_data["NUMJOBS"].astype(int)
+    if "IODEPTH" in df_plot_data.columns:
+        df_plot_data.dropna(
+            subset=["IODEPTH"], inplace=True
+        )  # Drop rows where IODEPTH is NaN
+        df_plot_data["IODEPTH"] = df_plot_data["IODEPTH"].astype(int)
+    if "NUMJOBS" in df_plot_data.columns:
+        df_plot_data.dropna(
+            subset=["NUMJOBS"], inplace=True
+        )  # Drop rows where NUMJOBS is NaN
+        df_plot_data["NUMJOBS"] = df_plot_data["NUMJOBS"].astype(int)
+
     avg_data = df_plot_data.groupby(["IODEPTH", "NUMJOBS"], as_index=False)[
         metric_col
     ].mean()
@@ -103,7 +116,7 @@ def plot_iodepth_numjobs_avg_bars(
         return
 
     sorted_avg_data = avg_data.sort_values(by=["IODEPTH", "NUMJOBS"])
-    if sorted_avg_data.empty:
+    if sorted_avg_data.empty:  # Should not happen if avg_data was not empty
         return
 
     x_labels = [
@@ -111,7 +124,7 @@ def plot_iodepth_numjobs_avg_bars(
         for _, row in sorted_avg_data.iterrows()
     ]
     y_values = sorted_avg_data[metric_col].tolist()
-    if not y_values:
+    if not y_values:  # Should not happen if sorted_avg_data was not empty
         return
 
     x_positions = range(len(x_labels))
@@ -187,6 +200,13 @@ def plot_metric_multiline_runs(df_plot, metric_col, y_axis_label, plot_subdir_na
         )
         return
 
+    if "IODEPTH" in df_filtered.columns:
+        df_filtered.dropna(subset=["IODEPTH"], inplace=True)
+        df_filtered["IODEPTH"] = df_filtered["IODEPTH"].astype(int)
+    if "NUMJOBS" in df_filtered.columns:
+        df_filtered.dropna(subset=["NUMJOBS"], inplace=True)
+        df_filtered["NUMJOBS"] = df_filtered["NUMJOBS"].astype(int)
+
     unique_bss = sorted(
         list(df_filtered["BS"].unique()), key=parse_block_size_for_sorting
     )
@@ -199,65 +219,67 @@ def plot_metric_multiline_runs(df_plot, metric_col, y_axis_label, plot_subdir_na
             color_idx = 0
             subset_bs_mix = df_filtered[
                 (df_filtered["BS"] == bs_val) & (df_filtered["MIX"] == mix_val)
-            ].copy()
+            ].copy()  # .copy() already made by boolean indexing
             if subset_bs_mix.empty:
                 plt.close()
                 continue
 
-            subset_bs_mix["IODEPTH"] = subset_bs_mix["IODEPTH"].astype(int)
-            subset_bs_mix["NUMJOBS"] = subset_bs_mix["NUMJOBS"].astype(int)
-            id_nj_pairs = sorted(
-                list(
-                    subset_bs_mix[["IODEPTH", "NUMJOBS"]]
-                    .drop_duplicates()
-                    .itertuples(index=False, name=None)
-                )
+            # IODEPTH/NUMJOBS might not exist if FIO config was simple
+            id_nj_pairs_exist = (
+                "IODEPTH" in subset_bs_mix.columns
+                and "NUMJOBS" in subset_bs_mix.columns
             )
 
+            if id_nj_pairs_exist:
+                id_nj_pairs = sorted(
+                    list(
+                        subset_bs_mix[["IODEPTH", "NUMJOBS"]]
+                        .drop_duplicates()
+                        .itertuples(index=False, name=None)
+                    )
+                )
+            else:  # If no IODEPTH/NUMJOBS, plot the single series for BS/MIX
+                id_nj_pairs = [(None, None)]
+
             for id_val, nj_val in id_nj_pairs:
-                data_for_line = subset_bs_mix[
-                    (subset_bs_mix["IODEPTH"] == id_val)
-                    & (subset_bs_mix["NUMJOBS"] == nj_val)
-                ].sort_values(by="RunID")
+                if id_nj_pairs_exist:
+                    data_for_line = subset_bs_mix[
+                        (subset_bs_mix["IODEPTH"] == id_val)
+                        & (subset_bs_mix["NUMJOBS"] == nj_val)
+                    ].sort_values(by="RunID")
+                    label_text = f"ID={id_val}, NJ={nj_val}"
+                else:  # No IODEPTH/NUMJOBS columns, use all data for this BS/MIX
+                    data_for_line = subset_bs_mix.sort_values(by="RunID")
+                    label_text = f"Data for BS={bs_val}, MIX={mix_val}"
+
                 if not data_for_line.empty and len(data_for_line["RunID"].unique()) > 0:
-                    if (
-                        len(data_for_line["RunID"].unique()) == 1
-                        and len(data_for_line) > 1
-                    ):
-                        avg_metric_for_runid = (
-                            data_for_line.groupby("RunID")[metric_col]
-                            .mean()
-                            .reset_index()
-                        )
-                        plt.plot(
-                            avg_metric_for_runid["RunID"],
-                            avg_metric_for_runid[metric_col],
-                            marker="o",
-                            linestyle="-",
-                            linewidth=1.5,
-                            label=f"ID={id_val}, NJ={nj_val}",
-                            color=plot_colors[color_idx % len(plot_colors) + 1],
-                        )
-                    else:
-                        plt.plot(
-                            data_for_line["RunID"],
-                            data_for_line[metric_col],
-                            marker="o",
-                            linestyle="-",
-                            linewidth=1.5,
-                            label=f"ID={id_val}, NJ={nj_val}",
-                            color=plot_colors[color_idx % len(plot_colors)],
-                        )
+                    # Aggregate if multiple entries for the same RunID (e.g. if job has multiple sub-jobs summarized)
+                    avg_metric_for_runid = (
+                        data_for_line.groupby("RunID")[metric_col].mean().reset_index()
+                    )
+
+                    plt.plot(
+                        avg_metric_for_runid["RunID"],
+                        avg_metric_for_runid[metric_col],
+                        marker="o",
+                        linestyle="-",
+                        linewidth=1.5,
+                        label=label_text,
+                        color=plot_colors[color_idx % len(plot_colors)],
+                    )
                     plot_has_data = True
                     color_idx += 1
 
             if plot_has_data:
-                plt.legend(
-                    title="Config (IODEPTH, NUMJOBS)",
-                    fontsize="small",
-                    loc="best",
-                    frameon=True,
-                )
+                if (
+                    id_nj_pairs_exist and len(id_nj_pairs) > 1
+                ):  # Only show legend if multiple lines
+                    plt.legend(
+                        title="Config (IODEPTH, NUMJOBS)",
+                        fontsize="small",
+                        loc="best",
+                        frameon=True,
+                    )
                 output_dir = os.path.join(PLOTS_PATH, plot_subdir_name)
                 os.makedirs(output_dir, exist_ok=True)
                 safe_bs = str(bs_val).replace("/", "_")
@@ -269,10 +291,10 @@ def plot_metric_multiline_runs(df_plot, metric_col, y_axis_label, plot_subdir_na
                 plt.ylabel(y_axis_label)
                 plt.xlabel("Run number")
                 title_status = "(with warm up)" if args.rewrite else "(without warm up)"
-                plt.title(
-                    f"{metric_col} per Run by Configuration for BS={bs_val}, MIX={mix_val}\non {DEVICE} {title_status}",
-                    fontsize=13,
-                )
+                title_main = f"{metric_col} per Run by Configuration for BS={bs_val}, MIX={mix_val}\non {DEVICE} {title_status}"
+                if not id_nj_pairs_exist:
+                    title_main = f"{metric_col} per Run for BS={bs_val}, MIX={mix_val}\non {DEVICE} {title_status}"
+                plt.title(title_main, fontsize=13)
                 plt.grid(True, linestyle="--", alpha=0.7)
                 plt.tight_layout()
                 plt.savefig(save_path)
@@ -301,23 +323,34 @@ def plot_non_conc_bs_comparison_bars(
         )
         return
 
-    df_filtered["IODEPTH"] = df_filtered["IODEPTH"].astype(int)
-    df_filtered["NUMJOBS"] = df_filtered["NUMJOBS"].astype(int)
+    # Ensure IODEPTH/NUMJOBS are int for iteration and labeling
+    id_nj_cols_exist = (
+        "IODEPTH" in df_filtered.columns and "NUMJOBS" in df_filtered.columns
+    )
+    if id_nj_cols_exist:
+        df_filtered.dropna(subset=["IODEPTH", "NUMJOBS"], inplace=True)
+        df_filtered["IODEPTH"] = df_filtered["IODEPTH"].astype(int)
+        df_filtered["NUMJOBS"] = df_filtered["NUMJOBS"].astype(int)
+        grouping_cols = ["MIX", "IODEPTH", "NUMJOBS"]
+    else:
+        grouping_cols = ["MIX"]
 
-    # Iterate over unique (MIX, IODEPTH, NUMJOBS) combinations
-    unique_configs = df_filtered[["MIX", "IODEPTH", "NUMJOBS"]].drop_duplicates()
+    # Iterate over unique (MIX, IODEPTH, NUMJOBS) combinations or just MIX if ID/NJ not present
+    unique_configs = df_filtered[grouping_cols].drop_duplicates()
 
     for _, row_config in unique_configs.iterrows():
         mix_val = row_config["MIX"]
-        id_val = row_config["IODEPTH"]
-        nj_val = row_config["NUMJOBS"]
+        id_val = row_config["IODEPTH"] if id_nj_cols_exist else None
+        nj_val = row_config["NUMJOBS"] if id_nj_cols_exist else None
 
-        # Filter data for the current fixed (MIX, IODEPTH, NUMJOBS)
-        df_fixed_config = df_filtered[
-            (df_filtered["MIX"] == mix_val)
-            & (df_filtered["IODEPTH"] == id_val)
-            & (df_filtered["NUMJOBS"] == nj_val)
-        ].copy()
+        if id_nj_cols_exist:
+            df_fixed_config = df_filtered[
+                (df_filtered["MIX"] == mix_val)
+                & (df_filtered["IODEPTH"] == id_val)
+                & (df_filtered["NUMJOBS"] == nj_val)
+            ].copy()
+        else:
+            df_fixed_config = df_filtered[df_filtered["MIX"] == mix_val].copy()
 
         if df_fixed_config.empty:
             continue
@@ -371,8 +404,13 @@ def plot_non_conc_bs_comparison_bars(
         plt.xlabel("Block Size (BS)", fontsize=12, labelpad=15)
         plt.ylabel(f"Average {y_axis_label_base}", fontsize=12, labelpad=10)
         title_warmup_status = "(with warm up)" if args.rewrite else "(without warm up)"
+
+        title_config_part = f"MIX={mix_val}"
+        if id_nj_cols_exist:
+            title_config_part += f", ID={id_val}, NJ={nj_val}"
+
         plt.title(
-            f"Avg Performance by Block Size for MIX={mix_val}, ID={id_val}, NJ={nj_val}\n"
+            f"Avg Performance by Block Size for {title_config_part}\n"
             f"({len(x_labels)} block sizes) on {DEVICE} {title_warmup_status}",
             fontsize=13,
             pad=20,
@@ -388,9 +426,12 @@ def plot_non_conc_bs_comparison_bars(
         os.makedirs(output_dir, exist_ok=True)
         safe_mix = str(mix_val).replace("/", "_")
         metric_fn_part = "bw" if metric_col == "BW" else "iops"
+        filename_config_part = f"{safe_mix}"
+        if id_nj_cols_exist:
+            filename_config_part += f"_id{id_val}_nj{nj_val}"
         save_path = os.path.join(
             output_dir,
-            f"{metric_fn_part}_bs_compare_{safe_mix}_id{id_val}_nj{nj_val}.png",
+            f"{metric_fn_part}_bs_compare_{filename_config_part}.png",
         )
 
         try:
@@ -402,24 +443,161 @@ def plot_non_conc_bs_comparison_bars(
             plt.close()
 
 
+# NEW PLOTTING FUNCTION as requested
+def plot_non_conc_bs_comparison_over_runs(
+    df_data, metric_col, y_axis_label, plot_subdir_name, device_name, is_rewrite
+):
+    """
+    For non-concurrent mode: Generates line plots comparing performance across different Block Sizes
+    over RunID for each fixed MIX. One plot per MIX, lines are for BS.
+    Based on the example image provided by the user.
+
+    @param df_data: DataFrame containing all relevant data.
+    @param metric_col: Metric column ("IOPS" or "BW").
+    @param y_axis_label: Y-axis label.
+    @param plot_subdir_name: Subdirectory under PLOTS_PATH (e.g., "iops" or "bw").
+    @param device_name: Device name for title.
+    @param is_rewrite: Rewrite mode flag for title.
+    """
+    mode_filter = "tp" if metric_col == "BW" else "iops"
+    df_filtered = df_data[df_data["MODE"] == mode_filter].copy()
+
+    if df_filtered.empty:
+        print(
+            f"No data (MODE='{mode_filter}') for BS comparison over runs in {plot_subdir_name}."
+        )
+        return
+
+    id_nj_cols_exist = (
+        "IODEPTH" in df_filtered.columns and "NUMJOBS" in df_filtered.columns
+    )
+    if id_nj_cols_exist:
+        # Attempt to convert to int, fillna or dropna if there are issues from clean_numeric
+        df_filtered.dropna(
+            subset=["IODEPTH", "NUMJOBS"], inplace=True
+        )  # Essential for these annotations
+        df_filtered["IODEPTH"] = df_filtered["IODEPTH"].astype(int)
+        df_filtered["NUMJOBS"] = df_filtered["NUMJOBS"].astype(int)
+
+    unique_mixes = df_filtered["MIX"].unique()
+
+    for mix_val in unique_mixes:
+        df_current_mix = df_filtered[df_filtered["MIX"] == mix_val].copy()
+        if df_current_mix.empty:
+            continue
+
+        id_nj_annotation = ""
+        if id_nj_cols_exist:
+            unique_id_nj_for_mix = df_current_mix[
+                ["IODEPTH", "NUMJOBS"]
+            ].drop_duplicates()
+            if len(unique_id_nj_for_mix) == 1:
+                id_val = unique_id_nj_for_mix.iloc[0]["IODEPTH"]
+                nj_val = unique_id_nj_for_mix.iloc[0]["NUMJOBS"]
+                id_nj_annotation = f", ID={id_val}, NJ={nj_val}"
+            elif len(unique_id_nj_for_mix) > 1:
+                id_nj_annotation = ", Varying ID/NJ"
+
+        plt.figure(figsize=(10, 6))  # Adjusted figsize to be similar to example
+        plot_has_data = False
+        color_idx = 0
+
+        unique_bss_for_mix = sorted(
+            list(df_current_mix["BS"].unique()), key=parse_block_size_for_sorting
+        )
+
+        for bs_val in unique_bss_for_mix:
+            data_for_bs_line = df_current_mix[
+                df_current_mix["BS"] == bs_val
+            ]  # No .copy needed due to indexing
+
+            avg_metric_per_run = data_for_bs_line.groupby("RunID", as_index=False)[
+                metric_col
+            ].mean()
+            avg_metric_per_run = avg_metric_per_run.sort_values(by="RunID")
+
+            if not avg_metric_per_run.empty:
+                plt.plot(
+                    avg_metric_per_run["RunID"],
+                    avg_metric_per_run[metric_col],
+                    marker="o",
+                    linestyle="-",
+                    linewidth=1.5,
+                    label=f"BS={bs_val}, MIX={mix_val}",  # Legend format from example
+                    color=plot_colors[color_idx % len(plot_colors)],
+                )
+                plot_has_data = True
+                color_idx += 1
+
+        if plot_has_data:
+            plt.legend(
+                fontsize="small", loc="best", frameon=True
+            )  # Example doesn't have legend title
+
+            output_dir = os.path.join(PLOTS_PATH, plot_subdir_name)
+            os.makedirs(output_dir, exist_ok=True)
+
+            safe_mix_val = str(mix_val).replace("/", "_")
+            metric_fn_part = "bw" if metric_col == "BW" else "iops"
+            save_path = os.path.join(
+                output_dir, f"{metric_fn_part}_runs_by_bs_{safe_mix_val}.png"
+            )
+
+            plt.ylabel(y_axis_label, fontsize=10)
+            plt.xlabel("Run number", fontsize=10)
+
+            title_status = "(with warm up)" if is_rewrite else "(without warm up)"
+            title_metric_name = "Throughput" if metric_col == "BW" else metric_col
+
+            main_title = f"{title_metric_name} of {mix_val} operations mix on {device_name} {title_status}"
+            # Adding IODEPTH/NUMJOBS to title if consistent and known for this MIX
+            if id_nj_annotation and id_nj_annotation != ", Varying ID/NJ":
+                main_title += f"\n(Config: {id_nj_annotation.strip(', ')})"
+
+            plt.title(main_title, fontsize=12, pad=10)  # Adjusted padding
+
+            plt.xticks(fontsize=9)
+            plt.yticks(fontsize=9)
+            plt.grid(True, linestyle="--", alpha=0.7)
+            plt.tight_layout()
+
+            try:
+                plt.savefig(save_path)
+                print(f"Saved: {save_path}")
+            except Exception as e:
+                print(f"Error saving plot {save_path}: {e}")
+            finally:
+                plt.close()
+        else:
+            plt.close()
+
+
 df = pd.read_csv(
     RESULTS_FILE,
     sep=r"\s+",
     skiprows=0,
+    # Ensure all potential columns are named for robust parsing
     names=["RunID", "BS", "MIX", "BW", "IOPS", "MODE", "IODEPTH", "NUMJOBS"],
+    header=None,  # Explicitly state no header row in data to use our names
 )
 print("Original DataFrame head (first 2 rows):")
 print(df.head(2))
 
-df["BW"] = clean_numeric(df["BW"])
-df["IOPS"] = clean_numeric(df["IOPS"])
-df["IODEPTH"] = clean_numeric(df["IODEPTH"])
-df["NUMJOBS"] = clean_numeric(df["NUMJOBS"])
-df["RunID"] = clean_numeric(df["RunID"])
+# Centralized numeric cleaning for relevant columns
+cols_to_make_numeric = ["RunID", "BW", "IOPS"]
+if "IODEPTH" in df.columns:
+    cols_to_make_numeric.append("IODEPTH")
+if "NUMJOBS" in df.columns:
+    cols_to_make_numeric.append("NUMJOBS")
 
-df = df.dropna(
-    subset=["RunID", "BS", "MIX", "BW", "IOPS", "MODE", "IODEPTH", "NUMJOBS"]
-)
+for col in cols_to_make_numeric:
+    if col in df.columns:  # Check if column actually exists from CSV read
+        df[col] = clean_numeric(df[col])
+
+# Define essential columns that must not be NaN for any plot type
+essential_cols_for_dropna = ["RunID", "BS", "MIX", "BW", "IOPS", "MODE"]
+df = df.dropna(subset=essential_cols_for_dropna)
+
 
 print("\nDataFrame head after cleaning (first 2 rows):")
 print(df.head(2))
@@ -429,29 +607,25 @@ if df.empty:
     print("DataFrame is empty after loading and cleaning. No plots will be generated.")
 else:
     metric_col_main = "BW" if args.tp else "IOPS"
-    y_label_main = "Bandwidth (GB/s)" if args.tp else "IOPS (K/s)"  # Confirm units
+    y_label_main = "Bandwidth (GB/s)" if args.tp else "IOPS (K/s)"
     metric_prefix_main = "bw" if args.tp else "iops"
 
     if args.conc_mode:
         print(
             f"\n--- Generating Concurrent Mode {metric_prefix_main.upper()} Plots ---"
         )
-
-        # Plot Type 1: Multi-line plots (Metric vs RunID, one line per ID/NJ for each BS/MIX)
-        print(f"\nGenerating concurrent {metric_prefix_main} multi-line run plots...")
-        conc_runs_detailed_dir = f"{metric_prefix_main}_conc"  # Changed dir name
+        conc_runs_detailed_dir = f"{metric_prefix_main}_conc_runs"
+        print(
+            f"\nGenerating concurrent {metric_prefix_main} multi-line run plots (lines per ID/NJ for each BS/MIX)..."
+        )
         plot_metric_multiline_runs(
             df.copy(), metric_col_main, y_label_main, conc_runs_detailed_dir
         )
 
-        # Plot Type 2: Bar charts (Average Metric vs ID/NJ for each BS/MIX)
+        conc_detailed_bars_dir = f"{metric_prefix_main}_conc_avg_bars_idnj"
         print(
             f"\nGenerating concurrent {metric_prefix_main} average performance bars (ID/NJ based)..."
         )
-        conc_detailed_bars_dir = (
-            f"{metric_prefix_main}_conc_detailed_bars"  # Changed dir name
-        )
-
         mode_filter_conc = "tp" if args.tp else "iops"
         df_for_conc_plots = df[df["MODE"] == mode_filter_conc].copy()
 
@@ -460,49 +634,72 @@ else:
                 f"No data with MODE='{mode_filter_conc}' for concurrent average performance bars."
             )
         else:
-            unique_bss_conc = sorted(
-                list(df_for_conc_plots["BS"].unique()), key=parse_block_size_for_sorting
-            )
-            unique_mixes_conc = df_for_conc_plots["MIX"].unique()
-            for bs_val_c in unique_bss_conc:
-                for mix_val_c in unique_mixes_conc:
-                    subset_bs_mix_c = df_for_conc_plots[
-                        (df_for_conc_plots["BS"] == bs_val_c)
-                        & (df_for_conc_plots["MIX"] == mix_val_c)
-                    ]
-                    if not subset_bs_mix_c.empty:
-                        plot_iodepth_numjobs_avg_bars(
-                            df_for_bs_mix=subset_bs_mix_c,
-                            metric_col=metric_col_main,
-                            y_axis_label_base=y_label_main,
-                            bs_val=bs_val_c,
-                            mix_val=mix_val_c,
-                            save_directory_base=conc_detailed_bars_dir,
-                            filename_prefix_detail=f"{metric_prefix_main}_avg_bars_idnj",  # Clarified filename
-                            device_name=DEVICE,
-                            is_rewrite=args.rewrite,
-                        )
-    else:
+            # Ensure IODEPTH/NUMJOBS are present for these plots
+            if not (
+                "IODEPTH" in df_for_conc_plots.columns
+                and "NUMJOBS" in df_for_conc_plots.columns
+            ):
+                print(
+                    "IODEPTH and/or NUMJOBS columns are missing. Skipping concurrent average performance bars."
+                )
+            else:
+                unique_bss_conc = sorted(
+                    list(df_for_conc_plots["BS"].unique()),
+                    key=parse_block_size_for_sorting,
+                )
+                unique_mixes_conc = df_for_conc_plots["MIX"].unique()
+                for bs_val_c in unique_bss_conc:
+                    for mix_val_c in unique_mixes_conc:
+                        subset_bs_mix_c = df_for_conc_plots[
+                            (df_for_conc_plots["BS"] == bs_val_c)
+                            & (df_for_conc_plots["MIX"] == mix_val_c)
+                        ]
+                        if not subset_bs_mix_c.empty:
+                            plot_iodepth_numjobs_avg_bars(
+                                df_for_bs_mix=subset_bs_mix_c,
+                                metric_col=metric_col_main,
+                                y_axis_label_base=y_label_main,
+                                bs_val=bs_val_c,
+                                mix_val=mix_val_c,
+                                save_directory_base=conc_detailed_bars_dir,
+                                filename_prefix_detail=f"{metric_prefix_main}_avg_bars_idnj",
+                                device_name=DEVICE,
+                                is_rewrite=args.rewrite,
+                            )
+    else:  # Non-concurrent mode
         print(
             f"\n--- Generating Non-Concurrent Mode {metric_prefix_main.upper()} Plots ---"
         )
 
-        # Plot Type 1 (Non-conc): Multi-line runs (Metric vs RunID, one line per ID/NJ for each BS/MIX)
-        non_conc_runs_detailed_dir = f"{metric_prefix_main}"
+        non_conc_plot_subdir = f"{metric_prefix_main}"
+
+        # Plot Type 1 (Non-conc): Metric vs RunID, one line per ID/NJ, for each BS/MIX
         print(
-            f"\nGenerating non-concurrent {metric_prefix_main} multi-line run plots..."
+            f"\nGenerating non-concurrent {metric_prefix_main} multi-line run plots (lines per ID/NJ for each BS/MIX)..."
         )
         plot_metric_multiline_runs(
-            df.copy(), metric_col_main, y_label_main, non_conc_runs_detailed_dir
+            df.copy(), metric_col_main, y_label_main, non_conc_plot_subdir
+        )
+
+        # NEW PLOT TYPE (Non-conc): Metric vs RunID, one line per BS, for each MIX
+        print(
+            f"\nGenerating non-concurrent {metric_prefix_main} multi-line run plots (lines per BS for each MIX)..."
+        )
+        plot_non_conc_bs_comparison_over_runs(
+            df.copy(),
+            metric_col_main,
+            y_label_main,
+            non_conc_plot_subdir,
+            DEVICE,
+            args.rewrite,
         )
 
         # Plot Type 2 (Non-conc): Bar charts (Avg Metric vs BS for each fixed MIX/ID/NJ)
-        non_conc_bs_comparison_dir = f"{metric_prefix_main}"
         print(
-            f"\nGenerating non-concurrent {metric_prefix_main} block size comparison bars..."
+            f"\nGenerating non-concurrent {metric_prefix_main} block size comparison bars (avg over runs)..."
         )
         plot_non_conc_bs_comparison_bars(
-            df.copy(), metric_col_main, y_label_main, non_conc_bs_comparison_dir
+            df.copy(), metric_col_main, y_label_main, non_conc_plot_subdir
         )
 
     print("\nAnalysis complete. Graphs saved (if any data was available).")
