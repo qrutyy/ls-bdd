@@ -130,6 +130,8 @@ extract_tp_metrics() {
     local run_id=$2
     local bs=$3
     local mix=$4
+	local iodepth=$5
+	local numjobs=$6
     local bw=""
 
     local op_type="WRITE"
@@ -251,11 +253,12 @@ Runs latency tests based on SNIA specification. Uses fio based on cfg from ./Mak
 	0 - mode is off
 docs
 run_tp_tests() {
-    local device=$1 rewrite_mode=$2 rw_mix log_file fs_flag extra_args plot_flag rewrite_flag
+    local device=$1 rewrite_mode=$2 mode=$3 rw_mix log_file fs_flag extra_args plot_flag rewrite_flag conc_mode
 	fs_flag=$([[ $device == "nullb0" ]] && echo "FS=nullb0" || echo "")
 	plot_flag=$([[ $device == "nullb0" ]] && echo "--raw")
 	rewrite_flag=$([[ $rewrite_mode -eq 1 ]] && echo "--rewrite")
-	
+	conc_mode=$([[ $mode == "conc_mode" ]] && echo "--conc_mode")
+
 	echo -e "\n---Starting Throughput operations Benchmark on $device...---\n"
 
 	for rw_mix in "${TP_RW_MIXES[@]}"; do
@@ -273,23 +276,40 @@ run_tp_tests() {
 				# running warm-up for all the operations in case of rewrite_mode==1 
                 workload_independent_preconditioning "$bs"
             fi
+			if [ "$mode" == "conc_mode" ]; then
+				for nj in "${IOPS_CONC_NJ_LIST[@]}"; do 
+					iodepth=$(echo "$nj * 2" | bc)
 
-            for i in $(seq 1 $RUNS); do
-                echo "Run $i of $RUNS..."
-                log_file="$LOGS_PATH/fio_${rw_mix}_run_${i}.log"
-                extra_args=$([[ $rwmix_read == "100" ]] && echo "RBS=$bs" || echo "")
+					for i in $(seq 1 $RUNS); do
+						echo "Run $i of $RUNS..."
+						log_file="$LOGS_PATH/fio_${rw_mix}_run_${i}.log"
+						extra_args=$([[ $rwmix_read == "100" ]] && echo "RBS=$bs" || echo "")
 
-				make fio_perf_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$IO_DEPTH" NJ="$JOBS_NUM" "$extra_args" > "$log_file"
+						make fio_perf_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$IO_DEPTH" NJ="$JOBS_NUM" "$extra_args" > "$log_file"
 
-                extract_tp_metrics "$log_file" "$i" "$bs" "$rw_mix"
+						extract_tp_metrics "$log_file" "$i" "$bs" "$rw_mix" "$iodepth" "$numjobs"
 
-				reinit_lsvbd
-            done
+						reinit_lsvbd
+					done
+				done
+			else 
+				for i in $(seq 1 $RUNS); do
+					echo "Run $i of $RUNS..."
+					log_file="$LOGS_PATH/fio_${rw_mix}_run_${i}.log"
+					extra_args=$([[ $rwmix_read == "100" ]] && echo "RBS=$bs" || echo "")
+
+					make fio_perf_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$IO_DEPTH" NJ="$JOBS_NUM" "$extra_args" > "$log_file"
+
+					extract_tp_metrics "$log_file" "$i" "$bs" "$rw_mix" "$IO_DEPTH" "$JOBS_NUM"
+
+					reinit_lsvbd
+				done
+			fi
         done
 
         echo "Data collected in $RESULTS_FILE"
 		echo "$plot_flag"
-        python3 "$AVG_PLOTS_SCRIPT" $plot_flag $rewrite_flag --tp
+        python3 "$AVG_PLOTS_SCRIPT" $plot_flag $rewrite_flag $conc_mode --tp
         python3 "$HISTOGRAM_PLOTS_SCRIPT" $plot_flag $rewrite_flag
         make clean_logs > /dev/null
     done
@@ -310,7 +330,6 @@ run_iops_tests() {
     fs_flag=$([[ $device == "nullb0" ]] && echo "FS=nullb0" || echo "")
 	plot_flag=$([[ $device == "nullb0" ]] && echo "--raw")
 	rewrite_flag=$([[ $rewrite_mode -eq 1 ]] && echo "--rewrite")
-	mode_flag=$([[ $mode == "conc_mode" ]] && echo "--conc_mode")
 	conc_mode=$([[ $mode == "conc_mode" ]] && echo "--conc_mode")
 
 	[[ $mode == "conc_mode" ]] && iops_bs_list=("${IOPS_CONC_BS_LIST[@]}") || iops_bs_list=("${IOPS_BS_LIST[@]}")
@@ -359,7 +378,7 @@ run_iops_tests() {
 				
 					make fio_perf_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$IO_DEPTH" NJ="$JOBS_NUM" "$extra_args" > "$log_file"
 
-					extract_iops_metrics "$log_file" "$i" "$bs" "$rw_mix"
+					extract_iops_metrics "$log_file" "$i" "$bs" "$rw_mix" "$IO_DEPTH" "$JOBS_NUM"
 
 					reinit_lsvbd
 				done
