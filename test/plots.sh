@@ -19,7 +19,7 @@ LATENCY_PLOTS_SCRIPT="lat_plots.py"
 IOPS_BS_LIST=("4K" "8K" "16K" "32K" "64K" "128K") # + 2K by SNIA
 # Can be used to benchmark read operations (bio splits)
 # Not used in benchmarking bc its kinda more related to optional functionality
-IOPS_RW_MIXES=("100-0" "65-35" "0-100") # SNIA recommends more mixes (like 99-5, 50-50, ...)
+IOPS_RW_MIXES=("0-100" "100-0") # SNIA recommends more mixes (like 99-5, 50-50, ...)
 
 LAT_BS_LIST=("4K" "8K") # SNIA recommends 0.5K and 2K also
 LAT_RW_MIXES=("0-100" "65-35" "100-0") # Write to read ops ratio
@@ -70,6 +70,8 @@ reinit_lsvbd() {
 # Performs warm-up with workload as big as the block device.
 workload_independent_preconditioning() {
     local wbs=$1
+
+	echo -e "\nRunning warm-up with size $BRD_SIZE"
 
 	fio --name=prep --rw=write --bs="${wbs}"K --numjobs=1 --iodepth=1 --size="${BRD_SIZE}"G \
         --filename=/dev/lsvbd1 --direct=1 --output="$LOGS_PATH/preconditioning.log"
@@ -200,12 +202,22 @@ extract_latency_metrics() {
         echo "$result"
     }
 
-    calc_99p_latency() {
-        local file=$1
-        local result
-		result=$(awk -F',' '{print $2}' "$file" | sort -n | awk 'NR > 0 { all[NR] = $1 } END { if (NR > 0) print all[int(NR*0.99/1000)] }')
-        echo "$result"
-    }
+	calc_99p_latency() {
+		local file=$1
+		local result
+		result=$(awk -F',' '{print $2}' "$file" | sort -n | awk '
+			BEGIN { count = 0 }
+			{ values[++count] = $1 }
+			END {
+				if (count > 0) {
+					idx = int(count * 0.99 + 0.5)
+					if (idx > count) idx = count
+					if (idx < 1) idx = 1
+					print values[idx]/1000
+				}
+			}')
+		echo "$result"
+	}
 
 	local slat_file="${log_file}_slat.1.log"
 	local clat_file="${log_file}_clat.1.log"
@@ -278,7 +290,7 @@ run_tp_tests() {
             fi
 			if [ "$mode" == "conc_mode" ]; then
 				for nj in "${IOPS_CONC_NJ_LIST[@]}"; do 
-					iodepth=$(echo "$nj * 2" | bc)
+					iodepth=$(echo "$nj * 4" | bc)
 
 					for i in $(seq 1 $RUNS); do
 						echo "Run $i of $RUNS..."
@@ -354,7 +366,7 @@ run_iops_tests() {
 
 			if [ "$mode" == "conc_mode" ]; then
 				for nj in "${IOPS_CONC_NJ_LIST[@]}"; do 
-					iodepth=$(echo "$nj * 2" | bc)
+					iodepth=$(echo "$nj * 4" | bc)
 
 					for i in $(seq 1 $RUNS); do
 						echo "Run $i of $RUNS..."
@@ -427,7 +439,7 @@ run_latency_tests() {
 			fi
 			if [ "$mode" == "conc_mode" ]; then
 				for nj in "${IOPS_CONC_NJ_LIST[@]}"; do 
-					iodepth=$(echo "$nj * 2" | bc)
+					iodepth=$(echo "$nj * 4" | bc)
 
 					for i in $(seq 1 $RUNS); do
 						echo "Run $i of $RUNS..."

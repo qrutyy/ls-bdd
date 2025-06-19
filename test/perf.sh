@@ -98,7 +98,7 @@ fi
 echo -e "\nGenerating FlameGraph... (lsbdd only)"
 
 if [ "$VERIFY" == "true" ]; then
-	perf script -f -i perf_wr.data | $FLAMEGRAPH_PATH/stackcollapse-perf.pl | grep lsbdd > out_wr.folded
+	perf script -f -i perf_write.data | $FLAMEGRAPH_PATH/stackcollapse-perf.pl | grep lsbdd > out_wr.folded
 	sudo $FLAMEGRAPH_PATH/flamegraph.pl --width 2500 --height 16 out_wr.folded | sudo tee lsbdd_fg_spec_wr.svg > /dev/null
 else 
 	perf script -f -i perf_write.data | $FLAMEGRAPH_PATH/stackcollapse-perf.pl | grep lsbdd > out_write.folded

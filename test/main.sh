@@ -1,14 +1,14 @@
 #!/bin/bash
 
 DEPENDENCY_LIST=("fio" "make" "perf")
-BD_NAME="ram0"
+BD_NAME="nullb0"
 IO_DEPTH=32
 VERIFY="false"
 SETUP="false"
 PERF="false"
 PLOTS="false"
-JOBS_NUM=4
-BRD_SIZE=5
+JOBS_NUM=8
+BRD_SIZE=1000
 
 # Function to display help
 usage() {
@@ -89,9 +89,6 @@ check_dependencies
 validate_verify_input
 
 free -m
-#echo -e "Creating RAM disk"
-#modprobe brd rd_nr=1 rd_size=$((BRD_SIZE * 1048576))
-#free -m
 mkdir -p plots logs
 
 echo "Block device name: $BD_NAME"
