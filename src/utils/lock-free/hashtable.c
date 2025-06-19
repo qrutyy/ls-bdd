@@ -59,11 +59,14 @@ struct lf_list_node *hashtable_insert(struct hashtable *ht, sector_t key, void *
 
 	BUG_ON(!ht || !value || !lsbdd_node_cache);
 	struct lf_list_node *el = NULL;
+	uint32_t bucket_num = 0;
 
 	if (!key)
 		return NULL;
 
-	el = lf_list_add(ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)], key, value, lsbdd_node_cache);
+	bucket_num = hash_min(key, HT_MAP_BITS);
+
+	el = lf_list_add(ht->head[bucket_num], key, value, lsbdd_node_cache);
 	if (!el) {
 		kmem_cache_free(lsbdd_value_cache, value);
 		pr_debug("Hashtable: failed to insert key %llu\n", key);
@@ -74,7 +77,7 @@ struct lf_list_node *hashtable_insert(struct hashtable *ht, sector_t key, void *
 	 */
 
 	pr_debug("Hashtable: key %lld written\n", key);
-	ht->max_bck_num = max(ht->max_bck_num, BUCKET_NUM);
+	ht->max_bck_num = max(ht->max_bck_num, bucket_num);
 	if (!ht->last_el)
 		ht->last_el = el;
 	else if (ht->last_el->key < key)
@@ -111,7 +114,7 @@ struct lf_list_node *hashtable_find_node(struct hashtable *ht, sector_t key)
 	struct lf_list_node *node = NULL;
 	struct lf_list_node *left = NULL;
 
-	list = ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)];
+	list = ht->head[hash_min(key, HT_MAP_BITS)];
 	if (unlikely(!list))
 		return NULL;
 
@@ -134,18 +137,21 @@ struct lf_list_node *hashtable_prev(struct hashtable *ht, sector_t key, sector_t
 	BUG_ON(!ht);
 	struct lf_list_node *node = NULL, *left_node = NULL;
 	struct lf_list *list = NULL;
+	uint32_t bucket_num = hash_min(key, HT_MAP_BITS);
 
-	list = ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)];
+	list = ht->head[bucket_num];
 
 	node = lf_list_lookup(list, key, &left_node);
 	if (!node || !left_node || !left_node->key) {
-		list = ht->head[hash_min(min(BUCKET_NUM - 1, ht->max_bck_num), HT_MAP_BITS)];
-		node = lf_list_lookup(list, key, &left_node);
-
-		pr_info("Found node in prev bucket: %p, key = %llu\n", node, node->key);
-		if (!left_node)
-			return NULL;
+		if (bucket_num > 0) {
+			list = ht->head[bucket_num - 1];
+			node = lf_list_lookup(list, key, &left_node);
+			pr_info("Found node in prev bucket: %p, key = %llu\n", node, node ? node->key : 0);
+		}
+		if (!left_node || !left_node->key)
+            return NULL;
 	}
+
 
 	pr_debug("Hashtable: Element (%p) with prev key - el key=%llu (%llu), val=%p\n", left_node, left_node->key, key, left_node->value);
 
@@ -160,7 +166,7 @@ void hashtable_remove(struct hashtable *ht, sector_t key, struct kmem_cache *lsb
 	struct lf_list *list = NULL;
 	bool removed = false;
 
-	list = ht->head[hash_min(BUCKET_NUM, HT_MAP_BITS)];
+	list = ht->head[hash_min(key, HT_MAP_BITS)];
 	if (unlikely(!list))
 		return;
 

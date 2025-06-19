@@ -18,10 +18,7 @@
  * NOTE!: doubly linked list potentially could help us get prev elements faster (in case of the same bucket), but such struggle doesn't worth the effort.
  */
 
-#define HT_MAP_BITS 7
-#define CHUNK_SIZE (1024 * 2)
-#define BUCKET_NUM ((sector_t)(key / (CHUNK_SIZE)))
-
+#define HT_MAP_BITS 17
 #define BUCKET_COUNT (1 << HT_MAP_BITS)
 
 #define MEM_CHECK(ptr)                                                                                                                     \

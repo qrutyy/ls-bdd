@@ -519,7 +519,7 @@ static s8 delete_bd(u16 index)
 		bdev_release(get_list_element_by_index(index)->bd_handler);
 		get_list_element_by_index(index)->bd_handler = NULL;
 	} else {
-		pr_debug("BD with num %d is empty\n", index + 1);
+		pr_info("BD with num %d is empty\n", index + 1);
 	}
 	if (get_list_element_by_index(index)->vbd_disk) {
 		del_gendisk(get_list_element_by_index(index)->vbd_disk);
@@ -533,7 +533,7 @@ static s8 delete_bd(u16 index)
 
 	list_del(&(get_list_element_by_index(index)->list));
 
-	pr_debug("Removed bdev with index %d (from list)\n", index + 1);
+	pr_info("Removed bdev with index %d (from list)\n", index + 1);
 	return 0;
 }
 
@@ -677,10 +677,6 @@ static s32 lsbdd_set_redirect_bd(const char *arg, const struct kernel_param *kp)
 	}
 
 	status = check_and_open_bd(path);
-
-	if (!list_empty(&bd_list))
-		bdd_major = register_blkdev(0, LSBDD_BLKDEV_NAME_PREFIX);
-
 	IF_NULL_RETURN(!status, PTR_ERR(&status));
 
 	last_bd = list_last_entry(&bd_list, struct lsbdd_bd_manager, list);
@@ -747,7 +743,7 @@ static void __exit lsbdd_exit(void)
 {
 	u16 i = 0;
 	struct lsbdd_bd_manager *entry, *tmp;
-	pr_debug("were fucked\n");
+
 	if (!list_empty(&bd_list)) {
 		while (get_list_element_by_index(i) != NULL)
 			delete_bd(i + 1);
