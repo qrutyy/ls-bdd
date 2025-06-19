@@ -149,8 +149,8 @@ struct lf_list_node *hashtable_prev(struct hashtable *ht, sector_t key, sector_t
 			pr_info("Found node in prev bucket: %p, key = %llu\n", node, node ? node->key : 0);
 		}
 		if (!left_node || !left_node->key)
-            return NULL;
-	}
+			return NULL;
+		}
 
 
 	pr_debug("Hashtable: Element (%p) with prev key - el key=%llu (%llu), val=%p\n", left_node, left_node->key, key, left_node->value);
