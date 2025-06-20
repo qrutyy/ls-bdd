@@ -18,7 +18,7 @@
  * NOTE!: doubly linked list potentially could help us get prev elements faster (in case of the same bucket), but such struggle doesn't worth the effort.
  */
 
-#define HT_MAP_BITS 17
+#define HT_MAP_BITS 18
 #define BUCKET_COUNT (1 << HT_MAP_BITS)
 
 #define MEM_CHECK(ptr)                                                                                                                     \

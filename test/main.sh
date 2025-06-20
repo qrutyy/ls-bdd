@@ -8,7 +8,7 @@ SETUP="false"
 PERF="false"
 PLOTS="false"
 JOBS_NUM=8
-BRD_SIZE=1000
+BRD_SIZE=400
 
 # Function to display help
 usage() {

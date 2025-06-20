@@ -3,7 +3,7 @@
 JOBS_NUM=8
 IO_DEPTH=32
 RUNS=25
-NBD_SIZE=1000
+NBD_SIZE=400
 DAST="sl"
 TYPE="lf"
 
@@ -71,9 +71,9 @@ reinit_lsvbd() {
 workload_independent_preconditioning() {
     local wbs=$1
 
-	echo -e "\nRunning warm-up with size $BRD_SIZE"
+	echo -e "\nRunning warm-up with size 125GB for each job"
 
-	fio --name=prep --rw=write --bs="${wbs}"K --numjobs=1 --iodepth=1 --size="${BRD_SIZE}"G \
+	fio --name=prep --rw=write --bs="${wbs}"K --numjobs=8 --iodepth=32 --ioengine=io_uring --size=50G \
         --filename=/dev/lsvbd1 --direct=1 --output="$LOGS_PATH/preconditioning.log"
 }
 

@@ -26,7 +26,7 @@ TY?=lf
 # End block device name
 BD?=nullb0
 # NULL Disk sizes
-ND_SIZE_GB?=1000
+ND_SIZE_GB?=400
 
 # To build modules outside of the kernel tree, we run "make"
 # in the kernel source tree; the Makefile these then includes this
