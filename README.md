@@ -1,5 +1,5 @@
 # LS-BDD
-LS-BDD is a block device driver that implements log-structured storage based on B+-tree, RB-tree, Skiplist, and Hashtable data structures. The log-structured approach is designed to speed up reading from block devices by transforming random requests into sequential ones. The efficiency and behavior of different data structures are being examined.
+LS-BDD is a block device driver that implements log-structured storage based on sync and lock-free versions of B+-tree, RB-tree, Skiplist, and Hashtable data structures. The log-structured approach is designed to speed up reading from block devices by transforming random requests into sequential ones. The efficiency and behavior of different data structures are being examined.
 
 The driver is based on BIO request management and supports BIO splitting (i.e. different operation block sizes, e.g. 4KB write, 16 KB read). At the moment, a multithreaded lock-free implementation is in development.
 
@@ -14,9 +14,9 @@ Highly recommended to test/use the driver using a VM, to prevent data coruption.
 ```bash
 make init DS="ds_name" TY="io_type" BD="bd_name" 
 ```
-**ds_name** - one of available data structures to store the mapping ("bt", "ht", "sl", "rb")
-**io_type** - block device mode ("lf" - lock-free, "sy" - sync)
-**bd_name** - terminal block device (f.e. "ram0" "vdb", "sdc", ...)
+- **ds_name** - one of available data structures to store the mapping ("bt", "ht", "sl", "rb")
+- **io_type** - block device mode ("lf" - lock-free, "sy" - sync)
+- **bd_name** - terminal block device (f.e. "ram0" "vdb", "sdc", ...)
 
 ### Sending requests: 
 
@@ -40,19 +40,20 @@ You can use the provided fio tests (or write your own), that time the execution 
 ```
 make fio_verify IO=libaio WO=randwrite RO=randread FS=1000 WBS=8 RBS=8
 ```
-Options description is provided in `Makefile`.
+Option description is provided in `Makefile`.
 
 Although, if you need more customizable fio testing - you can check `test/fio/` for more predefined configs. 
 
-### Advanced testing
+### Performance evaluation
 
-In case of performance measuring `test/main.sh` and future analysis can be used. For example:
+In case of performance measuring `test/main.sh` can be used. For example:
 ```
-make init DS=sl TY=lf BD=<finite storage device>
-cd ../test && ./main.sh -s -c --io_depth 16 --jobs_num 4 --bd_name <finite storage device>
+make nulld
+make init DS=sl TY=lf BD=nullb0
+cd ../test && ./main.sh -s -c --io_depth 16 --jobs_num 4 --bd_name nullb0
 ```
-It is able to run fio tests with pattern verification, plot generation (fio2gnuplot), flamegraph generation and system-side optimisation. For more information about modes usage - see source code or run `./test/main.sh -h`. 
+It is able to run fio tests with pattern verification, plot generation, flamegraph generation and system-side optimisation. For more information about mode usage - see source code or run `./test/main.sh -h`. 
 
 ## License
 
-Distributed under the [GPL-2.0 License](https://github.com/qrutyy/ls-bdd/blob/main/LICENSE). 
+Distributed under the [GPL-2.0 License](https://github.com/qrutyy/ls-bdd/blob/main/LICENSE).

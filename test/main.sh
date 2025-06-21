@@ -12,7 +12,7 @@ BRD_SIZE=400
 
 # Function to display help
 usage() {
-	echo -e "Main orchestration script for all test suites and performance analysis.\n\nCan be used to:\n - run the test scripts\n - setup the experiment environment\n - generate plots based on auto-tests\n - generate the call-stack analysis flamegraphs.\n\nUsage: $0 [-v|--verify] [-s|--setup] [-p|--perf] [-c|--cplots] [--bd_name name_without_/dev/] [--io_depth number] [--jobs_num number]"
+	echo -e "Main orchestration script for all test suites and performance analysis.\n\nCan be used to:\n - run the test scripts\n - setup the experiment environment\n - generate plots based on auto-tests\n - generate the call-stack analysis flamegraphs.\n\nUsage: $0 [-v|--verify] [-s|--setup] [-p|--perf] [-c|--cplots] [-a|--auto] [--bd_name name_without_/dev/] [--io_depth number] [--jobs_num number]"
     exit 1
 }
 
@@ -56,6 +56,9 @@ while [[ "$#" -gt 0 ]]; do
             ;;
 		-c|--cplots)
 			PLOTS="true"
+			;;
+		-a|--auto)
+			AUTO_TEST="true"
 			;;
 		--bd_name)
             BD_NAME="$2"
@@ -106,6 +109,11 @@ fi
 if [ "$SETUP" == "true" ]; then
 	# Setup the machine for performance testing
 	./setup.sh --bd_name "$BD_NAME" --io_depth "$IO_DEPTH"
+fi
+
+if [ "$AUTO_TEST" == "true" ]; then
+	# Run auto fio tests ;) 
+	./autotest.sh --jobs_num "$JOBS_NUM" --io_depth "$IO_DEPTH" --brd_size "$BRD_SIZE"
 fi
 
 if [ "$PLOTS" == "true" ]; then
