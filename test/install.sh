@@ -15,6 +15,5 @@ echo -e "Install fio and make"
 sudo "$pm" install fio make
 
 virtualenv venv --python=python3 ..
-sudo sh -c 'source ../venv/bin/activate && <comando_a_ejecutar>'
-   
+# source ../venv/bin/activate should be executed manually
 

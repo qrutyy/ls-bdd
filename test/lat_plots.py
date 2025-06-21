@@ -80,7 +80,13 @@ def parse_block_size_for_sorting(bs_str):
 
 
 def plot_metric_by_bs(metric, ylabel, filename_prefix):
-    """Generate separate plots for each block size"""
+    """
+    Generate separate plots for each block size.
+
+    @param metric: Metric column name (f.e. "P99_SLAT", "Avg_LAT", ...)
+    @param ylabel: Y axis label ;)
+    @param filename_prefix: Filename prefix that depends on the metric (f.e. "p99_latency")
+    """
     unique_bs = sorted(list(df["BS"].unique()), key=parse_block_size_for_sorting)
 
     for bs in unique_bs:
@@ -119,8 +125,15 @@ def plot_metric_by_bs(metric, ylabel, filename_prefix):
 
 
 def plot_united_metric(metric, ylabel, filename):
-    """Generate a single plot combining all block sizes"""
-    plt.figure(figsize=(12, 7))  # Adjusted size
+    """
+    Generate a single plot combining all block sizes
+
+    @param metric: Metric column name (f.e. "P99_SLAT", "Avg_LAT", ...)
+    @param ylabel: Y axis label ;)
+    @param filename_prefix: Filename prefix that depends on the metric (f.e. "p99_latency_united")
+    """
+
+    plt.figure(figsize=(12, 7))
     unique_bs_sorted = sorted(list(df["BS"].unique()), key=parse_block_size_for_sorting)
 
     for bs in unique_bs_sorted:
@@ -213,6 +226,11 @@ def plot_latency_histograms_conc_mode(df_conc, bs_val, mix_val, is_rewrite):
     """
     Generates grouped bar chart for Avg_LAT, Avg_SLAT, Avg_CLAT vs. (IODEPTH, NUMJOBS)
     for a specific BS and MIX in concurrent mode.
+
+    @param df_conc: Subset of general DataFrame
+    @param bs_val: Unique block sizes
+    @param mix_val: Current R/W mix
+    @param is_rewrite: Rewrite mode flag for title
     """
     if df_conc.empty:
         print(
