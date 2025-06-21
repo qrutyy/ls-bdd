@@ -19,6 +19,7 @@ IN?=""
 FS="lsvbd1"
 RWMIX_READ?=50
 RWMIX_WRITE?=50
+LOG_FILE_PATH?=logs/latency_idk
 
 
 fio_perf_template:
@@ -63,6 +64,29 @@ fio_perf_mix:
 		--filename=/dev/$(FS) \
 		--cpus_allowed=0-7
 		--offset=16k
+
+fio_lat_mix:
+	fio --name=latency_test 
+	--rw=randrw \
+	--rwmixread=$(RWMIX_READ) \
+	--rwmixwrite=$(RWMIX_WRITE) \
+	--bs=$(BS) \
+	--numjobs=$(NJ) 
+	--iodepth=$(ID) \
+	--time_based \
+	--runtime=30 \
+	--direct=1 \						
+	--write_lat_log=$(LOG_FILE_PATH) \
+	--ioengine=$(IO) \
+	--registerfiles=1 \
+	--hipri=0 \
+	--prio=0 \
+	--cpus_allowed=0 \
+	--cpus_allowed_policy=shared \
+	--fixedbufs=1 
+	--filename=/dev/$(FS) \
+	--norandommap=0 \
+	--offset=16k
 
 clean:
 	rm -rf *.svg *.data *.folded *.old *.state *.log *.dat
