@@ -1,9 +1,5 @@
 #!/bin/bash
 
-###								###
-###		  SETUP CONFIG PART		###
-###								###
-
 IO_DEPTH=16
 BD_NAME="nullb0"
 SYSCTL_CONF="/etc/sysctl.conf"

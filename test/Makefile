@@ -8,7 +8,7 @@ WO?=randwrite
 # File size (in MB)
 FS?=400000
 # IO engine to use in FIO (libaio\io_uring)
-IO?=io_uring 
+IO?=io_uring
 # Number of fio jobs to run
 NJ?=8
 # IO depth num
@@ -66,7 +66,7 @@ fio_perf_mix:
 		--offset=16k
 
 fio_lat_mix:
-	fio --name=latency_test 
+	fio --name=latency_test \
 	--rw=randrw \
 	--rwmixread=$(RWMIX_READ) \
 	--rwmixwrite=$(RWMIX_WRITE) \
@@ -87,6 +87,41 @@ fio_lat_mix:
 	--filename=/dev/$(FS) \
 	--norandommap=0 \
 	--offset=16k
+
+fio_verify:
+	fio --name=verify \
+	--ioengine=$(IO) \
+	--iodepth=$(ID) \
+	--rw=randwrite \
+	--size=$(SIZE) \
+	--verify_state_save=1 \
+	--bssplit=$(WBS)/100 \
+	--direct=1 \
+	--filename=/dev/$(FS) \
+	--numjobs=$(NJ) \
+	--verify=pattern \
+	--verify_pattern=0xAA \
+	--do_verify=0 \
+	--verify_fatal=0 \
+	--verify_only=0 \
+	--offset=16k 
+	
+	fio --name=verify \
+	--ioengine=$(IO) \
+	--iodepth=$(ID) \
+	--rw=randread \
+	--size=$(SIZE) \
+	--verify_state_save=1 \
+	--bssplit=$(RBS)/100 \
+	--direct=1 \
+	--filename=/dev/$(FS) \
+	--numjobs=$(NJ) \
+	--verify=pattern \
+	--verify_pattern=0xAA \
+	--do_verify=0 \
+	--verify_fatal=0 \
+	--verify_only=1 \
+	--offset=16k 
 
 clean:
 	rm -rf *.svg *.data *.folded *.old *.state *.log *.dat
