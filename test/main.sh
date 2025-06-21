@@ -1,14 +1,14 @@
 #!/bin/bash
 
 DEPENDENCY_LIST=("fio" "make" "perf")
-BD_NAME="vdb"
-IO_DEPTH=16
+BD_NAME="nullb0"
+IO_DEPTH=32
 VERIFY="false"
 SETUP="false"
 PERF="false"
 PLOTS="false"
-JOBS_NUM=1
-BRD_SIZE=2
+JOBS_NUM=8
+BRD_SIZE=400
 
 # Function to display help
 usage() {
@@ -24,16 +24,21 @@ validate_verify_input() {
     fi
 }
 
+install_deps() {
+	echo -e "Installing dependencies:\n"
+	./install.sh
+}
+
 check_package() {
-	if [ ! command -v $1 &> /dev/null ]; then
+	if ! command -v "$1" &> /dev/null; then
 		echo "Error: '$1' is not installed. Please install it and try again."
 		./install.sh
 	fi
 }
 
 check_dependencies() {
-	for package in "${DEPENDENCY_LIST}"; do
-		check_package package
+	for package in "${DEPENDENCY_LIST[@]}"; do
+		check_package "$package"
 	done
 }
 
@@ -79,12 +84,10 @@ while [[ "$#" -gt 0 ]]; do
 	shift
 done
 
+install_deps
 check_dependencies
 validate_verify_input
 
-free -m
-echo -e "Creating RAM disk"
-modprobe brd rd_nr=1 rd_size=$((BRD_SIZE * 1048576))
 free -m
 mkdir -p plots logs
 
@@ -98,11 +101,11 @@ fi
 
 if [ "$SETUP" == "true" ]; then
 	### Run config setup script
-	./setup.sh --bd_name $BD_NAME --io_depth $IO_DEPTH
+	./setup.sh --bd_name "$BD_NAME" --io_depth "$IO_DEPTH"
 fi
 
 if [ "$PLOTS" == "true" ]; then
-	sudo ./plots.sh  --io_depth $IO_DEPTH --jobs_num $JOBS_NUM --brd_size $BRD_SIZE
+	sudo ./plots.sh  --io_depth "$IO_DEPTH" --jobs_num "$JOBS_NUM" --brd_size "$BRD_SIZE"
 fi
 
 
@@ -112,8 +115,8 @@ if [ "$PERF" == "true" ]; then
 
 	### Run config setup script
 	if [ "$VERIFY" == "true" ]; then
-		./perf.sh --io_depth $IO_DEPTH --jobs_num $JOBS_NUM -v
+		./perf.sh --io_depth "$IO_DEPTH" --jobs_num "$JOBS_NUM" -v
 	else
-		./perf.sh --io_depth $IO_DEPTH --jobs_num $JOBS_NUM
+		./perf.sh --io_depth "$IO_DEPTH" --jobs_num "$JOBS_NUM"
 	fi
 fi

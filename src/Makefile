@@ -1,5 +1,5 @@
 CONFIG_MODULE_SIG=n
-name = lsbdd
+name=lsbdd
 
 # Delete Block device Index
 DBI?=1
@@ -14,7 +14,7 @@ RO?=read
 # Write operation type (write/randwrite)
 WO?=write
 # File size (in MB)
-FS?=1000
+FS?=10000
 # IO engine to use in FIO (libaio\io_uring)
 IO?=libaio 
 # Number of fio jobs to run
@@ -24,7 +24,9 @@ ID?=1
 # Type of data-structures to be used in the driver (lf/sy) 
 TY?=lf
 # End block device name
-BD?=ram0
+BD?=nullb0
+# NULL Disk sizes
+ND_SIZE_GB?=400
 
 # To build modules outside of the kernel tree, we run "make"
 # in the kernel source tree; the Makefile these then includes this
@@ -34,11 +36,11 @@ BD?=ram0
 
 ifeq ($(KERNELRELEASE),)
 
-    # Assume the source tree is where the running kernel was built
-    # You should set KERNELDIR in the environment if it's elsewhere
-    KERNELDIR ?= /lib/modules/$(shell uname -r)/build
-    # The current directory is passed to sub-makes as argument
-    PWD := $(shell pwd)
+	# Assume the source tree is where the running kernel was built
+	# You should set KERNELDIR in the environment if it's elsewhere
+	KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+	# The current directory is passed to sub-makes as argument
+	PWD := $(shell pwd)
 
 modules:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
@@ -52,6 +54,9 @@ ins:
 set:
 	echo -n "1 /dev/$(BD)" > /sys/module/$(name)/parameters/set_redirect_bd
 #	**index** - postfix for a 'device in the middle' (prefix is 'lsvbd'), **bd** - to which block device to redirect
+
+nulld:
+	modprobe null_blk queue_mode=0 gb=$(ND_SIZE_GB) bs=512 irqmode=0 nr_devices=1
 
 lint:
 	find . -name "*.c" -o -name "*.h" | xargs ./checkpatch.pl -f --no-tree
@@ -80,12 +85,12 @@ init_no_recompile:
 
 fio_verify:
 	# Write and verify test
-	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(WO) --size=$(FS)M --verify_state_save=1 --bssplit=$(WBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0 --numjobs=$(NJ) --serialize_overlap=1
+	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(WO) --size=$(FS)M --verify_state_save=1 --bssplit=$(WBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0 --numjobs=$(NJ) --serialize_overlap=1 --offset=16k
 
 	# Read and verify test 
-	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(RO) --size=$(FS)M --verify_state_save=1 --bssplit=$(RBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 --numjobs=$(NJ) --serialize_overlap=1
+	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(RO) --size=$(FS)M --verify_state_save=1 --bssplit=$(RBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 --numjobs=$(NJ) --serialize_overlap=1 --offset=16k
 
-.PHONY: modules modules_install clean
+.PHONY: all modules modules_install clean test nulld
 
 endif
 

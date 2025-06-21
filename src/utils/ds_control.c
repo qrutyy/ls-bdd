@@ -2,14 +2,21 @@
 
 #include <linux/hashtable.h>
 #include <linux/btree.h>
-#include "ds-control.h"
-#include "btree-utils.h"
-#include "hashtable-utils.h"
+#include "ds_control.h"
+#include "btree_utils.h"
+#include "hashtable.h"
 #include "skiplist.h"
 #include "rbtree.h"
 
+#ifdef LF_MODE
+#include "lf_list.h"
+#endif
+
+
 s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mng)
 {
+	BUG_ON(!ds || !cache_mng);
+
 	struct btree *btree_map = NULL;
 	struct btree_head *root = NULL;
 	struct rbtree *rbtree_map = NULL;
@@ -39,7 +46,12 @@ s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mn
 		ds->structure.map_btree = btree_map;
 	} else if (!strncmp(sel_ds, sl, 2)) {
 		cache_mng->sl_cache = kmem_cache_create(
-			"skiplist_cache", sizeof(struct skiplist_node) + 24 * sizeof(struct skiplist_node *), 0, SLAB_HWCACHE_ALIGN, NULL);
+			"lsbdd_skiplist_cache", sizeof(struct skiplist_node) + 24 * sizeof(struct skiplist_node *), 0, SLAB_HWCACHE_ALIGN, NULL);
+		// TODO docs
+		if (!cache_mng->sl_cache) {
+			pr_err("ERROR DS_INIT: skiplist cache not initialized!\n");
+			return -1;
+		}
 		skiplist = skiplist_init(cache_mng->sl_cache);
 		if (!skiplist)
 			goto mem_err;
@@ -47,7 +59,17 @@ s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mn
 		ds->type = SKIPLIST_TYPE;
 		ds->structure.map_list = skiplist;
 	} else if (!strncmp(sel_ds, ht, 2)) {
-		cache_mng->ht_cache = kmem_cache_create("hashtable_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+		#ifdef LF_MODE
+		cache_mng->ht_cache = kmem_cache_create("lsbdd_hashtable_cache", sizeof(struct lf_list_node), 0, SLAB_HWCACHE_ALIGN, NULL);
+		#endif
+		#ifdef SY_MODE
+		cache_mng->ht_cache = kmem_cache_create("lsbdd_hashtable_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+		#endif
+		if (!cache_mng->ht_cache) {
+			pr_err("ERROR DS_INIT: hastable cache not initialized!\n");
+			return -1;
+		}
+
 		hash_table = hashtable_init(cache_mng->ht_cache);
 		if (!hash_table)
 			goto mem_err;
@@ -73,112 +95,139 @@ mem_err:
 	return -ENOMEM;
 }
 
-void ds_free(struct data_struct *ds, struct cache_manager *cache_mng)
+void ds_free(struct data_struct *ds, struct cache_manager *cache_mng, struct kmem_cache *lsbdd_value_cache)
 {
-	if (ds->type == BTREE_TYPE) {
+	BUG_ON(!ds || !cache_mng || !lsbdd_value_cache);
+
+	switch (ds->type) {
+	case BTREE_TYPE:
 		btree_destroy(ds->structure.map_btree->head);
 		ds->structure.map_btree = NULL;
-	}
-	if (ds->type == SKIPLIST_TYPE) {
-		skiplist_free(ds->structure.map_list, cache_mng->sl_cache);
+		break;
+	case SKIPLIST_TYPE:
+		skiplist_free(ds->structure.map_list, cache_mng->sl_cache, lsbdd_value_cache);
 		ds->structure.map_list = NULL;
-	}
-	if (ds->type == HASHTABLE_TYPE) {
-		hashtable_free(ds->structure.map_hash, cache_mng->ht_cache);
+		break;
+	case HASHTABLE_TYPE:
+		hashtable_free(ds->structure.map_hash, cache_mng->ht_cache, lsbdd_value_cache);
 		ds->structure.map_hash = NULL;
-	}
-	if (ds->type == RBTREE_TYPE) {
+		break;
+	case RBTREE_TYPE:
 		rbtree_free(ds->structure.map_rbtree);
 		ds->structure.map_rbtree = NULL;
+		break;
 	}
 }
 
 void *ds_lookup(struct data_struct *ds, sector_t key)
 {
+	BUG_ON(!ds);
+
 	struct skiplist_node *sl_node = NULL;
+	#ifdef LF_MODE
+	struct lf_list_node *hm_node = NULL;
+	#endif
+	#ifdef SY_MODE
 	struct hash_el *hm_node = NULL;
+	#endif
 	struct rbtree_node *rb_node = NULL;
 	u64 *kp = NULL;
 
 	kp = &key;
-	if (ds->type == BTREE_TYPE)
+	switch (ds->type) {
+	case BTREE_TYPE:
 		return btree_lookup(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
-	if (ds->type == SKIPLIST_TYPE) {
+	case SKIPLIST_TYPE:
 		sl_node = skiplist_find_node(ds->structure.map_list, key);
 		CHECK_FOR_NULL(sl_node);
 		CHECK_VALUE_AND_RETURN(sl_node);
-	}
-	if (ds->type == HASHTABLE_TYPE) {
+		break;
+	case HASHTABLE_TYPE:
 		hm_node = hashtable_find_node(ds->structure.map_hash, key);
 		CHECK_FOR_NULL(hm_node);
 		CHECK_VALUE_AND_RETURN(hm_node);
-	}
-	if (ds->type == RBTREE_TYPE) {
+		break;
+	case RBTREE_TYPE:
 		rb_node = rbtree_find_node(ds->structure.map_rbtree, key);
 		CHECK_FOR_NULL(rb_node);
 		CHECK_VALUE_AND_RETURN(rb_node);
+		break;
 	}
 	return NULL;
 }
 
-void ds_remove(struct data_struct *ds, sector_t key)
+void ds_remove(struct data_struct *ds, sector_t key, struct kmem_cache *lsbdd_value_cache)
 {
+	BUG_ON(!ds || !lsbdd_value_cache);
+
 	u64 *kp = NULL;
 
 	kp = &key;
-	if (ds->type == BTREE_TYPE)
+	switch (ds->type) {
+	case BTREE_TYPE:
 		btree_remove(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
-	if (ds->type == SKIPLIST_TYPE)
-		skiplist_remove(ds->structure.map_list, key);
-	if (ds->type == HASHTABLE_TYPE)
-		hashtable_remove(ds->structure.map_hash, key);
-	if (ds->type == RBTREE_TYPE)
+		break;
+	case SKIPLIST_TYPE:
+		skiplist_remove(ds->structure.map_list, key, lsbdd_value_cache);
+		break;
+	case HASHTABLE_TYPE:
+		hashtable_remove(ds->structure.map_hash, key, lsbdd_value_cache);
+		break;
+	case RBTREE_TYPE:
 		rbtree_remove(ds->structure.map_rbtree, key);
+		break;
+	}
 }
 
-s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng)
+s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng, struct kmem_cache *lsbdd_value_cache)
 {
+	BUG_ON(!ds || !cache_mng || !lsbdd_value_cache);
 	u64 *kp = NULL;
-	struct hash_el *el = NULL;
 
 	kp = &key;
-
-	if (ds->type == BTREE_TYPE)
+	switch (ds->type) {
+	case  BTREE_TYPE:
 		return btree_insert(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp, value, GFP_KERNEL);
-	if (ds->type == SKIPLIST_TYPE)
-		skiplist_insert(ds->structure.map_list, key, value, cache_mng->sl_cache);
-	if (ds->type == HASHTABLE_TYPE) {
-		el = hashtable_insert(ds->structure.map_hash, key, value, cache_mng->ht_cache);
-		if (!el)
-			goto mem_err;
-	}
-	if (ds->type == RBTREE_TYPE)
+		break;
+	case SKIPLIST_TYPE:
+		skiplist_insert(ds->structure.map_list, key, value, cache_mng->sl_cache, lsbdd_value_cache);
+		break;
+	case HASHTABLE_TYPE:
+		hashtable_insert(ds->structure.map_hash, key, value, cache_mng->ht_cache, lsbdd_value_cache);
+		break;
+	case RBTREE_TYPE:
 		rbtree_add(ds->structure.map_rbtree, key, value);
+		break;
+	}
 	return 0;
-
-mem_err:
-	pr_err("Memory allocation failed\n");
-	return -ENOMEM;
 }
 
 sector_t ds_last(struct data_struct *ds, sector_t key)
 {
+	BUG_ON(!ds);
+	#ifdef LF_MODE
+	struct lf_list_node *hm_node = NULL;
+#endif
+	#ifdef SY_MODE
 	struct hash_el *hm_node = NULL;
+	#endif
 	struct rbtree_node *rb_node = NULL;
 	u64 *kp = NULL;
 
 	kp = &key;
-	if (ds->type == BTREE_TYPE)
+	switch (ds->type) {
+	case BTREE_TYPE:
 		return btree_last_no_rep(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
-	if (ds->type == SKIPLIST_TYPE)
+		break;
+	case SKIPLIST_TYPE:
 		return skiplist_last(ds->structure.map_list);
-	if (ds->type == HASHTABLE_TYPE) {
+		break;
+	case HASHTABLE_TYPE:
 		hm_node = ds->structure.map_hash->last_el;
 		if (hm_node == NULL)
 			return 0;
 		return hm_node->key;
-	}
-	if (ds->type == RBTREE_TYPE) {
+	case RBTREE_TYPE:
 		rb_node = rbtree_last(ds->structure.map_rbtree);
 		if (rb_node == NULL)
 			return 0;
@@ -190,28 +239,38 @@ sector_t ds_last(struct data_struct *ds, sector_t key)
 
 void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key)
 {
+	BUG_ON(!ds);
+
 	struct skiplist_node *sl_node = NULL;
+#ifdef LF_MODE
+	struct lf_list_node *hm_node = NULL;
+#endif
+	#ifdef SY_MODE
 	struct hash_el *hm_node = NULL;
+	#endif
 	struct rbtree_node *rb_node = NULL;
 	u64 *kp = NULL;
 
 	kp = &key;
-	if (ds->type == BTREE_TYPE)
+	switch (ds->type) {
+	case BTREE_TYPE:
 		return btree_get_prev_no_rep(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp, (unsigned long *)prev_key);
-	if (ds->type == SKIPLIST_TYPE) {
+		break;
+	case SKIPLIST_TYPE:
 		sl_node = skiplist_prev(ds->structure.map_list, key, prev_key);
 		CHECK_FOR_NULL(sl_node);
 		CHECK_VALUE_AND_RETURN(sl_node);
-	}
-	if (ds->type == HASHTABLE_TYPE) {
+		break;
+	case HASHTABLE_TYPE:
 		hm_node = hashtable_prev(ds->structure.map_hash, key, prev_key);
 		CHECK_FOR_NULL(hm_node);
 		CHECK_VALUE_AND_RETURN(hm_node);
-	}
-	if (ds->type == RBTREE_TYPE) {
+		break;
+	case RBTREE_TYPE:
 		rb_node = rbtree_prev(ds->structure.map_rbtree, key, prev_key);
 		CHECK_FOR_NULL(rb_node);
 		CHECK_VALUE_AND_RETURN(rb_node);
+		break;
 	}
 	pr_err("Failed to get rs_info from get_prev()\n");
 	BUG();
@@ -219,6 +278,8 @@ void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key)
 
 s32 ds_empty_check(struct data_struct *ds)
 {
+	BUG_ON(!ds);
+
 	if (ds->type == BTREE_TYPE && ds->structure.map_btree->head->height == 0)
 		return 1;
 	if (ds->type == SKIPLIST_TYPE && skiplist_is_empty(ds->structure.map_list))

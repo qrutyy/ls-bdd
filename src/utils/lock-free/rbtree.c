@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
+// JUST STABS, AS LONG AS NO LOCK-FREE RBTREE IS FOUND
+
 /*
  * Originail author: Egor Shalashnov @egshnov
  *
@@ -7,8 +9,6 @@
  * Changes: rename functions/types, add get_last and get_prev methods
  * + some refactoring and NULL initialisation.
  */
-
-// JUST STABS, AS LONG AS NO LOCK-FREE B+TREE IS FOUND
 
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -22,6 +22,7 @@ static struct rbtree_node *create_rbtree_node(sector_t key, void **value)
 	node = kzalloc(sizeof(struct rbtree_node), GFP_KERNEL);
 	if (!node)
 		return NULL;
+
 	node->key = key;
 	node->value = value;
 
@@ -38,25 +39,27 @@ static s32 compare_keys(sector_t lkey, sector_t rkey)
 {
 	if (!(lkey && rkey))
 		return -2;
+
 	return lkey < rkey ? -1 : (lkey == rkey ? 0 : 1);
 }
 
 static struct rbtree_node *__rbtree_underlying_search(struct rb_root *root, sector_t key)
 {
 	struct rb_node *node = NULL;
+	struct rbtree_node *data = NULL;
+	s32 result = 0;
 
 	node = root->rb_node;
 
 	while (node) {
-		struct rbtree_node *data = container_of(node, struct rbtree_node, node);
-		s32 result = compare_keys(key, data->key);
+		data = container_of(node, struct rbtree_node, node);
+		result = compare_keys(key, data->key);
 
 		if (result == -2)
 			return NULL;
 
 		if (result < 0)
 			node = node->rb_left;
-
 		else if (result > 0)
 			node = node->rb_right;
 		else
@@ -68,14 +71,13 @@ static struct rbtree_node *__rbtree_underlying_search(struct rb_root *root, sect
 
 static s32 __rbtree_underlying_insert(struct rb_root *root, sector_t key, void *value)
 {
-	bool overwrite;
+	bool overwrite = false;
 	struct rb_node **new = NULL;
 	struct rb_node *parent = NULL;
 	struct rbtree_node *data = NULL;
 	struct rbtree_node *this = NULL;
 	s32 result;
 
-	overwrite = 0;
 	new = &(root->rb_node);
 	parent = NULL;
 
@@ -129,7 +131,7 @@ void rbtree_free(struct rbtree *rbt)
 
 	struct rbtree_node *pos, *node = NULL;
 
-	rbtree_postorder_for_each_entry_safe (pos, node, &(rbt->root), node)
+	rbtree_postorder_for_each_entry_safe(pos, node, &(rbt->root), node)
 		free_rbtree_node(pos);
 
 	kfree(rbt);
@@ -167,6 +169,7 @@ struct rbtree_node *rbtree_last(struct rbtree *rbt)
 {
 	struct rb_root root = rbt->root;
 	struct rb_node *node = root.rb_node;
+	struct rbtree_node *data = NULL;
 
 	if (!node)
 		return NULL;
@@ -174,7 +177,8 @@ struct rbtree_node *rbtree_last(struct rbtree *rbt)
 	if (!(node->rb_left && node->rb_right))
 		return NULL;
 
-	struct rbtree_node *data = container_of(node, struct rbtree_node, node);
+	data = container_of(node, struct rbtree_node, node);
+
 	if (!(data->key && data->value))
 		return NULL;
 

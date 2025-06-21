@@ -1,17 +1,38 @@
-name: Kernel 6.8 build
+name: Kernel 6.8.0 build
 
 on:
   push:
   workflow_dispatch:
   pull_request:
 
-jobs: 
+jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - name: build
+      - name: Display Runner's System Info (for context)
         run: |
-          sudo apt install build-essential linux-headers-6.8.0-1010-azure
+          echo "Runner's kernel version:"
+          uname -a
+          uname -r
+          echo "Targeting build for: Linux 6.8.0 (generic)"
+
+      - uses: actions/checkout@v4
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev dwarves bc rsync
+
+      - name: Build module for 6.8.0
+        run: |
+          echo "Kernel source for build will be: ${{ env.KERNEL_SOURCE_PATH }}"
           cd src/
-          make type=lf 
+          make type=lf
+
+      - name: List built artifacts (optional)
+        if: always() 
+        run: |
+          echo "Listing contents of src/ after build:"
+          ls -l src/
+          echo "Looking for .ko files:"
+          find src/ -name "*.ko"

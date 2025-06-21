@@ -5,7 +5,7 @@
  *
  * Modified by Mikhail Gavrilenko on 14.11.24
  * Changes: rename functions/types, add get_last and get_prev methods
- * + some refactoring and NULL initialisation.
+ * + some style + refactor and NULL initialisation.
  */
 
 #include <linux/slab.h>
@@ -41,6 +41,7 @@ static s32 compare_keys(sector_t lkey, sector_t rkey)
 
 static struct rbtree_node *__rbtree_underlying_search(struct rb_root *root, sector_t key)
 {
+	BUG_ON(!root);
 	struct rb_node *node = NULL;
 
 	node = root->rb_node;
@@ -66,14 +67,15 @@ static struct rbtree_node *__rbtree_underlying_search(struct rb_root *root, sect
 
 static s32 __rbtree_underlying_insert(struct rb_root *root, sector_t key, void *value)
 {
-	bool overwrite;
+	BUG_ON(!root);
+
+	bool overwrite = false;
 	struct rb_node **new = NULL;
 	struct rb_node *parent = NULL;
 	struct rbtree_node *data = NULL;
 	struct rbtree_node *this = NULL;
-	s32 result;
+	s32 result = 0;
 
-	overwrite = 0;
 	new = &(root->rb_node);
 	parent = NULL;
 
@@ -135,6 +137,8 @@ void rbtree_free(struct rbtree *rbt)
 
 void rbtree_remove(struct rbtree *rbt, sector_t key)
 {
+	BUG_ON(!rbt);
+
 	struct rbtree_node *data = NULL;
 
 	data = __rbtree_underlying_search(&(rbt->root), key);
@@ -149,12 +153,16 @@ void rbtree_remove(struct rbtree *rbt, sector_t key)
 
 void rbtree_add(struct rbtree *rbt, sector_t key, void *value)
 {
+	BUG_ON(!rbt);
+
 	__rbtree_underlying_insert(&(rbt->root), key, value);
 	rbt->node_num++;
 }
 
 struct rbtree_node *rbtree_find_node(struct rbtree *rbt, sector_t key)
 {
+	BUG_ON(!rbt);
+
 	struct rbtree_node *target = NULL;
 
 	target = __rbtree_underlying_search(&(rbt->root), key);
@@ -163,6 +171,8 @@ struct rbtree_node *rbtree_find_node(struct rbtree *rbt, sector_t key)
 
 struct rbtree_node *rbtree_last(struct rbtree *rbt)
 {
+	BUG_ON(!rbt);
+
 	struct rb_root root = rbt->root;
 	struct rb_node *node = root.rb_node;
 
@@ -188,6 +198,8 @@ struct rbtree_node *rbtree_last(struct rbtree *rbt)
 
 struct rbtree_node *rbtree_prev(struct rbtree *rbt, sector_t key, sector_t *prev_key)
 {
+	BUG_ON(!rbt);
+
 	struct rbtree_node *curr = NULL;
 	struct rb_root root = rbt->root;
 

@@ -4,23 +4,28 @@ ccflags-y := 	-Wall					\
 		-Wno-unused-parameter			\
 		-Wformat				\
 		-std=gnu18				\
-		-g					\
+		-O2 \
 		-Werror=format-security			\
 		-Werror=implicit-function-declaration   \
 
 obj-m := lsbdd.o
 
 ifeq ($(type), lf)
-	DIR := utils/lock-free
+DIR := utils/lock-free
+ccflags-y += -DLF_MODE
+lsbdd-objs := $(DIR)/lf_list.o
 else ifeq ($(type), sy)
-	DIR := utils/sync
-else 
-	$(error Invalid type specified. Use "make type=lf" or "make type=sy")
+DIR := utils/sync
+ccflags-y += -DSY_MODE
+else
+$(error Invalid type specified. Use "make type=lf" or "make type=sy")
 endif
+
+lsbdd-objs += main.o utils/ds_control.o \
+	$(DIR)/btree_utils.o $(DIR)/skiplist.o \
+	$(DIR)/hashtable.o $(DIR)/rbtree.o  \
 
 # Add dynamical include path for the ds-control headers.
 ccflags-y += -I$(PWD)/$(DIR)
 
-lsbdd-objs := main.o utils/ds-control.o \
-              $(DIR)/btree-utils.o $(DIR)/skiplist.o \
-              $(DIR)/hashtable-utils.o $(DIR)/rbtree.o
+
