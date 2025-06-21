@@ -72,7 +72,6 @@ def plot_iodepth_numjobs_avg_bars(
     mix_val,
     save_directory_base,
     filename_prefix_detail,
-    device_name,
     is_rewrite,
 ):
     """
@@ -86,7 +85,6 @@ def plot_iodepth_numjobs_avg_bars(
     @param mix_val: Current R/W mix.
     @param save_directory_base: Base directory under PLOTS_PATH.
     @param filename_prefix_detail: Prefix for filename.
-    @param device_name: Device name for title.
     @param is_rewrite: Rewrite mode flag for title.
     """
     if df_for_bs_mix.empty:
@@ -152,9 +150,12 @@ def plot_iodepth_numjobs_avg_bars(
     plt.xlabel("Конфигурация (IODEPTH & NUMJOBS)", fontsize=12, labelpad=15)
     plt.ylabel(f"Среднее {y_axis_label_base}", fontsize=12, labelpad=10)
     title_warmup_status = "(с прогревом)" if is_rewrite else "(без прогрева)"
+    title_ds_status = (
+        " используя список с пропусками\n," if (DEVICE == "lsvbd1") else ""
+    )
     plt.title(
-        f"Средние значения IOPS при разной степени параллелизма, BS={bs_val}, MIX={mix_val}\n"
-        f"на {device_name} {title_warmup_status}",
+        f"Средние значения IOPS при разной степени параллелизма,{title_ds_status} BS={bs_val}, MIX={mix_val}\n"
+        f"на {DEVICE} {title_warmup_status}",
         fontsize=13,
         pad=20,
     )
@@ -291,7 +292,12 @@ def plot_metric_multiline_runs(df_plot, metric_col, y_axis_label, plot_subdir_na
                 plt.ylabel(y_axis_label)
                 plt.xlabel("Номер итерации")
                 title_status = "(с прогревом)" if args.rewrite else "(без прогрева)"
-                title_main = f"Средние значения {metric_col} при различных конфигурациях (ID/NJ),\nBS={bs_val}, MIX={mix_val} на {DEVICE} {title_status}"
+                title_ds_status = (
+                    ", используя список с пропусками"
+                    if (device_name == "lsvbd1")
+                    else ""
+                )
+                title_main = f"Средние значения {metric_col} при различных конфигурациях (ID/NJ){title_ds_status},\nBS={bs_val}, MIX={mix_val} на {DEVICE} {title_status}"
                 if not id_nj_pairs_exist:
                     title_main = f"Средние значения {metric_col} при ID=32 NJ=8,\nBS={bs_val}, MIX={mix_val} на {DEVICE} {title_status}"
                 plt.title(title_main, fontsize=13)
@@ -404,13 +410,16 @@ def plot_non_conc_bs_comparison_bars(
         plt.xlabel("Размера блока (BS)", fontsize=12, labelpad=15)
         plt.ylabel(f"{y_axis_label_base}", fontsize=12, labelpad=10)
         title_warmup_status = "(с прогревом)" if args.rewrite else "(без прогрева)"
+        title_ds_status = (
+            ",\nиспользуя список с пропусками" if (DEVICE == "lsvbd1") else ""
+        )
 
         title_config_part = f"MIX={mix_val}"
         if id_nj_cols_exist:
             title_config_part += f", ID={id_val}, NJ={nj_val}"
 
         plt.title(
-            f"Средние значения при различных BS для {title_config_part}\n"
+            f"Средние значения при различных BS{title_ds_status} для {title_config_part}\n"
             f"на {DEVICE} {title_warmup_status}",
             fontsize=13,
             pad=20,
@@ -550,10 +559,11 @@ def plot_non_conc_bs_comparison_over_runs(
             title_metric_name = (
                 "Средняя пропускная способность" if metric_col == "BW" else metric_col
             )
-
-            main_title = (
-                f"{title_metric_name} при MIX={mix_val} на {device_name} {title_status}"
+            title_ds_status = (
+                "используя список с пропусками\n," if (DEVICE == "lsvbd1") else ""
             )
+
+            main_title = f"{title_metric_name} {title_ds_status}при MIX={mix_val} на {device_name} {title_status}"
             # Adding IODEPTH/NUMJOBS to title if consistent and known for this MIX
             if id_nj_annotation and id_nj_annotation != ", Varying ID/NJ":
                 main_title += f"\n(Конфигурация: {id_nj_annotation.strip(', ')})"
@@ -669,7 +679,6 @@ else:
                                 mix_val=mix_val_c,
                                 save_directory_base=conc_detailed_bars_dir,
                                 filename_prefix_detail=f"{metric_prefix_main}_avg_bars_idnj",
-                                device_name=DEVICE,
                                 is_rewrite=args.rewrite,
                             )
     else:  # Non-concurrent mode

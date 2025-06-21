@@ -23,6 +23,8 @@ args = parser.parse_args()
 RESULTS_FILE = "logs/fio_results.dat"
 PLOTS_PATH = "./plots/distribution/raw" if args.raw else "./plots/distribution/vbd"
 PLOTS_PATH += "/rewrite" if args.rewrite else "/non_rewrite"
+DEVICE = "nullb0" if args.raw else "lsvbd1"
+
 try:
     df = pd.read_csv(
         RESULTS_FILE,
@@ -66,23 +68,26 @@ for mode in df["MODE"].unique():
                 plt.figure(figsize=(8, 6))
                 plt.hist(subset[label].dropna(), bins=10, edgecolor="black")
 
-                base_title = f"BS={bs}"
-
+                base_title = f"BS={bs} на {DEVICE}"
+                title_ds_status = (
+                    " используя список с пропусками\n," if (DEVICE == "lsvbd1") else ""
+                )
+                title_rewrite_status = (
+                    "(с прогревом)" if args.rewrite else "(без прогрева)"
+                )
+                title_main_label = (
+                    "пропускной способности (BW)"
+                    if label == "BW"
+                    else "количества операций IO в секунду (IOPS)"
+                )
                 if label == "BW":
                     plt.xlabel("Пропускная способность (ГБ/с)")
-                    plt.title(
-                        f"Гистрограмма пропускной способности (BW) при {mix} операциях {base_title}\n"
-                    )
                 else:
                     plt.xlabel("IOPS (тыс. операций/с)")
-                    if args.rewrite:
-                        plt.title(
-                            f"Гистрограмма количества операций IO в секунду (IOPS) при {mix} операциях, {base_title} (с прогревом)\n"
-                        )
-                    else:
-                        plt.title(
-                            f"Гистрограмма количества операций IO в секунду (IOPS) при {mix} операциях, {base_title} (без прогрева)\n"
-                        )
+
+                plt.title(
+                    f"Гистрограмма {title_main_label}{title_ds_status} при {mix} операциях {base_title} {title_rewrite_status}\n"
+                )
 
                 plt.ylabel("Частота")
                 plt.tight_layout()

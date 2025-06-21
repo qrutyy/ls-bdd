@@ -34,6 +34,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 LAT_RESULTS_FILE = "logs/fio_lat_results.dat"
+DEVICE = "nullb0" if args.raw else "lsvbd1"
 
 base_plot_dir = "./plots/latency/raw" if args.raw else "./plots/latency/vbd"
 base_plot_dir += "/rewrite" if args.rewrite else "/non_rewrite"
@@ -100,7 +101,10 @@ def plot_metric_by_bs(metric, ylabel, filename_prefix):
         plt.xlabel("Номер итерации")
         plt.ylabel(ylabel)
         title_status = "(с прогревом)" if args.rewrite else "(без прогрева)"
-        plt.title(f"{ylabel}, BS={bs}, {title_status}")
+        title_ds_status = (
+            " используя список с пропусками,\n" if (DEVICE == "lsvbd1") else ""
+        )
+        plt.title(f"{ylabel}{title_ds_status} BS={bs} на {DEVICE}, {title_status}")
         plt.legend(title="Соотношение операций чтения к записи")
         plt.grid(True, linestyle="--", alpha=0.7)
         plt.tight_layout()
@@ -135,7 +139,10 @@ def plot_united_metric(metric, ylabel, filename):
     plt.xlabel("Номер итерации")
     plt.ylabel(ylabel)
     title_status = "(с прогревом)" if args.rewrite else "(без прогрева)"
-    plt.title(f"{ylabel}, Все BS, {title_status}")
+    title_ds_status = (
+        " используя список с пропусками,\n" if (DEVICE == "lsvbd1") else ""
+    )
+    plt.title(f"{ylabel}{title_ds_status} на {DEVICE} {title_status}")
     plt.legend(title="Соотношение операций чтения к записи, (BS)", loc="best")
     plt.grid(True, linestyle="--", alpha=0.7)
     plt.tight_layout()
@@ -181,7 +188,12 @@ def plot_boxplot_latency():
         plt.ylabel("Задержка (мс)")
         title_status = "(с прогревом," if args.rewrite else "(без прогрева,"
         outlier_status = " с выбросами)" if show_outliers else " без выбросов)"
-        plt.title(f"Распределение задержки {outlier_status} {title_status}")
+        title_ds_status = (
+            " используя список с пропусками,\n" if (DEVICE == "lsvbd1") else ""
+        )
+        plt.title(
+            f"Распределение задержки{title_ds_status}{outlier_status}, на {DEVICE} {title_status}"
+        )
         plt.grid(True, which="both", linestyle="--", linewidth=0.5)
         plt.tight_layout()
 
@@ -274,8 +286,11 @@ def plot_latency_histograms_conc_mode(df_conc, bs_val, mix_val, is_rewrite):
     ax.set_ylabel("Средняя задержка (мс)", fontsize=12, labelpad=10)
     ax.set_xlabel("Конфигурация (IODEPTH & NUMJOBS)", fontsize=12, labelpad=15)
     title_status = "(с прогревом)" if is_rewrite else "(без прогрева)"
+    title_ds_status = (
+        " используя список с пропусками,\n" if (DEVICE == "lsvbd1") else ""
+    )
     ax.set_title(
-        f"Средние значения задержки в зависимости от ID/NJ, при BS={bs_val}, MIX={mix_val}\n{title_status}",
+        f"Средние значения задержки в зависимости от ID/NJ{title_ds_status} при BS={bs_val}, MIX={mix_val} на {DEVICE} {title_status}",
         fontsize=13,
         pad=20,
     )
