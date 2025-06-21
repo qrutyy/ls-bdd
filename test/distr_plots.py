@@ -66,25 +66,25 @@ for mode in df["MODE"].unique():
                 plt.figure(figsize=(8, 6))
                 plt.hist(subset[label].dropna(), bins=10, edgecolor="black")
 
-                base_title = f"(BS={bs}, MIX={mix})"
+                base_title = f"BS={bs}"
 
                 if label == "BW":
-                    plt.xlabel("Bandwidth (GB/s)")
+                    plt.xlabel("Пропускная способность (ГБ/с)")
                     plt.title(
-                        f"Histogram of {mix} operations mix throughput (BW) {base_title}\n"
+                        f"Гистрограмма пропускной способности (BW) при {mix} операциях {base_title}\n"
                     )
                 else:
-                    plt.xlabel("IOPS (K/s)")
+                    plt.xlabel("IOPS (тыс. операций/с)")
                     if args.rewrite:
                         plt.title(
-                            f"Histogram of {mix} operations mix throughput (IOPS) {base_title} (with warm up)\n"
+                            f"Гистрограмма количества операций IO в секунду (IOPS) при {mix} операциях, {base_title} (с прогревом)\n"
                         )
                     else:
                         plt.title(
-                            f"Histogram of {mix} operations mix throughput (IOPS) {base_title} (without warm up)\n"
+                            f"Гистрограмма количества операций IO в секунду (IOPS) при {mix} операциях, {base_title} (без прогрева)\n"
                         )
 
-                plt.ylabel("Frequency")
+                plt.ylabel("Частота")
                 plt.tight_layout()
 
                 save_path = os.path.join(

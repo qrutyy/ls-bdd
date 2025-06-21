@@ -21,7 +21,7 @@ parser.add_argument(
 parser.add_argument(
     "--rewrite",
     action="store_true",
-    help="Indicate rewrite mode (affects titles/paths, e.g., 'with warm up').",
+    help="Indicate rewrite mode (affects titles/paths, e.g., 'с прогревом').",
 )
 parser.add_argument(
     "--conc_mode",
@@ -135,7 +135,7 @@ def plot_iodepth_numjobs_avg_bars(
     )
 
     max_y_val_for_offset = max(y_values) if y_values else 0
-    label_format_str = "{:,.2f}" if "Bandwidth" in y_axis_label_base else "{:,.0f}"
+    label_format_str = "{:,.2f}" if "Пропускная" in y_axis_label_base else "{:,.0f}"
     for bar in bars:
         yval = bar.get_height()
         text_offset = max_y_val_for_offset * 0.02
@@ -149,12 +149,12 @@ def plot_iodepth_numjobs_avg_bars(
             rotation=0,
         )
 
-    plt.xlabel("Configuration (IODEPTH & NUMJOBS)", fontsize=12, labelpad=15)
-    plt.ylabel(f"Average {y_axis_label_base}", fontsize=12, labelpad=10)
-    title_warmup_status = "(with warm up)" if is_rewrite else "(without warm up)"
+    plt.xlabel("Конфигурация (IODEPTH & NUMJOBS)", fontsize=12, labelpad=15)
+    plt.ylabel(f"Среднее {y_axis_label_base}", fontsize=12, labelpad=10)
+    title_warmup_status = "(с прогревом)" if is_rewrite else "(без прогрева)"
     plt.title(
-        f"Average Performance by ID/NJ for BS={bs_val}, MIX={mix_val}\n"
-        f"on {device_name} {title_warmup_status}",
+        f"Средние значения IOPS при разной степени параллелизма, BS={bs_val}, MIX={mix_val}\n"
+        f"на {device_name} {title_warmup_status}",
         fontsize=13,
         pad=20,
     )
@@ -250,7 +250,7 @@ def plot_metric_multiline_runs(df_plot, metric_col, y_axis_label, plot_subdir_na
                     label_text = f"ID={id_val}, NJ={nj_val}"
                 else:  # No IODEPTH/NUMJOBS columns, use all data for this BS/MIX
                     data_for_line = subset_bs_mix.sort_values(by="RunID")
-                    label_text = f"Data for BS={bs_val}, MIX={mix_val}"
+                    label_text = f"Значения при BS={bs_val}, MIX={mix_val}"
 
                 if not data_for_line.empty and len(data_for_line["RunID"].unique()) > 0:
                     # Aggregate if multiple entries for the same RunID (e.g. if job has multiple sub-jobs summarized)
@@ -275,7 +275,7 @@ def plot_metric_multiline_runs(df_plot, metric_col, y_axis_label, plot_subdir_na
                     id_nj_pairs_exist and len(id_nj_pairs) > 1
                 ):  # Only show legend if multiple lines
                     plt.legend(
-                        title="Config (IODEPTH, NUMJOBS)",
+                        title="Конфигурации (IODEPTH, NUMJOBS)",
                         fontsize="small",
                         loc="best",
                         frameon=True,
@@ -289,11 +289,11 @@ def plot_metric_multiline_runs(df_plot, metric_col, y_axis_label, plot_subdir_na
                     output_dir, f"{metric_fn_part}_runs_detail_{safe_bs}_{safe_mix}.png"
                 )
                 plt.ylabel(y_axis_label)
-                plt.xlabel("Run number")
-                title_status = "(with warm up)" if args.rewrite else "(without warm up)"
-                title_main = f"{metric_col} per Run by Configuration for BS={bs_val}, MIX={mix_val}\non {DEVICE} {title_status}"
+                plt.xlabel("Номер итерации")
+                title_status = "(с прогревом)" if args.rewrite else "(без прогрева)"
+                title_main = f"Средние значения {metric_col} при различных конфигурациях (ID/NJ),\nBS={bs_val}, MIX={mix_val} на {DEVICE} {title_status}"
                 if not id_nj_pairs_exist:
-                    title_main = f"{metric_col} per Run for BS={bs_val}, MIX={mix_val}\non {DEVICE} {title_status}"
+                    title_main = f"Средние значения {metric_col} при ID=32 NJ=8,\nBS={bs_val}, MIX={mix_val} на {DEVICE} {title_status}"
                 plt.title(title_main, fontsize=13)
                 plt.grid(True, linestyle="--", alpha=0.7)
                 plt.tight_layout()
@@ -387,7 +387,7 @@ def plot_non_conc_bs_comparison_bars(
         )
 
         max_y_val_for_offset = max(y_values) if y_values else 0
-        label_format_str = "{:,.2f}" if "Bandwidth" in y_axis_label_base else "{:,.0f}"
+        label_format_str = "{:,.2f}" if "Пропускная" in y_axis_label_base else "{:,.0f}"
         for bar in bars:
             yval = bar.get_height()
             text_offset = max_y_val_for_offset * 0.02
@@ -401,17 +401,17 @@ def plot_non_conc_bs_comparison_bars(
                 rotation=0,
             )
 
-        plt.xlabel("Block Size (BS)", fontsize=12, labelpad=15)
-        plt.ylabel(f"Average {y_axis_label_base}", fontsize=12, labelpad=10)
-        title_warmup_status = "(with warm up)" if args.rewrite else "(without warm up)"
+        plt.xlabel("Размера блока (BS)", fontsize=12, labelpad=15)
+        plt.ylabel(f"{y_axis_label_base}", fontsize=12, labelpad=10)
+        title_warmup_status = "(с прогревом)" if args.rewrite else "(без прогрева)"
 
         title_config_part = f"MIX={mix_val}"
         if id_nj_cols_exist:
             title_config_part += f", ID={id_val}, NJ={nj_val}"
 
         plt.title(
-            f"Avg Performance by Block Size for {title_config_part}\n"
-            f"({len(x_labels)} block sizes) on {DEVICE} {title_warmup_status}",
+            f"Средние значения при различных BS для {title_config_part}\n"
+            f"на {DEVICE} {title_warmup_status}",
             fontsize=13,
             pad=20,
         )
@@ -544,15 +544,19 @@ def plot_non_conc_bs_comparison_over_runs(
             )
 
             plt.ylabel(y_axis_label, fontsize=10)
-            plt.xlabel("Run number", fontsize=10)
+            plt.xlabel("Номер итерации", fontsize=10)
 
-            title_status = "(with warm up)" if is_rewrite else "(without warm up)"
-            title_metric_name = "Throughput" if metric_col == "BW" else metric_col
+            title_status = "(с прогревом)" if is_rewrite else "(без прогрева)"
+            title_metric_name = (
+                "Средняя пропускная способность" if metric_col == "BW" else metric_col
+            )
 
-            main_title = f"{title_metric_name} of {mix_val} operations mix on {device_name} {title_status}"
+            main_title = (
+                f"{title_metric_name} при MIX={mix_val} на {device_name} {title_status}"
+            )
             # Adding IODEPTH/NUMJOBS to title if consistent and known for this MIX
             if id_nj_annotation and id_nj_annotation != ", Varying ID/NJ":
-                main_title += f"\n(Config: {id_nj_annotation.strip(', ')})"
+                main_title += f"\n(Конфигурация: {id_nj_annotation.strip(', ')})"
 
             plt.title(main_title, fontsize=12, pad=10)  # Adjusted padding
 
@@ -607,7 +611,9 @@ if df.empty:
     print("DataFrame is empty after loading and cleaning. No plots will be generated.")
 else:
     metric_col_main = "BW" if args.tp else "IOPS"
-    y_label_main = "Bandwidth (GB/s)" if args.tp else "IOPS (K/s)"
+    y_label_main = (
+        "Пропускная способность (ГБ/с)" if args.tp else "IOPS (тыс. операций/c)"
+    )
     metric_prefix_main = "bw" if args.tp else "iops"
 
     if args.conc_mode:

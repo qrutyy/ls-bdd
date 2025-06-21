@@ -97,11 +97,11 @@ def plot_metric_by_bs(metric, ylabel, filename_prefix):
                     label=f"{rw_mix}",
                 )
 
-        plt.xlabel("Run number")
+        plt.xlabel("Номер итерации")
         plt.ylabel(ylabel)
-        title_status = "(with warm up)" if args.rewrite else "(without warm up)"
-        plt.title(f"{ylabel} (Block size {bs}) {title_status}")
-        plt.legend(title="RW Mix")
+        title_status = "(с прогревом)" if args.rewrite else "(без прогрева)"
+        plt.title(f"{ylabel}, BS={bs}, {title_status}")
+        plt.legend(title="Соотношение операций чтения к записи")
         plt.grid(True, linestyle="--", alpha=0.7)
         plt.tight_layout()
 
@@ -132,11 +132,11 @@ def plot_united_metric(metric, ylabel, filename):
                     label=f"{rw_mix} ({bs})",
                 )
 
-    plt.xlabel("Test Run")
+    plt.xlabel("Номер итерации")
     plt.ylabel(ylabel)
-    title_status = "(with warm up)" if args.rewrite else "(without warm up)"
-    plt.title(f"{ylabel} (All block sizes) {title_status}")
-    plt.legend(title="RW Mix (BS)", loc="best")
+    title_status = "(с прогревом)" if args.rewrite else "(без прогрева)"
+    plt.title(f"{ylabel}, Все BS, {title_status}")
+    plt.legend(title="Соотношение операций чтения к записи, (BS)", loc="best")
     plt.grid(True, linestyle="--", alpha=0.7)
     plt.tight_layout()
 
@@ -178,10 +178,10 @@ def plot_boxplot_latency():
         for patch, color in zip(bp["boxes"], colors):
             patch.set_facecolor(color)
 
-        plt.ylabel("Latency (ms)")
-        title_status = "(with warm up)" if args.rewrite else "(without warm up)"
-        outlier_status = "with outliers" if show_outliers else "without outliers"
-        plt.title(f"Latency distribution {outlier_status} {title_status}")
+        plt.ylabel("Задержка (мс)")
+        title_status = "(с прогревом," if args.rewrite else "(без прогрева,"
+        outlier_status = " с выбросами)" if show_outliers else " без выбросов)"
+        plt.title(f"Распределение задержки {outlier_status} {title_status}")
         plt.grid(True, which="both", linestyle="--", linewidth=0.5)
         plt.tight_layout()
 
@@ -235,7 +235,7 @@ def plot_latency_histograms_conc_mode(df_conc, bs_val, mix_val, is_rewrite):
     num_configs = len(x_labels)
 
     metrics_to_plot = ["Avg_SLAT", "Avg_CLAT", "Avg_LAT"]
-    metric_display_names = ["Avg Submit Lat", "Avg Completion Lat", "Avg Total Lat"]
+    metric_display_names = ["Avg Submit Lat.", "Avg Completion Lat.", "Avg Total Lat."]
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c"]  # Blue, Orange, Green
 
     x = np.arange(num_configs)
@@ -271,17 +271,17 @@ def plot_latency_histograms_conc_mode(df_conc, bs_val, mix_val, is_rewrite):
                 fontsize=7,
             )
 
-    ax.set_ylabel("Average Latency (ms)", fontsize=12, labelpad=10)
-    ax.set_xlabel("Configuration (IODEPTH & NUMJOBS)", fontsize=12, labelpad=15)
-    title_status = "(with warm up)" if is_rewrite else "(without warm up)"
+    ax.set_ylabel("Средняя задержка (мс)", fontsize=12, labelpad=10)
+    ax.set_xlabel("Конфигурация (IODEPTH & NUMJOBS)", fontsize=12, labelpad=15)
+    title_status = "(с прогревом)" if is_rewrite else "(без прогрева)"
     ax.set_title(
-        f"Avg Latencies by ID/NJ for BS={bs_val}, MIX={mix_val}\n{title_status}",
+        f"Средние значения задержки в зависимости от ID/NJ, при BS={bs_val}, MIX={mix_val}\n{title_status}",
         fontsize=13,
         pad=20,
     )
     ax.set_xticks(x)
     ax.set_xticklabels(x_labels, rotation=45, ha="right", fontsize=9)
-    ax.legend(title="Latency Metric")
+    ax.legend(title="Виды метрик задержки")
     ax.grid(axis="y", linestyle="--", alpha=0.7, zorder=1)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -371,43 +371,59 @@ if args.conc_mode:
 else:  # Regular plotting mode (non-concurrent)
     print("--- Generating Standard Latency Plots ---")
     # Generate separate latency plots per block size
-    plot_metric_by_bs("Avg_LAT", "Average Latency (ms)", "avg_latency")
-    plot_metric_by_bs("Max_LAT", "Max Latency (ms)", "max_latency")
-    plot_metric_by_bs("P99_LAT", "99th Percentile Latency (ms)", "p99_latency")
+    plot_metric_by_bs("Avg_LAT", "Средняя общая задержка (мс)", "avg_latency")
+    plot_metric_by_bs("Max_LAT", "Максимальная задержка (мс)", "max_latency")
+    plot_metric_by_bs("P99_LAT", "99-й перцентиль общей задержки (мс)", "p99_latency")
 
     # Generate united latency plots (all block sizes together)
-    plot_united_metric("Avg_LAT", "Average Latency (ms)", "avg_latency_united")
-    plot_united_metric("Max_LAT", "Max Latency (ms)", "max_latency_united")
-    plot_united_metric("P99_LAT", "99th Percentile Latency (ms)", "p99_latency_united")
+    plot_united_metric("Avg_LAT", "Средняя общая задержка (мс)", "avg_latency_united")
+    plot_united_metric(
+        "Max_LAT", "Максимальная общая задержка (мс)", "max_latency_united"
+    )
+    plot_united_metric(
+        "P99_LAT", "99-й перцентиль общей задержки (мс)", "p99_latency_united"
+    )
 
     # Same for slat
-    plot_metric_by_bs("Avg_SLAT", "Average Submission Latency (ms)", "avg_slatency")
-    plot_metric_by_bs("Max_SLAT", "Max Submission Latency (ms)", "max_slatency")
     plot_metric_by_bs(
-        "P99_SLAT", "99th Percentile Submission Latency (ms)", "p99_slatency"
+        "Avg_SLAT", "Средняя задержка отправки запроса (мс)", "avg_slatency"
+    )
+    plot_metric_by_bs(
+        "Max_SLAT", "Максимальная задержка отправки запроса (мс)", "max_slatency"
+    )
+    plot_metric_by_bs(
+        "P99_SLAT", "99-й перцентиль задержки отправки запроса (мс)", "p99_slatency"
     )
 
     plot_united_metric(
-        "Avg_SLAT", "Average Submission Latency (ms)", "avg_slatency_united"
+        "Avg_SLAT", "Средняя задержка отправки запроса (мс)", "avg_slatency_united"
     )
-    plot_united_metric("Max_SLAT", "Max Submission Latency (ms)", "max_slatency_united")
     plot_united_metric(
-        "P99_SLAT", "99th Percentile Submission Latency (ms)", "p99_slatency_united"
+        "Max_SLAT", "Максимальная задержка отправки запроса (мс)", "max_slatency_united"
+    )
+    plot_united_metric(
+        "P99_SLAT",
+        "99-й перцентиль задержки отправки запроса (мс)",
+        "p99_slatency_united",
     )
 
     # Same for clat
-    plot_metric_by_bs("Avg_CLAT", "Average Completion Latency (ms)", "avg_clatency")
-    plot_metric_by_bs("Max_CLAT", "Max Completion Latency (ms)", "max_clatency")
+    plot_metric_by_bs("Avg_CLAT", "Средняя задержка выполнения (мс)", "avg_clatency")
     plot_metric_by_bs(
-        "P99_CLAT", "99th Percentile Completion Latency (ms)", "p99_clatency"
+        "Max_CLAT", "Максимальная задержка выполнения (мс)", "max_clatency"
+    )
+    plot_metric_by_bs(
+        "P99_CLAT", "99-й перцентиль задержки выполнения (мс)", "p99_clatency"
     )
 
     plot_united_metric(
-        "Avg_CLAT", "Average Completion Latency (ms)", "avg_clatency_united"
+        "Avg_CLAT", "Средняя задержка выполнения (мс)", "avg_clatency_united"
     )
-    plot_united_metric("Max_CLAT", "Max Completion Latency (ms)", "max_clatency_united")
     plot_united_metric(
-        "P99_CLAT", "99th Percentile Completion Latency (ms)", "p99_clatency_united"
+        "Max_CLAT", "Максимальная задержка выполнения (мс)", "max_clatency_united"
+    )
+    plot_united_metric(
+        "P99_CLAT", "99-й перцентиль задержки выполнения (мс)", "p99_clatency_united"
     )
 
     plot_boxplot_latency()
