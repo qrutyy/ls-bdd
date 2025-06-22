@@ -1,9 +1,5 @@
 #!/bin/bash
 
-###								###
-###		  SETUP CONFIG PART		###
-###								###
-
 IO_DEPTH=16
 BD_NAME="nullb0"
 SYSCTL_CONF="/etc/sysctl.conf"
@@ -59,8 +55,16 @@ if [ "$(zgrep CONFIG_BLOCK= /boot/config-"$(uname -r)")" != "CONFIG_BLOCK=y" ]; 
 	exit 255 
 fi
 
-echo -e "\nCheck CPU governors"
-cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+# Check if cpupower is available
+if command -v cpupower >/dev/null 2>&1; then
+    echo -e "\nSetting governors using cpupower..."
+    sudo cpupower frequency-set -g performance
+	sudo cpupower frequency-set -d 3600MHz -u 3600MHz
+	cpupower frequency-info -g
+else
+    echo -e "\nUsing sysfs method..."
+    echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor > /dev/null
+fi
 
 echo -e "\nCheck queue depth"
 if [ "$(cat "$BD_SYS_PATH"nr_requests)" -le "$IO_DEPTH" ]; then
@@ -93,10 +97,6 @@ sysctl -p
 echo -e "\nIncreasing file descriptors limits..."
 echo "* soft nofile 1048576" >> /etc/security/limits.conf
 echo "* hard nofile 1048576" >> /etc/security/limits.conf
-
-echo -e "\nLock the CPU frequency to basic value"
-sudo cpupower frequency-set -g performance
-sudo cpupower frequency-set -d 3600MHz -u 3600MHz
 
 echo -e "\nPage cache and Dentry flushing"
 sync; echo 3 | sudo tee /proc/sys/vm/drop_caches

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DEPENDENCY_LIST=("fio" "make" "perf")
+DEPENDENCY_LIST=("fio" "make")
 BD_NAME="nullb0"
 IO_DEPTH=32
 VERIFY="false"
@@ -12,7 +12,7 @@ BRD_SIZE=400
 
 # Function to display help
 usage() {
-    echo "Usage: $0 [-v|--verify] [-s|--setup] [-p|--perf] [-c|--cplots] [--bd_name name_without_/dev/] [--io_depth number] [--jobs_num number]"
+	echo -e "Main orchestration script for all test suites and performance analysis.\n\nCan be used to:\n - run the test scripts\n - setup the experiment environment\n - generate plots based on auto-tests\n - generate the call-stack analysis flamegraphs.\n\nUsage: $0 [-v|--verify] [-s|--setup] [-p|--perf] [-c|--cplots] [-a|--auto] [--bd_name name_without_/dev/] [--io_depth number] [--jobs_num number]"
     exit 1
 }
 
@@ -57,6 +57,9 @@ while [[ "$#" -gt 0 ]]; do
 		-c|--cplots)
 			PLOTS="true"
 			;;
+		-a|--auto)
+			AUTO_TEST="true"
+			;;
 		--bd_name)
             BD_NAME="$2"
             shift 
@@ -91,8 +94,12 @@ validate_verify_input
 free -m
 mkdir -p plots logs
 
-echo "Block device name: $BD_NAME"
+echo -e "\n\n\n--- CONFIGURATION: ---\n\n\n"
+echo "Underlying block device name: $BD_NAME"
 echo "Verify option: $VERIFY"
+echo "IO depth: $IO_DEPTH"
+echo "Jobs number: $JOBS_NUM"
+
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script should be run from a root."
@@ -100,8 +107,13 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 if [ "$SETUP" == "true" ]; then
-	### Run config setup script
+	# Setup the machine for performance testing
 	./setup.sh --bd_name "$BD_NAME" --io_depth "$IO_DEPTH"
+fi
+
+if [ "$AUTO_TEST" == "true" ]; then
+	# Run auto fio tests ;) 
+	./autotest.sh --jobs_num "$JOBS_NUM" --io_depth "$IO_DEPTH" --brd_size "$BRD_SIZE"
 fi
 
 if [ "$PLOTS" == "true" ]; then

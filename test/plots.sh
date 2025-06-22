@@ -9,8 +9,8 @@ TYPE="lf"
 
 LOGS_PATH="logs"
 PLOTS_PATH="./plots"
-RESULTS_FILE="logs/fio_results.dat"
-LAT_RESULTS_FILE="logs/fio_lat_results.dat"
+RESULTS_FILE="$LOGS_PATH/fio_results.dat"
+LAT_RESULTS_FILE="$LOGS_PATH/fio_lat_results.dat"
 
 HISTOGRAM_PLOTS_SCRIPT="distr_plots.py"
 AVG_PLOTS_SCRIPT="tp_iops_plots.py"
@@ -22,7 +22,7 @@ IOPS_BS_LIST=("4K" "8K" "16K" "32K" "64K" "128K") # + 2K by SNIA
 IOPS_RW_MIXES=("0-100" "100-0") # SNIA recommends more mixes (like 99-5, 50-50, ...)
 
 LAT_BS_LIST=("4K" "8K") # SNIA recommends 0.5K and 2K also
-LAT_RW_MIXES=("0-100" "65-35" "100-0") # Write to read ops ratio
+LAT_RW_MIXES=("0-100" "65-35" "100-0") # READ to WRITE operations ratio
 
 TP_BS_LIST=("128K" "1024K") 
 TP_RW_MIXES=("0-100" "100-0")
@@ -31,8 +31,13 @@ IOPS_CONC_RW_MIXES="$IOPS_RW_MIXES"
 IOPS_CONC_BS_LIST=("4K" "8K")
 IOPS_CONC_NJ_LIST=("1" "2" "4" "6" "8") 
 
+usage() {
+    echo "Usage: $0 [--io_depth number] [--jobs_num number]"
+    exit 1
+}
+
 # Function to prioritize all the fio processes (including forks in case of numjobs > 1)
-# UPD: mb no need in it
+# UPD: not used, bc fio already prioritizes the IO operations
 prioritise_fio() {
     echo -e "\nPrioritizing fio process..."
     for pid in $(pidof fio); do
@@ -41,29 +46,24 @@ prioritise_fio() {
     done
 }
 
-usage() {
-    echo "Usage: $0 [--io_depth number] [--jobs_num number]"
-    exit 1
-}
-
 prepare_env() {
     echo -e "\nCleaning the logs directory"
     make clean > /dev/null
 
 	mkdir -p "$LOGS_PATH" \
     "$PLOTS_PATH"/distribution/{vbd,raw}/{rewrite,non_rewrite}/{tp,iops} \
-    "$PLOTS_PATH"/avg/{vbd,raw}/{rewrite,non_rewrite}/{tp,tp_conc,iops,iops_conc} \
+    "$PLOTS_PATH"/avg/{vbd,raw}/{rewrite,non_rewrite}/{bw,tp_conc,iops,iops_conc} \
     "$PLOTS_PATH"/latency/{rewrite,non_rewrite}/{raw,vbd} 
 }
 
 # Reinits the lsbdd and null_blk modules
 reinit_lsvbd() {
-    make -C ../src exit DBI=1 > /dev/null
-    
+	make -C ../src exit DBI=1 > /dev/null
+
 	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
-    
+
 	modprobe -r null_blk
-    modprobe null_blk queue_mode=0 gb=$NBD_SIZE bs=512 irqmode=0 nr_devices=1
+	modprobe null_blk queue_mode=0 gb=$NBD_SIZE bs=512 irqmode=0 nr_devices=1
 	make -C ../src init_no_recompile DS=${DAST} TY=${TYPE} > /dev/null
 }
 
@@ -374,7 +374,7 @@ run_iops_tests() {
 						log_file="$LOGS_PATH/fio_${rw_mix:0:1}_run_${i}.log"
 						extra_args=$([[ $rwmix_read == "100" ]] && echo "RBS=$bs" || echo "")
 					
-						make fio_perf_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$iodepth" NJ="$nj" "$extra_args" > "$log_file"
+						make fio_perf_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$iodepth" NJ="$nj" > "$log_file"
 
 						extract_iops_metrics "$log_file" "$i" "$bs" "$rw_mix" "$iodepth" "$nj"
 
@@ -388,7 +388,7 @@ run_iops_tests() {
 					log_file="$LOGS_PATH/fio_${rw_mix:0:1}_run_${i}.log"
 					extra_args=$([[ $rwmix_read == "100" ]] && echo "RBS=$bs" || echo "")
 				
-					make fio_perf_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$IO_DEPTH" NJ="$JOBS_NUM" "$extra_args" > "$log_file"
+					make fio_perf_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$IO_DEPTH" NJ="$JOBS_NUM" > "$log_file"
 
 					extract_iops_metrics "$log_file" "$i" "$bs" "$rw_mix" "$IO_DEPTH" "$JOBS_NUM"
 
@@ -422,9 +422,12 @@ run_latency_tests() {
 	plot_flag=$([[ $device == "nullb0" ]] && echo "--raw")
 	rewrite_flag=$([[ $rewrite_mode -eq 1 ]] && echo "--rewrite")
 	conc_mode=$([[ $mode == "conc_mode" ]] && echo "--conc_mode")
+    fs_flag=$([[ $device == "nullb0" ]] && echo "FS=nullb0" || echo "")
 
     echo -e "---Starting SNIA-complied Latency Benchmark on $device...---\n"
     for rw_mix in "${LAT_RW_MIXES[@]}"; do
+		rwmix_read="${rw_mix%-*}"
+		rwmix_write="${rw_mix#*-}"
 		
 		# only-write tests (0-100) can be performed without the warm-up
 		if [ "$rewrite_mode" == "0" ] && [ "$rw_mix" != "0-100" ]; then 
@@ -444,10 +447,7 @@ run_latency_tests() {
 					for i in $(seq 1 $RUNS); do
 						echo "Run $i of $RUNS..."
 						log_file="$LOGS_PATH/latency_${bs}_${rw_mix}"
-						fio --name=latency_test --rw=randrw --rwmixread="${rw_mix%-*}" --rwmixwrite="${rw_mix#*-}" \
-							--bs="${bs}" --numjobs=$nj --iodepth=$iodepth --time_based --runtime=30 --direct=1 \
-							--write_lat_log="$log_file" --ioengine=io_uring --registerfiles=1 --hipri=0 \
-							--cpus_allowed=0 --fixedbufs=1 --filename=/dev/"$device" --norandommap=0 > /dev/null
+						make fio_lat_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$iodepth" NJ="$nj" LOG_FILE_PATH="$log_file" > /dev/null
 						extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix" "$nj" "$iodepth"
 
 						reinit_lsvbd
@@ -457,10 +457,7 @@ run_latency_tests() {
 				for i in $(seq 1 $RUNS); do
 					echo "Run $i of $RUNS..."
 					log_file="$LOGS_PATH/latency_${bs}_${rw_mix}"
-					fio --name=latency_test --rw=randrw --rwmixread="${rw_mix%-*}" --rwmixwrite="${rw_mix#*-}" \
-						--bs="${bs}" --numjobs=1 --iodepth=1 --time_based --runtime=30 --direct=1 \
-						--write_lat_log="$log_file" --ioengine=io_uring --registerfiles=1 --hipri=0 \
-						--cpus_allowed=0 --fixedbufs=1 --filename=/dev/"$device" --norandommap=0 > /dev/null
+					make fio_lat_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="1" NJ="1" LOG_FILE_PATH="$log_file" > /dev/null
 					extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
 
 					reinit_lsvbd
@@ -487,7 +484,10 @@ done
 
 prepare_env
 
-# Non-rewrite mode (only write operations are tested)
+
+### BASIC TEST-SUITES FOR PERFORMANCE EVALUATION ### 
+
+### Non-rewrite mode (only write operations are tested)
 
 # Run tests for LSVBD
 run_tp_tests "lsvbd1" 0
@@ -499,7 +499,7 @@ run_tp_tests "nullb0" 0
 run_iops_tests "nullb0" 0
 run_latency_tests "nullb0" 0
 
-# Rewrite mode test (warm-up included)
+### Rewrite mode test (warm-up included)
 
 run_tp_tests "lsvbd1" 1
 run_iops_tests "lsvbd1" 1
@@ -510,7 +510,7 @@ run_tp_tests "nullb0" 1
 run_iops_tests "nullb0" 1
 run_latency_tests "nullb0" 1
 
-# Running paralllelism tests (rewrite mode)
+### Running paralllelism tests (rewrite mode)
 
 run_iops_tests "nullb0" 1 "conc_mode" 
 run_iops_tests "nullb0" 0 "conc_mode" 

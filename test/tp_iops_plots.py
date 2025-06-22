@@ -151,7 +151,7 @@ def plot_iodepth_numjobs_avg_bars(
     plt.ylabel(f"Среднее {y_axis_label_base}", fontsize=12, labelpad=10)
     title_warmup_status = "(с прогревом)" if is_rewrite else "(без прогрева)"
     title_ds_status = (
-        " используя список с пропусками\n," if (DEVICE == "lsvbd1") else ""
+        " используя список с пропусками,\n" if (DEVICE == "lsvbd1") else ""
     )
     plt.title(
         f"Средние значения IOPS при разной степени параллелизма,{title_ds_status} BS={bs_val}, MIX={mix_val}\n"
@@ -560,7 +560,7 @@ def plot_non_conc_bs_comparison_over_runs(
                 "Средняя пропускная способность" if metric_col == "BW" else metric_col
             )
             title_ds_status = (
-                "используя список с пропусками\n," if (DEVICE == "lsvbd1") else ""
+                "используя список с пропусками,\n" if (DEVICE == "lsvbd1") else ""
             )
 
             main_title = f"{title_metric_name} {title_ds_status}при MIX={mix_val} на {device_name} {title_status}"
