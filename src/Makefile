@@ -83,13 +83,6 @@ init_no_recompile:
 	echo "$(DS)" > /sys/module/lsbdd/parameters/set_data_structure
 	make set
 
-fio_verify:
-	# Write and verify test
-	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(WO) --size=$(FS)M --verify_state_save=1 --bssplit=$(WBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=0 --numjobs=$(NJ) --serialize_overlap=1 --offset=16k
-
-	# Read and verify test 
-	fio --name=test_verify --ioengine=$(IO) --iodepth=$(ID) --rw=$(RO) --size=$(FS)M --verify_state_save=1 --bssplit=$(RBS)k/100 --direct=1 --filename=/dev/lsvbd1  --verify=pattern --verify_pattern=0xAA --do_verify=0 --verify_fatal=0 --verify_only=1 --numjobs=$(NJ) --serialize_overlap=1 --offset=16k
-
 .PHONY: all modules modules_install clean test nulld
 
 endif

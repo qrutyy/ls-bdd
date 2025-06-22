@@ -17,8 +17,11 @@ ID?=32
 IN?=""
 # Fio targets filename
 FS="lsvbd1"
+# Ratio of read opertations in the mix workflow
 RWMIX_READ?=50
+# Ratio of write operations in the mix workflow
 RWMIX_WRITE?=50
+# Log file path (pretty intuitive)
 LOG_FILE_PATH?=logs/latency_idk
 
 
@@ -126,13 +129,12 @@ fio_verify:
 clean:
 	rm -rf *.svg *.data *.folded *.old *.state *.log *.dat
 	make clean_logs
-	make clean_plots
 
 clean_logs:
 	rm -rf logs/*_log logs/*.log  logs/*.png logs/logs logs/plots logs/*.dat
 
 clean_plots:
-	rm -rf plots/*/*.png plots/*.png plots/*.txt plots/bw plots/lat plots/iops plots/clat plots/slat plots/bw_iops
+	rm -rf plots/* 
 
 .PHONY: all clean test
 
