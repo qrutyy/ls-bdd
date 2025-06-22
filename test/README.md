@@ -60,7 +60,7 @@ test/
 ├── plots/          # Generated performance visualizations
 ├── logs/           # Test execution logs and debug output
 ├── fio/            # Manual FIO test configurations
-└── results/        # Raw performance data
+└── manualsrc/      # Text files for manual testing
 ```
 
 ### Performance Data Files
@@ -98,4 +98,6 @@ The `Makefile` contains customizable workflow templates for:
 - Standard performance benchmarks
 - Verification test procedures
 - Custom test parameter combinations
+
+*BTW some performance workflows provide detatailed auxiliary logs with dataframe analysis (normality test, distribution and others).*
 
