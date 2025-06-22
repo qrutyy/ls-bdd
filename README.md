@@ -54,6 +54,8 @@ cd ../test && ./main.sh -s -c --io_depth 16 --jobs_num 4 --bd_name nullb0
 ```
 It is able to run fio tests with pattern verification, plot generation, flamegraph generation and system-side optimisation. For more information about mode usage - see source code or run `./test/main.sh -h`. 
 
+More detailed overview of test-system is presented [here](https://github.com/qrutyy/ls-bdd/blob/main/test/README.md)
+
 ## License
 
 Distributed under the [GPL-2.0 License](https://github.com/qrutyy/ls-bdd/blob/main/LICENSE).
