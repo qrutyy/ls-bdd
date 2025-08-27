@@ -21,9 +21,9 @@ atomic64_t next_free_sector = ATOMIC_INIT(LSBDD_SECTOR_OFFSET);
 static struct kmem_cache *lsbdd_value_cache;
 struct cache_manager *cache_mng;
 
-static void vector_add_bd(struct lsbdd_bd_manager *current_bdev_manager)
+static void vector_add_bd(struct lsbdd_bd_manager *curr_bdev_mng)
 {
-	list_add_tail(&current_bdev_manager->list, &bd_list);
+	list_add_tail(&curr_bdev_mng->list, &bd_list);
 }
 
 static struct lsbdd_bd_manager *get_lsbdd_bd_manager_by_name(char *vbd_name)
@@ -66,9 +66,9 @@ static s8 convert_to_int(const char *arg, u8 *result)
 	return 0;
 }
 
-static inline struct bdev_handle *open_bd_on_rw(char *bd_path)
+static inline struct file *open_bd_on_rw(char *bd_path)
 {
-	return bdev_open_by_path(bd_path, BLK_OPEN_WRITE | BLK_OPEN_READ, NULL, NULL);
+	return bdev_file_open_by_path(bd_path, BLK_OPEN_WRITE | BLK_OPEN_READ, NULL, NULL);
 }
 
 static void bdd_bio_end_io(struct bio *bio)
@@ -89,7 +89,7 @@ static void bdd_bio_end_io(struct bio *bio)
  *
  * @param 0 on success, -ENOMEM if memory allocation fails.
  */
-static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone_bio, struct lsbdd_bd_manager *current_redirect_manager)
+static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone_bio, struct lsbdd_bd_manager *redir_mng)
 {
 	s8 status;
 	sector_t orig_sector = 0;
@@ -106,7 +106,7 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 	pr_debug("Original sector: bi_sector = %llu, block_size %u\n", main_bio->bi_iter.bi_sector, clone_bio->bi_iter.bi_size);
 
 	curr_value->block_size = main_bio->bi_iter.bi_size;
-	old_value = ds_lookup(current_redirect_manager->sel_data_struct, orig_sector);
+	old_value = ds_lookup(redir_mng->sel_data_struct, orig_sector);
 	curr_value->redirected_sector = atomic64_fetch_add(curr_value->block_size / SECTOR_SIZE, &next_free_sector); // always get new pba
 	pr_debug("WRITE: Old rs %p\n", old_value);
 	pr_debug("WRITE: key: %llu, sec: %llu\n", orig_sector, curr_value->redirected_sector);
@@ -114,10 +114,10 @@ static s32 setup_write_in_clone_segments(struct bio *main_bio, struct bio *clone
 	if (old_value) {
 		pr_debug("WRITE: remove old mapping key %lld old_val: %lld, new_val %lld\n", orig_sector,
 			 old_value->redirected_sector, curr_value->redirected_sector);
-		ds_remove(current_redirect_manager->sel_data_struct, orig_sector, lsbdd_value_cache);
+		ds_remove(redir_mng->sel_data_struct, orig_sector, lsbdd_value_cache);
 	}
 
-	status = ds_insert(current_redirect_manager->sel_data_struct, orig_sector, curr_value, cache_mng, lsbdd_value_cache);
+	status = ds_insert(redir_mng->sel_data_struct, orig_sector, curr_value, cache_mng, lsbdd_value_cache);
 	if (unlikely(status))
 		goto insert_err;
 
@@ -317,14 +317,14 @@ split_err:
 static void lsbdd_submit_bio(struct bio *bio)
 {
 	struct bio *clone = NULL;
-	struct lsbdd_bd_manager *current_redirect_manager = NULL;
+	struct lsbdd_bd_manager *redir_mng = NULL;
 	s16 status;
 
-	current_redirect_manager = get_lsbdd_bd_manager_by_name(bio->bi_bdev->bd_disk->disk_name);
-	if (unlikely(!current_redirect_manager))
+	redir_mng = get_lsbdd_bd_manager_by_name(bio->bi_bdev->bd_disk->disk_name);
+	if (unlikely(!redir_mng))
 		goto get_err;
 
-	clone = bio_alloc_clone(current_redirect_manager->bd_handler->bdev, bio, GFP_KERNEL, bdd_pool);
+	clone = bio_alloc_clone(file_bdev(redir_mng->bd_file), bio, GFP_KERNEL, bdd_pool);
 	if (unlikely(!clone))
 		goto clone_err;
 
@@ -332,9 +332,9 @@ static void lsbdd_submit_bio(struct bio *bio)
 	clone->bi_end_io = bdd_bio_end_io;
 
 	if (bio_op(bio) == REQ_OP_READ)
-		status = setup_read_from_clone_segments(bio, clone, current_redirect_manager);
+		status = setup_read_from_clone_segments(bio, clone, redir_mng);
 	else if (bio_op(bio) == REQ_OP_WRITE)
-		status = setup_write_in_clone_segments(bio, clone, current_redirect_manager);
+		status = setup_write_in_clone_segments(bio, clone, redir_mng);
 	else
 		pr_warn("Unknown Operation in bio\n");
 
@@ -379,8 +379,9 @@ static struct gendisk *init_disk_bd(char *vbd_name)
 {
 	struct gendisk *new_disk = NULL;
 	struct lsbdd_bd_manager *linked_manager = NULL;
+	struct block_device *bd = NULL;
 
-	new_disk = blk_alloc_disk(NUMA_NO_NODE);
+	new_disk = blk_alloc_disk(NULL, NUMA_NO_NODE);
 
 	new_disk->major = bdd_major;
 	new_disk->first_minor = 1;
@@ -400,7 +401,8 @@ static struct gendisk *init_disk_bd(char *vbd_name)
 	}
 
 	linked_manager = list_last_entry(&bd_list, struct lsbdd_bd_manager, list);
-	set_capacity(new_disk, get_capacity(linked_manager->bd_handler->bdev->bd_disk));
+	bd = file_bdev(linked_manager->bd_file);
+	set_capacity(new_disk, get_capacity(bd->bd_disk));
 	return new_disk;
 }
 
@@ -413,23 +415,23 @@ static struct gendisk *init_disk_bd(char *vbd_name)
  */
 static s32 check_and_open_bd(char *bd_path)
 {
-	struct lsbdd_bd_manager *current_bdev_manager = kzalloc(sizeof(struct lsbdd_bd_manager), GFP_KERNEL);
-	struct bdev_handle *current_bdev_handle = NULL;
-	struct data_struct *curr_ds = kzalloc(sizeof(struct data_struct), GFP_KERNEL);
+	struct lsbdd_bd_manager *bdev_mng = kzalloc(sizeof(struct lsbdd_bd_manager), GFP_KERNEL);
+	struct file *bdev_file = NULL;
+	struct data_struct *ds = kzalloc(sizeof(struct data_struct), GFP_KERNEL);
 
-	if (!curr_ds + !current_bdev_manager > 0)
+	if (!ds + !bdev_mng > 0)
 		goto mem_err;
 
-	current_bdev_handle = open_bd_on_rw(bd_path);
+	bdev_file = open_bd_on_rw(bd_path);
 
-	if (IS_ERR(current_bdev_handle))
+	if (IS_ERR(bdev_file))
 		goto free_bdev;
 
-	current_bdev_manager->bd_handler = current_bdev_handle;
-	current_bdev_manager->vbd_name = bd_path;
-	current_bdev_manager->sel_data_struct = curr_ds;
+	bdev_mng->bd_file = bdev_file;
+	bdev_mng->vbd_name = bd_path;
+	bdev_mng->sel_data_struct = ds;
 
-	vector_add_bd(current_bdev_manager);
+	vector_add_bd(bdev_mng);
 
 	pr_debug("Succesfully added %s to vector\n", bd_path);
 
@@ -437,13 +439,13 @@ static s32 check_and_open_bd(char *bd_path)
 
 free_bdev:
 	pr_err("Couldnt open bd by path: %s\n", bd_path);
-	kfree(curr_ds);
-	kfree(current_bdev_manager);
-	return PTR_ERR(current_bdev_handle);
+	kfree(ds);
+	kfree(bdev_mng);
+	return PTR_ERR(bdev_file);
 
 mem_err:
-	kfree(current_bdev_manager);
-	kfree(curr_ds);
+	kfree(bdev_mng);
+	kfree(ds);
 	return -ENOMEM;
 }
 
@@ -459,7 +461,7 @@ static char *create_disk_name_by_index(s32 index)
 
 /**
  * Sets the name for a new BD, that will be used as 'device in the middle'.
- * Adds disk to the last lsbdd_bd_manager, that was modified by adding bd_handler
+ * Adds disk to the last lsbdd_bd_manager, that was modified by adding bd_file
  * through check_and_open_bd()
  *
  * @name_index - an index for disk name
@@ -515,9 +517,9 @@ disk_init_err:
 
 static s8 delete_bd(u16 index)
 {
-	if (get_list_element_by_index(index)->bd_handler) {
-		bdev_release(get_list_element_by_index(index)->bd_handler);
-		get_list_element_by_index(index)->bd_handler = NULL;
+	if (get_list_element_by_index(index)->bd_file) {
+		fput(get_list_element_by_index(index)->bd_file);
+		get_list_element_by_index(index)->bd_file = NULL;
 	} else {
 		pr_info("BD with num %d is empty\n", index + 1);
 	}
@@ -557,10 +559,10 @@ static s32 lsbdd_get_vbd_names(char *buf, const struct kernel_param *kp)
 	}
 
 	list_for_each_entry(current_manager, &bd_list, list) {
-		if (current_manager->bd_handler != NULL) {
+		if (current_manager->bd_file != NULL) {
 			i++;
 			length = sprintf(buf + offset, "%d. %s -> %s\n", i, current_manager->vbd_disk->disk_name,
-					 current_manager->bd_handler->bdev->bd_disk->disk_name);
+					 file_bdev(current_manager->bd_file)->bd_disk->disk_name);
 
 			if (length < 0) {
 				pr_err("Error in formatting string\n");

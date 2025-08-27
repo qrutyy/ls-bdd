@@ -26,7 +26,7 @@ struct lsbdd_value_redir {
 struct lsbdd_bd_manager {
 	char *vbd_name;
 	struct gendisk *vbd_disk;
-	struct bdev_handle *bd_handler;
+	struct file *bd_file;
 	struct data_struct *sel_data_struct;
 	struct list_head list;
 };
