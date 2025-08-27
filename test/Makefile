@@ -24,6 +24,12 @@ RWMIX_WRITE?=50
 # Log file path (pretty intuitive)
 LOG_FILE_PATH?=logs/latency_idk
 
+RUNTIME=180
+
+RAMPTIME=30
+
+RW_TYPE="randrw"
+
 
 fio_perf_template:
 	fio --name=test --ioengine=$(IO) --iodepth=$(ID) --rw=$(MODE) --bssplit=$(BS)k/100 --direct=1 --filename=/dev/$(FS) --numjobs=$(NJ) --write_bw_log=logs/write$(IN) --write_lat_log=logs/write$(IN) --write_iops_log=logs/write$(IN) --per_job_logs=0 $(EXTRA_OPTS) --offset=16k
@@ -49,13 +55,15 @@ fio_perf_r_opt:
 
 fio_perf_mix:
 	fio --name=mix_test \
-		--rw=randrw \
+		--rw=$(RW_TYPE) \
 		--rwmixread=$(RWMIX_READ) \
 		--rwmixwrite=$(RWMIX_WRITE) \
 		--bs=$(BS) \
 		--numjobs=$(NJ) \
 		--iodepth=$(ID) \
-		--time_based --runtime=30 \
+		--time_based \
+		--runtime=$(RUNTIME) \
+		--ramp_time$(RAMPTIME)
 		--direct=1 \
 		--ioengine=$(IO) \
 		--registerfiles=1 \
@@ -74,10 +82,11 @@ fio_lat_mix:
 	--rwmixread=$(RWMIX_READ) \
 	--rwmixwrite=$(RWMIX_WRITE) \
 	--bs=$(BS) \
-	--numjobs=$(NJ) 
+	--numjobs=1 \ 
 	--iodepth=$(ID) \
 	--time_based \
-	--runtime=30 \
+	--runtime=$(RUNTIME) \
+	--ramp_time$(RAMPTIME)
 	--direct=1 \						
 	--write_lat_log=$(LOG_FILE_PATH) \
 	--ioengine=$(IO) \
@@ -85,7 +94,6 @@ fio_lat_mix:
 	--hipri=0 \
 	--prio=0 \
 	--cpus_allowed=0 \
-	--cpus_allowed_policy=shared \
 	--fixedbufs=1 
 	--filename=/dev/$(FS) \
 	--norandommap=0 \
