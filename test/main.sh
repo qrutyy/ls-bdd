@@ -8,7 +8,7 @@ SETUP="false"
 PERF="false"
 PLOTS="false"
 JOBS_NUM=8
-BRD_SIZE=400
+BD_SIZE=400
 
 # Function to display help
 usage() {
@@ -72,8 +72,8 @@ while [[ "$#" -gt 0 ]]; do
 			JOBS_NUM="$2"
 			shift 
 			;;
-		--init)
-			BRD_SIZE="$2"
+		--bd_size)
+			BD_SIZE="$2"
 			shift
 			;;
         -h|--help)
@@ -113,11 +113,11 @@ fi
 
 if [ "$AUTO_TEST" == "true" ]; then
 	# Run auto fio tests ;) 
-	./autotest.sh --jobs_num "$JOBS_NUM" --io_depth "$IO_DEPTH" --brd_size "$BRD_SIZE"
+	./autotest.sh --jobs_num "$JOBS_NUM" --io_depth "$IO_DEPTH" --brd_size "$BD_SIZE"
 fi
 
 if [ "$PLOTS" == "true" ]; then
-	sudo ./plots.sh  --io_depth "$IO_DEPTH" --jobs_num "$JOBS_NUM" --brd_size "$BRD_SIZE"
+	sudo ./plots.sh  --io_depth "$IO_DEPTH" --jobs_num "$JOBS_NUM" --bd_size "$BD_SIZE" --bd_name "$BD_NAME"
 fi
 
 

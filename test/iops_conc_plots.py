@@ -7,11 +7,11 @@ import re
 
 RESULTS_FILE = "logs/fio_results.dat"
 
-ds_colors= {
-    "sl": "skyblue",
-    "ht": "orange",
-    "rb": "red",
-    "bt": "green"
+ds_colors = {
+    "sl": "steelblue",
+    "ht": "indianred",
+    "rb": "seagreen",
+    "bt": "darkkhaki"
 }
 
 
@@ -120,14 +120,14 @@ def plot_conc_iops_hist(
         plt.bar(x + (i - len(ds_values)/2)*width + width/2,
                 values_per_ds[ds],
                 width,
-                color=ds_colors.get(ds, None)
+                color=ds_colors.get(ds, None),
                 label=f"{get_formatted_ds_name(ds)}")
 
     plt.xticks(x, labels, rotation=45, ha="right")
-    plt.ylabel("Медиана IOPS")
+    plt.ylabel("Медиана IOPS (тыс. операций/c)")
     plt.xlabel("NUMJOBS / IODEPTH")
-    op = (mix_val_c == "0-100") : "записи" ? "чтения"
-    plt.title(f"Медианное значение IOPS для различных конфигураций NJ/ID,\nBS={bs_val} при операциях {get_formatted_rw_type(rw_type)} {op}")
+    op = "записи" if (mix_val == "0-100") else "чтения"
+    plt.title(f"Медианное значение IOPS для различных конфигураций NJ/ID,\nBS={bs_val}K при операциях {get_formatted_rw_type(rw_type)} {op}")
 
     plt.legend()
     plt.tight_layout()
@@ -140,7 +140,7 @@ def plot_conc_iops_hist(
     print(f"[ok] Saved plot: {save_path}")
 
 
-def verify_and_gen_iops_conc_plots():
+def verify_and_gen_iops_conc_plots(df):
     if df.empty:
         print("DataFrame is empty after loading and cleaning. No plots will be generated.")
         return
@@ -156,7 +156,7 @@ def verify_and_gen_iops_conc_plots():
         )
         unique_mixes_conc = df_iops["MIX"].unique()
         unique_mix_types_conc = df_iops["RW_TYPE"].unique()
-        assert len(unique_mix_types_conc) ==  1
+        assert len(unique_mix_types_conc) == 1
         assert len(unique_mixes_conc) == 1
         assert len(unique_bss_conc) == 1
 
@@ -169,13 +169,13 @@ def verify_and_gen_iops_conc_plots():
         ]
         if not subset_bs_mix_c.empty:
             plot_conc_iops_hist(
-                df_for_bs_mix=subset_bs_mix_c,
+                df=subset_bs_mix_c,
                 bs_val=bs_val_c,
                 mix_val=mix_val_c,
                 rw_type=rw_type_c,
-                ds_values=["ht", "sl"], # TODO: pass from plots.sh
-                save_directory_base="iops",
-                filename_prefix_detail=f"iops_avg_bars_idnj_{mix_val_c}_{bs_val_c}",
+                ds_values=["ht", "sl"],  # TODO: pass from plots.sh
+                save_directory_base="plots/iops",
+                filename_prefix_detail=f"iops_avg_bars_idnj_{mix_val_c}_{bs_val_c}_{rw_type_c}",
             )
 
 

@@ -2,8 +2,7 @@
 
 JOBS_NUM=8
 IO_DEPTH=32
-RUNS=25
-NBD_SIZE=400
+RUNS=1
 DS="sl"
 TYPE="lf"
 
@@ -14,10 +13,14 @@ PLOTS_PATH="./plots"
 RESULTS_FILE="$LOGS_PATH/fio_results.dat"
 LAT_RESULTS_FILE="$LOGS_PATH/fio_lat_results.dat"
 
-AVG_PLOTS_SCRIPT="iops_conc_plots.py"
-LATENCY_PLOTS_SCRIPT="lat_plots.py"
+CONC_IOPS_PLOTS_SCRIPT="iops_conc_plots.py"
+CONC_GENERAL_DIFF_PLOT="general_conc_plots.py"
+
+IOPS_CONC_NJ_LIST=("1" "2" "4" "8")
 
 RW_TYPES=("rw" "randrw")
+RW_MIXES=("0-100" "100-0")
+AVAILABLE_DS=("sl" "ht")
 
 usage() {
     echo "Usage: $0 [--io_depth number] [--jobs_num number]"
@@ -49,7 +52,7 @@ reinit_lsvbd() {
 	local ds=$1
 
 	if [ "$ds" == "" ]; then
-		ds=DS
+		ds=$DS
 	fi 
 
 	make -C ../src exit DBI=1 > /dev/null
@@ -63,11 +66,11 @@ reinit_lsvbd() {
 workload_independent_preconditioning() {
     local wbs=$1 wf_size_per_job
 
-	wf_size_per_job=$((BRD_SIZE / 8)) 
+	wf_size_per_job=$((BD_SIZE / 8)) 
 
 	echo -e "\nRunning warm-up with size $wf_size_per_job for each job"
 
-	fio --name=prep --rw=write --bs="${wbs}"K --numjobs=8 --iodepth=32 --ioengine=io_uring --size="$wf_size_per_job"G \
+	fio --name=prep --rw=write --bs="${wbs}"K --numjobs=1 --iodepth=32 --ioengine=io_uring --size=100M \
         --filename=/dev/lsvbd1 --direct=1 --output="$LOGS_PATH/preconditioning.log"
 }
 
@@ -119,7 +122,7 @@ extract_tp_metrics() {
 		iodepth="0"
 	fi
     echo "DEBUG: Extracted BW='$bw' (target GB/s) for op_type=$op_type"
-    echo "$run_id $bs $mix $bw 0 tp $iodepth $numjobs" >> "$RESULTS_FILE"
+    echo "$run_id $bs $mix $bw 0 TP $iodepth $numjobs" >> "$RESULTS_FILE"
 }
 
 <<docs
@@ -134,7 +137,6 @@ Converts to thousand IOPS if needed.
 @param iodepth 
 @param numjobs
 docs
-
 extract_iops_metrics() {
     local log_file=$1
     local run_id=$2
@@ -161,7 +163,7 @@ extract_iops_metrics() {
 		iodepth="0"
 	fi
     echo "DEBUG: Extracted IOPS='$iops', NJ=$numjobs, ID=$iodepth"
-    echo "$run_id $ds $bs $rw_mix 0 $iops iops $rw_type $iodepth $numjobs" >> "$RESULTS_FILE"
+    echo "$run_id $ds $bs $rw_mix 0 $iops IOPS $rw_type $iodepth $numjobs" >> "$RESULTS_FILE"
 }
 
 <<docs
@@ -247,7 +249,7 @@ extract_latency_metrics() {
 
 	echo -e "DEBUG: extracted \nId:$run_id \nBS:$bs \nAVG_SLAT:$avg_slat AVG_CLAT:$avg_clat AVG_LAT:$avg_lat \nMAX_SLAT:$max_slat MAX_CLAT:$max_clat MAX_LAT:$max_lat \nP99_LAT:$p99_slat P99_CLAT:$p99_clat P99_LAT:$p99_lat \nRW_MIX:$rw_mix\n"
 
-	echo "$run_id $ds $bs $rw_mix $rw_type $avg_slat $avg_clat $avg_lat $max_slat $max_clat $max_lat $p99_slat $p99_clat $p99_lat $rw_mix" $iodepth $numjobs >> "$LAT_RESULTS_FILE"
+	echo "$run_id $ds $bs $rw_mix $rw_type $avg_slat $avg_clat $avg_lat $max_slat $max_clat $max_lat $p99_slat $p99_clat $p99_lat $iodepth $numjobs" >> "$LAT_RESULTS_FILE"
 }
 
 <<docs
@@ -261,54 +263,59 @@ Runs IOPS tests based on SNIA specification. Uses fio_iops_mix cfg from ./Makefi
 @param ds - data structure (sl/ht/...)
 docs
 run_iops_for_each_nj_id() {
-    local mode=$1 raw_bs_list=$2 ds=$4 log_file fs_flag iodepth bs_list rwmix 
+    local mode=$1 raw_bs_list=$2 log_file fs_flag iodepth bs_list rw_mix 
 	local IFS=','
 
 	read -r -a bs_list <<< "$raw_bs_list"
 
 	if [ "$mode" == "write" ]; then
-		rwmix="0-100"
+		rw_mix="0-100"
 	elif [ "$mode" == "read" ]; then
-		rwmix="100-0"
+		rw_mix="100-0"
 	else 
 		echo -e "Failed to parse mode argument (only write/read are supported)\n"
 		return
 	fi 
 
-	echo -e "---Starting IOPS Benchmark on $device...---\n"
+	echo -e "---Starting IOPS Benchmark on $BD_NAME...---\n"
 	
-	rwmix_read="${rwmix%-*}"
-	rwmix_write="${rwmix#*-}"
-
-	reinit_lsvbd "$ds" # to make sure that ds is selected right
-
+	rw_mix_read="${rw_mix%-*}"
+	rw_mix_write="${rw_mix#*-}"
+	
+	echo "$rw_mix_read"
+	echo "$rw_mix_write"
+	
 	for rw_type in "${RW_TYPES[@]}"; do
 		for bs in "${bs_list[@]}"; do
-			if [ "$rwmix_read" != "0" ]; then 
-				workload_independent_preconditioning "$bs"
-			fi
+			for ds in "${AVAILABLE_DS[@]}"; do 
+				reinit_lsvbd "$ds" # to make sure that ds is selected right
 
-			for nj in "${IOPS_CONC_NJ_LIST[@]}"; do 
-				iodepth=$(echo "$nj * 4" | bc)
+				if [ "$rw_mix_read" != "0" ]; then 
+					workload_independent_preconditioning "$bs"
+				fi
 
-				for i in $(seq 1 $RUNS); do
-					echo "Run $i of $RUNS..."
-					echo -e "Running with bs = $bs, iodepth = $iodepth and nj = $nj..."
-					log_file="$LOGS_PATH/fio_${rwmix_read:0:1}_run_${i}.log"
-				
-					make fio_perf_mix FS="$device" RW_TYPE="$rw_type" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$iodepth" NJ="$nj" > "$log_file"
+				for nj in "${IOPS_CONC_NJ_LIST[@]}"; do 
+					iodepth=$(echo "$nj * 4" | bc)
 
-					extract_iops_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$iodepth" "$nj"
+					for ((i=1;i<=RUNS+1;i++)); do
+						echo "Running with bs = $bs, iodepth = $iodepth and nj = $nj, ds = $ds, rw_type = $rw_type rw_mix = $rw_mix ..."
 
-					reinit_lsvbd "$ds" 
+						log_file="$LOGS_PATH/fio_${rw_mix}_run_${i}.log"
+						
+						make fio_perf_mix FS="$BD_NAME" RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$iodepth" NJ="$nj" > "$log_file" 2>&1
+
+						extract_iops_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$iodepth" "$nj"
+
+						reinit_lsvbd "$ds" 
+					done
 				done
 			done
 
 			echo "Data collected in $RESULTS_FILE"
 			python3 "$CONC_IOPS_PLOTS_SCRIPT"  
-			make clean_logs > /dev/null
 		done
 	done
+	make clean_logs > /dev/null
 }
 
 <<docs
@@ -321,45 +328,46 @@ Runs IOPS tests based on SNIA specification. Uses fio_iops_mix cfg from ./Makefi
 @param conc_mode - enables the conccurent performance evaluation 
 @param ds - data structure (sl/ht/...)
 docs
-run_iops_general_test() {
-    local raw_bs_list=$1 nj=$2 id=$3 log_file fs_flag bs_list rwmix 
+run_general_conc_cases() {
+    local raw_bs_list=$1 nj=$2 id=$3 metric=$4 log_file bs_list rw_mix 
 	local IFS=','
 
 	read -r -a bs_list <<< "$raw_bs_list"
 
-	if [ "$mode" == "write" ]; then
-		rwmix="0-100"
-	elif [ "$mode" == "read" ]; then
-		rwmix="100-0"
-	else 
-		echo -e "Failed to parse mode argument (only write/read are supported)\n"
-		return
-	fi 
-
-	echo -e "---Starting IOPS Benchmark on $device...---\n"
+	echo -e "---Starting General (IOPS + LAT) Benchmark on $BD_NAME...---\n"
 	
-	rwmix_read="${rwmix%-*}"
-	rwmix_write="${rwmix#*-}"
 
-	reinit_lsvbd "$ds" # to make sure that ds is selected right
 	for ds in "${AVAILABLE_DS[@]}"; do 
 		reinit_lsvbd "$ds" 
 		for rw_mix in "${RW_MIXES[@]}"; do 
+			rw_mix_read="${rw_mix%-*}"
+			rw_mix_write="${rw_mix#*-}"
+
 			for rw_type in "${RW_TYPES[@]}"; do
 				for bs in "${bs_list[@]}"; do
-					if [ "$rwmix_read" != "0" ]; then 
+
+					if [ "$rw_mix_read" != "0" ]; then 
 						workload_independent_preconditioning "$bs"
 					fi
 
-					for i in $(seq 1 $RUNS); do
-						echo "Run $i of $RUNS..."
-						echo -e "Running with bs = $bs, iodepth = $iodepth and nj = $nj..."
-						log_file="$LOGS_PATH/fio_${rwmix_read:0:1}_run_${i}.log"
-						
-						make fio_perf_mix FS="$device" RW_TYPE="$rw_type" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$iodepth" NJ="$nj" > "$log_file"
+					for ((i=1;i<=RUNS+1;i++)); do
+						echo "Running with bs = $bs, iodepth = $id and nj = $nj, ds = $ds, rw_mix = $rw_mix, rw_type = $rw_type ..."
 
-						extract_iops_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$id" "$nj"
+						log_file="$LOGS_PATH/fio_${rw_mix}_run_${i}.log"
 
+						if [ "$metric" == "IOPS" ]; then
+							make fio_perf_mix FS="$BD_NAME" RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$id" NJ="$nj" > "$log_file"
+
+							extract_iops_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$id" "$nj"
+
+						elif [ "$metric" == "LAT" ]; then 
+							make fio_lat_mix FS="$BD_NAME" RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$id" NJ="1" > "$log_file"
+
+							extract_latency_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$id" "1"
+						else 
+							echo -e "unknown metric"
+						fi
+	
 						reinit_lsvbd "$ds" 
 					done
 				done
@@ -368,72 +376,8 @@ run_iops_general_test() {
 	done 
 
 	echo "Data collected in $RESULTS_FILE"
-	python3 "$CONC_GENERAL_DIFF_PLOT"  
-	make clean_logs > /dev/null
-}
-
-<<docs
-Runs latency tests based on SNIA specification.
-
-@param device - target device (f.e. /dev/lsvbd1) (just log needed)
-@param is_raw - shows if the test is aimed for raw(nullb0)/not raw(lsvbd1) device
-	is needed for plot scripts and their legends
-@param rewrite_mode - shows if warm-up is needed and if the read tests are included
-	1 - mode is on (enables warm-up and read tests)
-	0 - mode is off
-@param conc_mode - enables the conccurent performance evaluation 
-docs
-run_latency_tests() {
-    local device=$1 is_raw=$2 rewrite_mode=$2 mode=$3 bs rw_mix log_file
-	plot_flag=$([[ $device == "nullb0" ]] && echo "--raw")
-	rewrite_flag=$([[ $rewrite_mode -eq 1 ]] && echo "--rewrite")
-	conc_mode=$([[ $mode == "conc_mode" ]] && echo "--conc_mode")
-    fs_flag=$([[ $device == "nullb0" ]] && echo "FS=nullb0" || echo "")
-
-    echo -e "---Starting SNIA-complied Latency Benchmark on $device...---\n"
-    for rw_mix in "${LAT_RW_MIXES[@]}"; do
-		rwmix_read="${rw_mix%-*}"
-		rwmix_write="${rw_mix#*-}"
-		
-		# only-write tests (0-100) can be performed without the warm-up
-		if [ "$rewrite_mode" == "0" ] && [ "$rw_mix" != "0-100" ]; then 
-			continue
-		fi
-
-        for bs in "${LAT_BS_LIST[@]}"; do
-			if [ "$rewrite_mode" == "1" ]; then 
-	            echo -e "Performing a block device warm-up..."
-				# running warm-up for all the operations in case of rewrite_mode==1
-				workload_independent_preconditioning "$bs";
-			fi
-			if [ "$mode" == "conc_mode" ]; then
-				for nj in "${IOPS_CONC_NJ_LIST[@]}"; do 
-					iodepth=$(echo "$nj * 4" | bc)
-
-					for i in $(seq 1 $RUNS); do
-						echo "Run $i of $RUNS..."
-						log_file="$LOGS_PATH/latency_${bs}_${rw_mix}"
-						make fio_lat_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="$iodepth" NJ="$nj" LOG_FILE_PATH="$log_file" > /dev/null
-						extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix" "$nj" "$iodepth"
-
-						reinit_lsvbd ""
-					done
-				done
-			else
-				for i in $(seq 1 $RUNS); do
-					echo "Run $i of $RUNS..."
-					log_file="$LOGS_PATH/latency_${bs}_${rw_mix}"
-					make fio_lat_mix "$fs_flag" RWMIX_READ="$rwmix_read" RWMIX_WRITE="$rwmix_write" BS="$bs" ID="1" NJ="1" LOG_FILE_PATH="$log_file" > /dev/null
-					extract_latency_metrics "$i" "$log_file" "$bs" "$rw_mix"
-
-					reinit_lsvbd ""
-				done
-			fi
-        done
-    done
-
-	python3 "$LATENCY_PLOTS_SCRIPT" $plot_flag $rewrite_flag $conc_mode 
-    make clean_logs > /dev/null
+	python3 "$CONC_GENERAL_DIFF_PLOT" "$metric"
+#	make clean_logs > /dev/null
 }
 
 # Parse options
@@ -441,7 +385,7 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         --io_depth) IO_DEPTH="$2"; shift ;; # TODO  make it a list
         --jobs_num) JOBS_NUM="$2"; shift ;;
-        --brd_size) BRD_SIZE="$2"; shift ;;
+        --bd_size) BD_SIZE="$2"; shift ;;
 		--bd_name) BD_NAME="$2"; shift ;;
         -h|--help) echo "Usage: $0 [--io_depth number] [--jobs_num number]"; exit 1 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -451,52 +395,16 @@ done
 
 prepare_env
 
+#run_iops_for_each_nj_id "write" "8"
+#run_iops_for_each_nj_id "read" "8"
 
-### BASIC TEST-SUITES FOR PERFORMANCE EVALUATION ### 
+# IOPS general concurrent plot
+run_general_conc_cases "8" "8" "32" "IOPS"
 
-### Non-rewrite mode (only write operations are tested)
+# Latency general concurrent plots
+#run_general_conc_cases "8" "1" "1" "LAT"
 
-# Run tests for LSVBD
-run_tp_tests "lsvbd1" 0
-run_iops_tests "lsvbd1" 0
-run_latency_tests "lsvbd1" 0
+#run_general_conc_cases "8" "1" "32" "LAT"
 
-# Run tests for NULLDISK (raw mode)
-run_tp_tests "nullb0" 0
-run_iops_tests "nullb0" 0
-run_latency_tests "nullb0" 0
-
-### Rewrite mode test (warm-up included)
-
-run_tp_tests "lsvbd1" 1
-run_iops_tests "lsvbd1" 1
-run_latency_tests "lsvbd1" 1
-
-# Run tests for NULLDISK (raw mode)
-run_tp_tests "nullb0" 1 
-run_iops_tests "nullb0" 1
-run_latency_tests "nullb0" 1
-
-### Running paralllelism tests (rewrite mode)
-
-run_iops_tests "nullb0" 1 "conc_mode" 
-run_iops_tests "nullb0" 0 "conc_mode" 
-run_iops_tests "lsvbd1" 1 "conc_mode"
-run_iops_tests "lsvbd1" 0 "conc_mode"
-
-run_latency_tests "lsvbd1" 1 "conc_mode"
-run_latency_tests "lsvbd1" 0 "conc_mode"
-run_latency_tests "nullb0" "conc_mode"
-run_latency_tests "nullb0" 0 "conc_mode"
-
-###
-
-run_iops_for_each_nj_id "write" "8" "ds"
-run_iops_for_each_nj_id "read" "8" "ht"
-
-
-
-echo "Histograms, AVG plots, and statistics saved in $PLOTS_PATH"
-
-echo -e "\nCleaning the logs directory"
-make clean > /dev/null
+#echo -e "\nCleaning the logs directory"
+#make clean > /dev/null

@@ -2,18 +2,25 @@
 
 kernel_version=$(uname -r)
 
-if "$kernel_version" | grep -q "fc[0-9]"; then 
-	pm="dnf"
+if echo "$kernel_version" | grep -q "fc[0-9]"; then 
+    pm="dnf"
+    perf_pkg="perf"
+    venv_pkg="python3-virtualenv"
 else
-	pm="apt"
+    pm="apt"
+    perf_pkg="linux-tools-common linux-tools-generic linux-tools-$(uname -r)"
+    venv_pkg="python3-virtualenv"
 fi 
 
-echo -e "Install perf"
-sudo "$pm" install linux-tools-common linux-tools-generic linux-tools-"$(uname -r)"
+echo -e "Installing perf"
+sudo "$pm" install -y $perf_pkg
 
-echo -e "Install fio and make"
-sudo "$pm" install fio make
+echo -e "Installing fio and make"
+sudo "$pm" install -y fio make
+
+echo -e "Installing virtualenv"
+sudo "$pm" install -y $venv_pkg
 
 virtualenv venv --python=python3 ..
-# source ../venv/bin/activate should be executed manually
+echo "Run 'source ../venv/bin/activate' to activate the virtual environment."
 

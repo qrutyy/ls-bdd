@@ -24,9 +24,9 @@ RWMIX_WRITE?=50
 # Log file path (pretty intuitive)
 LOG_FILE_PATH?=logs/latency_idk
 
-RUNTIME=180
+RUNTIME=5
 
-RAMPTIME=30
+RAMPTIME=3
 
 RW_TYPE="randrw"
 
@@ -58,12 +58,12 @@ fio_perf_mix:
 		--rw=$(RW_TYPE) \
 		--rwmixread=$(RWMIX_READ) \
 		--rwmixwrite=$(RWMIX_WRITE) \
-		--bs=$(BS) \
+		--bs=$(BS)k \
 		--numjobs=$(NJ) \
 		--iodepth=$(ID) \
 		--time_based \
 		--runtime=$(RUNTIME) \
-		--ramp_time$(RAMPTIME)
+		--ramp_time=$(RAMPTIME) \
 		--direct=1 \
 		--ioengine=$(IO) \
 		--registerfiles=1 \
@@ -73,20 +73,20 @@ fio_perf_mix:
 		--norandommap=0 \
 		--cpus_allowed_policy=shared \
 		--filename=/dev/$(FS) \
-		--cpus_allowed=0-7
+		--cpus_allowed=0-7 \
 		--offset=16k
 
 fio_lat_mix:
 	fio --name=latency_test \
-	--rw=randrw \
+	--rw=$(RW_TYPE) \
 	--rwmixread=$(RWMIX_READ) \
 	--rwmixwrite=$(RWMIX_WRITE) \
-	--bs=$(BS) \
+	--bs=$(BS)k \
 	--numjobs=1 \ 
 	--iodepth=$(ID) \
 	--time_based \
 	--runtime=$(RUNTIME) \
-	--ramp_time$(RAMPTIME)
+	--ramp_time=$(RAMPTIME) \
 	--direct=1 \						
 	--write_lat_log=$(LOG_FILE_PATH) \
 	--ioengine=$(IO) \
