@@ -796,8 +796,8 @@ module_param_cb(get_vbd_names, &lsbdd_get_bd_ops, NULL, 0644);
 MODULE_PARM_DESC(set_redirect_bd, "Link local disk with redirect block device");
 module_param_cb(set_redirect_bd, &lsbdd_redirect_ops, NULL, 0200);
 
-MODULE_PARM_DESC(set_lsbdd_ds, "Set data structure to be used in mapping");
-module_param_cb(set_ds, &lsbdd_ds_ops, NULL, 0644);
+MODULE_PARM_DESC(set_data_structure, "Set data structure to be used in mapping");
+module_param_cb(set_data_structure, &lsbdd_ds_ops, NULL, 0644);
 
 module_init(lsbdd_init);
 module_exit(lsbdd_exit);
