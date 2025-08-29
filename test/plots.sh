@@ -2,7 +2,7 @@
 
 JOBS_NUM=8
 IO_DEPTH=32
-RUNS=1
+RUNS=10
 DS="sl"
 TYPE="lf"
 
@@ -66,11 +66,11 @@ reinit_lsvbd() {
 workload_independent_preconditioning() {
     local wbs=$1 wf_size_per_job
 
-	wf_size_per_job=$((BD_SIZE / 8)) 
+	wf_size_per_job=$((BD_SIZE / 10)) 
 
 	echo -e "\nRunning warm-up with size $wf_size_per_job for each job"
 
-	fio --name=prep --rw=write --bs="${wbs}"K --numjobs=1 --iodepth=32 --ioengine=io_uring --size=100M \
+	fio --name=prep --rw=write --bs="$wbs"K --numjobs=10 --iodepth=32 --ioengine=io_uring --size="$wf_size_per_job"G \
         --filename=/dev/lsvbd1 --direct=1 --output="$LOGS_PATH/preconditioning.log"
 }
 
@@ -148,15 +148,23 @@ extract_iops_metrics() {
 	local numjobs=$8
 
     local iops
-    iops=$(grep -oP 'IOPS=\K[0-9]+(\.[0-9]+)?k?' "$log_file" | \
+
+    iops=$(grep -oP 'IOPS=\K[0-9]+(\.[0-9]+)?[kKmM]?' "$log_file" | \
         awk '{
-            if ($1 ~ /k$/) {
-                sub(/k/, "", $1);
-                s += $1;
+            val=$1
+            gsub(/K/, "k", val)
+            gsub(/M/, "m", val)
+
+            if (val ~ /k$/) {
+                sub(/k/, "", val)
+                s += val * 1000
+            } else if (val ~ /m$/) {
+                sub(/m/, "", val)
+                s += val * 1000000
             } else {
-                s += $1 / 1000;
+                s += val
             }
-        } END { printf "%.3f", s }')
+        } END { printf "%.0f", s }')
 
 	if [ "$numjobs" == "" ] && [ "$iodepth" == "" ]; then
 		numjobs="0"
@@ -302,7 +310,7 @@ run_iops_for_each_nj_id() {
 
 						log_file="$LOGS_PATH/fio_${rw_mix}_run_${i}.log"
 						
-						make fio_perf_mix FS="$BD_NAME" RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$iodepth" NJ="$nj" > "$log_file" 2>&1
+						make fio_perf_mix FS="lsvbd1" RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$iodepth" NJ="$nj" > "$log_file" 2>&1
 
 						extract_iops_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$iodepth" "$nj"
 
@@ -356,12 +364,12 @@ run_general_conc_cases() {
 						log_file="$LOGS_PATH/fio_${rw_mix}_run_${i}.log"
 
 						if [ "$metric" == "IOPS" ]; then
-							make fio_perf_mix FS="$BD_NAME" RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$id" NJ="$nj" > "$log_file"
+							make fio_perf_mix FS="lsvbd1" RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$id" NJ="$nj" > "$log_file"
 
 							extract_iops_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$id" "$nj"
 
 						elif [ "$metric" == "LAT" ]; then 
-							make fio_lat_mix FS="$BD_NAME" RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$id" NJ="1" > "$log_file"
+							make fio_lat_mix FS="lsvbd1" RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$id" NJ="1" > "$log_file"
 
 							extract_latency_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$id" "1"
 						else 
@@ -399,7 +407,7 @@ prepare_env
 #run_iops_for_each_nj_id "read" "8"
 
 # IOPS general concurrent plot
-run_general_conc_cases "8" "8" "32" "IOPS"
+#run_general_conc_cases "8" "8" "32" "IOPS"
 
 # Latency general concurrent plots
 #run_general_conc_cases "8" "1" "1" "LAT"

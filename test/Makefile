@@ -24,9 +24,9 @@ RWMIX_WRITE?=50
 # Log file path (pretty intuitive)
 LOG_FILE_PATH?=logs/latency_idk
 
-RUNTIME=5
+RUNTIME=30
 
-RAMPTIME=3
+RAMPTIME=30
 
 RW_TYPE="randrw"
 
@@ -72,8 +72,8 @@ fio_perf_mix:
 		--prio=0 \
 		--norandommap=0 \
 		--cpus_allowed_policy=shared \
-		--filename=/dev/$(FS) \
-		--cpus_allowed=0-7 \
+		--filename=/dev/lsvbd1 \
+		--cpus_allowed=0-$(( $(NJ) - 1 )) \
 		--offset=16k
 
 fio_lat_mix:
@@ -95,7 +95,7 @@ fio_lat_mix:
 	--prio=0 \
 	--cpus_allowed=0 \
 	--fixedbufs=1 
-	--filename=/dev/$(FS) \
+	--filename=/dev/lsvbd1 \
 	--norandommap=0 \
 	--offset=16k
 
