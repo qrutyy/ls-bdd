@@ -28,13 +28,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev dwarves bc rsync
 
-      - name: Download kernel headers for 6.15.7
+      - name: Download and prepare kernel 6.15.7 sources
         run: |
-          echo "Downloading Linux kernel $KERNEL_VERSION headers..."
-          wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${KERNEL_VERSION}.tar.xz
-          tar -xf linux-${KERNEL_VERSION}.tar.xz
-          sudo mv linux-${KERNEL_VERSION} $KERNEL_SOURCE_PATH
-          echo "Kernel sources installed at: $KERNEL_SOURCE_PATH"
+          wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.15.7.tar.xz
+          tar -xf linux-6.15.7.tar.xz
+          sudo mv linux-6.15.7 /usr/src/linux-6.15.7
+          cd /usr/src/linux-6.15.7
+          make olddefconfig
+          make prepare
+          make modules_prepare
 
       - name: Build module for 6.15.7
         run: |
