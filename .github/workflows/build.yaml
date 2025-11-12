@@ -1,4 +1,4 @@
-name: Kernel 6.8.0 build
+name: Kernel 6.15.7 build
 
 on:
   push:
@@ -8,13 +8,18 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+
+    env:
+      KERNEL_VERSION: 6.15.7
+      KERNEL_SOURCE_PATH: /usr/src/linux-6.15.7
+
     steps:
       - name: Display Runner's System Info (for context)
         run: |
           echo "Runner's kernel version:"
           uname -a
           uname -r
-          echo "Targeting build for: Linux 6.8.0 (generic)"
+          echo "Targeting build for: Linux $KERNEL_VERSION (generic)"
 
       - uses: actions/checkout@v4
 
@@ -23,14 +28,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev dwarves bc rsync
 
-      - name: Build module for 6.8.0
+      - name: Download kernel headers for 6.15.7
         run: |
-          echo "Kernel source for build will be: ${{ env.KERNEL_SOURCE_PATH }}"
+          echo "Downloading Linux kernel $KERNEL_VERSION headers..."
+          wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${KERNEL_VERSION}.tar.xz
+          tar -xf linux-${KERNEL_VERSION}.tar.xz
+          sudo mv linux-${KERNEL_VERSION} $KERNEL_SOURCE_PATH
+          echo "Kernel sources installed at: $KERNEL_SOURCE_PATH"
+
+      - name: Build module for 6.15.7
+        run: |
+          echo "Kernel source for build: $KERNEL_SOURCE_PATH"
           cd src/
-          make type=lf
+          make type=lf KERNELDIR=$KERNEL_SOURCE_PATH
 
       - name: List built artifacts (optional)
-        if: always() 
+        if: always()
         run: |
           echo "Listing contents of src/ after build:"
           ls -l src/
