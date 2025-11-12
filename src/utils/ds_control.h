@@ -47,6 +47,6 @@ void ds_remove(struct lsbdd_ds *ds, sector_t key, struct kmem_cache *value_cache
 int ds_insert(struct lsbdd_ds *ds, sector_t key, void *value, struct lsbdd_cache_mng *lsbdd_cache_mng, struct kmem_cache *value_cache);
 sector_t ds_last(struct lsbdd_ds *ds, sector_t key);
 void *ds_prev(struct lsbdd_ds *ds, sector_t key, sector_t *prev_key);
-int ds_empty_check(struct lsbdd_ds *ds);
+bool ds_empty_check(struct lsbdd_ds *ds);
 
 #endif

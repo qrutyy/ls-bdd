@@ -276,17 +276,17 @@ void *ds_prev(struct lsbdd_ds *ds, sector_t key, sector_t *prev_key)
 	BUG();
 }
 
-s32 ds_empty_check(struct lsbdd_ds *ds)
+bool ds_empty_check(struct lsbdd_ds *ds)
 {
 	BUG_ON(!ds);
 
 	if (ds->type == BTREE_TYPE && ds->structure.map_btree->head->height == 0)
-		return 1;
+		return true;
 	if (ds->type == SKIPLIST_TYPE && skiplist_is_empty(ds->structure.map_list))
-		return 1;
+		return true;
 	if (ds->type == HASHTABLE_TYPE && hashtable_is_empty(ds->structure.map_hash))
-		return 1;
+		return true;
 	if (ds->type == RBTREE_TYPE && ds->structure.map_rbtree->node_num == 0)
-		return 1;
-	return 0;
+		return true;
+	return false;
 }
