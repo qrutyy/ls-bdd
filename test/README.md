@@ -2,43 +2,60 @@
 
 The test framework is designed to benchmark, verify, and analyze the performance characteristics of log-structured block devices. It includes automated test orchestration, performance measurement, verification testing, and visualization capabilities.
 
+**Limitations:**
+* The performance measurement system does not support mixed workflows.
+
 ## Automated Testing Tools
 
 The primary interface is `main.sh`, which orchestrates the entire test system workflow.
 
 ### Command Line Options
 
-| Action | Option | Description |
-|--------|--------|-------------|
-| **Run Test Scripts** | `-a` / `--auto` | Execute the complete automated test suites |
-| **Environment Setup** | `-s` / `--setup` | Initialize and configure the experiment environment |
-| **Performance Analysis** | `-p` / `--perf` | Create flamegraph visualizations for call-stack analysis |
-| **Call Stack Analysis** | `-c` / `--cplots` | Generate performance plots from automated test results |
+| Action                   | Option            | Description                                           |
+| ------------------------ | ----------------- | ----------------------------------------------------- |
+| **Run Test Scripts**     | `-a` / `--auto`   | Execute the complete automated test suite             |
+| **Environment Setup**    | `-s` / `--setup`  | Initialize and configure the experimental environment |
+| **Performance Analysis** | `-p` / `--perf`   | Generate flamegraphs for call stack analysis          |
+| **Call Stack Analysis**  | `-c` / `--cplots` | Produce performance plots from automated test results |
 
 ### Configuration Parameters
 
-| Parameter | Option | Description |
-|-----------|--------|-------------|
-| **Block Device Selection** | `--bd_name <name>` | Name for module reinitialization during performance testing |
-| **I/O Depth** | `--io_depth <number>` | Configure the queue depth for I/O operations |
-| **Job Concurrency** | `--jobs_num <number>` | Set the number of parallel jobs for testing |
-
-### Usage Examples
+Configuration parameters are defined in `configurable_params.sh`.
+Edit this file as needed, then run `main.sh` with the desired mode.
+For example:
 
 ```bash
-# Complete automated test with custom parameters
-./main.sh --auto --bd_name nullb0 --io_depth 32 --jobs_num 4
-
-# Setup environment and run performance analysis
-./main.sh --setup --bd_name sda
-
-# Generate flamegraphs for performance profiling
-./main.sh --perf --io_depth 16 --jobs_num 8
-
-# Performance testing and plots generation
-./main.sh --cplots --setup --bd_name nullb0 --io_depth 32 --jobs_num 8
-
+./main.sh --setup --cplots
 ```
+
+Plot titles can also be modified in `configurable_params.sh`.
+
+The `plots.sh` script provides extensive customization options:
+
+- **Test Types**
+  * **IOPS Testing**: Evaluates input/output operations per second
+  * **Latency Testing**: Analyzes response time characteristics
+
+- **Concurrency Analysis**
+  * **Parameter Sweep**: Tests various combinations of `iodepth` and `numjobs`
+  * **Comparison Mode**: Compares raw block device performance with `lsvbd1`
+
+- **Workload Parameters**
+  * **I/O Workflow**: Configures read/write operation types
+  * **Block Size Variations**: Tests different transfer sizes
+  * **Access Patterns**: Sequential vs. random I/O workloads
+  * **Workflow Duration**: Adjustable to simulate different scenarios
+
+
+### Plots examples
+| ![Figure 1](https://github.com/qrutyy/ls-bdd/blob/main/test/plots/iops/IOPS_general_hist_nj8_id32.png) | ![Figure 2](https://github.com/qrutyy/ls-bdd/blob/main/test/plots/iops/AVG_IOPS_bars_idnj_0-100_8_randrw.png) |
+|----------------------------|----------------------------|
+| *Figure 1: AVG IOPS for different operations with specified NJ/ID, BS*    | *Figure 2: AVG IOPS for different NJ/ID with specified BS*     |
+
+| ![Figure 3](https://github.com/qrutyy/ls-bdd/blob/main/test/plots/lat/P99_LAT_general_hist_nj8_id32.png) |
+|----------------------------|
+| *Figure 3: P99 LAT for different operations with specified NJ/ID, BS*    |
+
 
 ## Manual Testing Tools
 
@@ -46,10 +63,10 @@ The primary interface is `main.sh`, which orchestrates the entire test system wo
 
 The `test/fio/` directory contains specialized FIO configurations for targeted testing:
 
-- **Verification Workflows**: Data integrity and correctness validation
-- **Performance Measurement**: Throughput, IOPS, and latency benchmarking
+* **Verification Workflows**: Validate data integrity and correctness
+* **Performance Measurement**: Benchmark throughput, IOPS, and latency
 
-Workflows are presented in two ways - FIO file and .sh script
+Each workflow is provided in two forms: an FIO configuration file and a corresponding `.sh` script.
 
 ## Output and Results
 
@@ -64,40 +81,18 @@ test/
 ```
 
 ### Performance Data Files
-Data files save the extracted data from the test-suite for future dataframe processing and plot generation.
 
-| File | Content |
-|------|---------|
-| `fio_results.dat` | Primary FIO performance metrics during evaluation |
-| `fio_lat_results.dat` | Detailed latency statistics and percentile data |
+Performance data files store extracted results from automated test suites for later dataframe processing and plot generation.
 
-## Configuration and Customization
-
-### Performance Testing Configuration (`plots.sh`)
-
-The `plots.sh` script provides extensive customization options:
-
-#### Test Types
-- **Throughput Testing**: Measure sustained data transfer rates
-- **IOPS Testing**: Evaluate I/O operations per second
-- **Latency Testing**: Analyze response time characteristics
-
-#### Concurrency Analysis
-- **Parameter Sweep**: Test different combinations of `iodepth` and `numjobs`
-- **Comparison Mode**: Direct block device vs. `lsvbd1` performance comparison
-
-#### Workload Parameters
-- **I/O Mix Ratios**: Configure read/write percentages
-- **Block Size Variations**: Test different transfer sizes
-- **Access Patterns**: Sequential vs. random I/O patterns
-- **Workflow time**: Can be changed for simulating different cases.
+| File                  | Content                                                     |
+| --------------------- | ----------------------------------------------------------- |
+| `fio_results.dat`     | Primary FIO performance metrics collected during evaluation |
+| `fio_lat_results.dat` | Detailed latency statistics and percentile data             |
 
 ### Workflow Templates (`Makefile`)
 
-The `Makefile` contains customizable workflow templates for:
-- Standard performance benchmarks
-- Verification test procedures
-- Custom test parameter combinations
+The `Makefile` provides customizable workflow templates for:
 
-*BTW some performance workflows provide detatailed auxiliary logs with dataframe analysis (normality test, distribution and others).*
-
+* Standard performance benchmarks
+* Verification test procedures
+* Custom test parameter combinations
