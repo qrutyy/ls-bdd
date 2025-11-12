@@ -1,26 +1,13 @@
 #!/bin/bash
 
-JOBS_NUM=8
-IO_DEPTH=32
-RUNS=10
-DS="sl"
-TYPE="lf"
+source ./configurable_params.sh
 
-BD_NAME="--"
-
-LOGS_PATH="logs"
-PLOTS_PATH="./plots"
-RESULTS_FILE="$LOGS_PATH/fio_results.dat"
-LAT_RESULTS_FILE="$LOGS_PATH/fio_lat_results.dat"
-
-CONC_IOPS_PLOTS_SCRIPT="iops_conc_plots.py"
-CONC_GENERAL_DIFF_PLOT="general_conc_plots.py"
-
-IOPS_CONC_NJ_LIST=("1" "2" "4" "8")
-
-RW_TYPES=("rw" "randrw")
-RW_MIXES=("0-100" "100-0")
-AVAILABLE_DS=("sl" "ht")
+readonly LOGS_PATH="logs"
+readonly PLOTS_PATH="./plots"
+readonly RESULTS_FILE="$LOGS_PATH/fio_results.dat"
+readonly LAT_RESULTS_FILE="$LOGS_PATH/fio_lat_results.dat"
+readonly CONC_IOPS_PLOTS_SCRIPT="iops_conc_plots.py"
+readonly CONC_GENERAL_DIFF_PLOT="general_conc_plots.py"
 
 usage() {
     echo "Usage: $0 [--io_depth number] [--jobs_num number]"
@@ -52,14 +39,14 @@ reinit_lsvbd() {
 	local ds=$1
 
 	if [ "$ds" == "" ]; then
-		ds=$DS
+		ds=$PL_CUR_DS
 	fi 
 
 	make -C ../src exit DBI=1 > /dev/null
 
 	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
 
-	make -C ../src init_no_recompile DS="$ds" TY="$TYPE" BD="$BD_NAME" > /dev/null
+	make -C ../src init_no_recompile DS="$ds" TY="$PL_TYPE" BD="$BD_NAME" > /dev/null
 }
 
 # Performs warm-up with workload as big as the block device.
@@ -71,7 +58,7 @@ workload_independent_preconditioning() {
 	echo -e "\nRunning warm-up with size $wf_size_per_job for each job"
 
 	fio --name=prep --rw=write --bs="$wbs"K --numjobs=10 --iodepth=32 --ioengine=io_uring --size="$wf_size_per_job"G \
-        --filename=/dev/lsvbd1 --direct=1 --output="$LOGS_PATH/preconditioning.log"
+        --filename=/dev/$VBD_NAME --direct=1 --output="$LOGS_PATH/preconditioning.log"
 }
 
 <<docs
@@ -293,24 +280,24 @@ run_iops_for_each_nj_id() {
 	echo "$rw_mix_read"
 	echo "$rw_mix_write"
 	
-	for rw_type in "${RW_TYPES[@]}"; do
+	for rw_type in "${PL_RW_TYPES[@]}"; do
 		for bs in "${bs_list[@]}"; do
-			for ds in "${AVAILABLE_DS[@]}"; do 
+			for ds in "${PL_AVAILABLE_DS[@]}"; do 
 				reinit_lsvbd "$ds" # to make sure that ds is selected right
 
 				if [ "$rw_mix_read" != "0" ]; then 
 					workload_independent_preconditioning "$bs"
 				fi
 
-				for nj in "${IOPS_CONC_NJ_LIST[@]}"; do 
+				for nj in "${PL_IOPS_CONC_NJ_LIST[@]}"; do 
 					iodepth=$(echo "$nj * 4" | bc)
 
-					for ((i=1;i<=RUNS+1;i++)); do
+					for ((i=1;i<=PL_RUNS+1;i++)); do
 						echo "Running with bs = $bs, iodepth = $iodepth and nj = $nj, ds = $ds, rw_type = $rw_type rw_mix = $rw_mix ..."
 
 						log_file="$LOGS_PATH/fio_${rw_mix}_run_${i}.log"
 						
-						make fio_perf_mix FS="lsvbd1" RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$iodepth" NJ="$nj" > "$log_file" 2>&1
+						make fio_perf_mix FS=$VBD_NAME RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$iodepth" NJ="$nj" > "$log_file" 2>&1
 
 						extract_iops_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$iodepth" "$nj"
 
@@ -345,31 +332,31 @@ run_general_conc_cases() {
 	echo -e "---Starting General (IOPS + LAT) Benchmark on $BD_NAME...---\n"
 	
 
-	for ds in "${AVAILABLE_DS[@]}"; do 
+	for ds in "${PL_AVAILABLE_DS[@]}"; do 
 		reinit_lsvbd "$ds" 
-		for rw_mix in "${RW_MIXES[@]}"; do 
+		for rw_mix in "${PL_RW_MIXES[@]}"; do 
 			rw_mix_read="${rw_mix%-*}"
 			rw_mix_write="${rw_mix#*-}"
 
-			for rw_type in "${RW_TYPES[@]}"; do
+			for rw_type in "${PL_RW_TYPES[@]}"; do
 				for bs in "${bs_list[@]}"; do
 
 					if [ "$rw_mix_read" != "0" ]; then 
 						workload_independent_preconditioning "$bs"
 					fi
 
-					for ((i=1;i<=RUNS+1;i++)); do
+					for ((i=1;i<=PL_RUNS+1;i++)); do
 						echo "Running with bs = $bs, iodepth = $id and nj = $nj, ds = $ds, rw_mix = $rw_mix, rw_type = $rw_type ..."
 
 						log_file="$LOGS_PATH/fio_${rw_mix}_run_${i}.log"
 
 						if [ "$metric" == "IOPS" ]; then
-							make fio_perf_mix FS="lsvbd1" RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$id" NJ="$nj" > "$log_file"
+							make fio_perf_mix FS=$VBD_NAME RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$id" NJ="$nj" > "$log_file"
 
 							extract_iops_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$id" "$nj"
 
 						elif [ "$metric" == "LAT" ]; then 
-							make fio_lat_mix FS="lsvbd1" RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$id" NJ="1" > "$log_file"
+							make fio_lat_mix FS=$VBD_NAME RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$id" NJ="1" > "$log_file"
 
 							extract_latency_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$id" "1"
 						else 
@@ -391,11 +378,7 @@ run_general_conc_cases() {
 # Parse options
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --io_depth) IO_DEPTH="$2"; shift ;; # TODO  make it a list
-        --jobs_num) JOBS_NUM="$2"; shift ;;
-        --bd_size) BD_SIZE="$2"; shift ;;
-		--bd_name) BD_NAME="$2"; shift ;;
-        -h|--help) echo "Usage: $0 [--io_depth number] [--jobs_num number]"; exit 1 ;;
+        -h|--help) echo "Usage: $0 [--bd_size size of underlyiing block device] [--bd_name name of underlying block device]"; exit 1 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
     shift
@@ -403,16 +386,17 @@ done
 
 prepare_env
 
-#run_iops_for_each_nj_id "write" "8"
-#run_iops_for_each_nj_id "read" "8"
+for cfg_entry in "${PL_GENERAL_CONC_CFG[@]}"; do
+	read -r operation block_size <<< "$cfg_entry"
 
-# IOPS general concurrent plot
-#run_general_conc_cases "8" "8" "32" "IOPS"
+	run_iops_for_each_nj_id "$operation" "$block_size"
+done
 
-# Latency general concurrent plots
-#run_general_conc_cases "8" "1" "1" "LAT"
+for cfg_entry in "${PL_GENERAL_CONC_CFG[@]}"; do
+	read -r block_size nj id metric <<< "$cfg_entry"
 
-#run_general_conc_cases "8" "1" "32" "LAT"
+	run_general_conc_cases "$block_size" "$nj" "$id" "$metric"
+done
 
 #echo -e "\nCleaning the logs directory"
 #make clean > /dev/null
