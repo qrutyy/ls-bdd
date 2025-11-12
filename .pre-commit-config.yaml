@@ -32,6 +32,7 @@ repos:
         name: Check shell scripts
         files: \.sh$
         exclude: test/plots\.sh$
+        args: ["-e", "SC1091"]
 
   - repo: https://github.com/mrtazz/checkmake
     rev: 0.2.2
