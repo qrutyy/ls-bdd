@@ -5,8 +5,6 @@ WBS?=8
 RO?=randread
 # Write operation type (write/randwrite)
 WO?=randwrite
-# File size (in MB)
-FS?=400000
 # IO engine to use in FIO (libaio\io_uring)
 IO?=io_uring
 # Number of fio jobs to run
@@ -33,19 +31,6 @@ RW_TYPE="randrw"
 
 fio_perf_template:
 	fio --name=test --ioengine=$(IO) --iodepth=$(ID) --rw=$(MODE) --bssplit=$(BS)k/100 --direct=1 --filename=/dev/$(FS) --numjobs=$(NJ) --write_bw_log=logs/write$(IN) --write_lat_log=logs/write$(IN) --write_iops_log=logs/write$(IN) --per_job_logs=0 $(EXTRA_OPTS) --offset=16k
-
-fio_perf_r_clean:
-	$(MAKE) fio_perf_template MODE=randread BS=$(WBS) 
-
-fio_perf_w_clean:
-	$(MAKE) fio_perf_template MODE=randwrite BS=$(WBS) 
-
-fio_perf:
-	# Write test
-	make fio_perf_w_clean
-
-	# Read and test 
-	make fio_perf_r_clean
 
 fio_perf_w_opt:
 	$(MAKE) fio_perf_template MODE=randwrite BS=$(WBS) EXTRA_OPTS="--time_based --runtime=10 --cmdprio_percentage=100 --registerfiles=1 --fixedbufs=1 --hipri=0  --cpus_allowed_policy=shared --prio=0 "
@@ -82,20 +67,20 @@ fio_lat_mix:
 	--rwmixread=$(RWMIX_READ) \
 	--rwmixwrite=$(RWMIX_WRITE) \
 	--bs=$(BS)k \
-	--numjobs=1 \ 
+	--numjobs=1 \
 	--iodepth=$(ID) \
 	--time_based \
 	--runtime=$(RUNTIME) \
 	--ramp_time=$(RAMPTIME) \
-	--direct=1 \						
+	--direct=1 \
 	--write_lat_log=$(LOG_FILE_PATH) \
 	--ioengine=$(IO) \
 	--registerfiles=1 \
 	--hipri=0 \
 	--prio=0 \
 	--cpus_allowed=0 \
-	--fixedbufs=1 
-	--filename=/dev/lsvbd1 \
+	--fixedbufs=1 \
+	--filename=/dev/$(FS) \
 	--norandommap=0 \
 	--offset=16k
 
