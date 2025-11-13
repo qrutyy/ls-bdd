@@ -29,7 +29,7 @@ For example:
 ```
 
 Plot titles can also be modified in `configurable_params.sh`.
-
+Before calling plot generation - add your ds to the ds_colors.
 The `plots.sh` script provides extensive customization options:
 
 - **Test Types**
