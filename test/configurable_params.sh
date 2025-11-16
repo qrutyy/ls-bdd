@@ -37,7 +37,7 @@ BS_MIX_MODE=0
 ### SPECIFIC PLOT MODE PARAMETERS ###
 #####################################
 
-PL_RUNS=10
+PL_RUNS=20
 PL_IOPS_CONC_NJ_LIST=("1" "2" "4" "8")
 PL_RW_TYPES=("rw" "randrw")
 PL_RW_MIXES=("0-100" "100-0")
@@ -60,6 +60,25 @@ PL_GENERAL_CONC_CFG=(
 
 PL_PRECOND_JOBS_NUM=10
 PL_PRECOND_IODEPTH=32
+
+################################################
+### PYTHON SCRIPTS PLOTS SPECIFIC PARAMETERS ###
+################################################
+
+# to mantain one cfg file - these parameters aren't in shell syntax, so comment them
+
+# PY_PL_NEW_DS="ds id : Full ds name"
+# PY_PL_DS_TO_PLOT="ht, sl"
+
+# PL_GENERAL_IOPS_Y_TITLE="IOPS (ops k/s)"
+# PL_GENERAL_LAT_Y_TITLE="General latency (ms)"
+# PL_GENERAL_IOPS_TITLE_TEMPLATE="Median IOPS values"
+# PL_GENERAL_LAT_TITLE_TEMPLATE="99-th percentiles of general latency"
+
+# PL_IOPS_CONC_Y_TITLE="IOPS (ops/s)"
+# PL_IOPS_CONC_X_TITLE="NUMJOBS/IODEPTH"
+# PL_IOPS_CONC_TITLE_TEMPLATE="Median IOPS values for different NJ/ID configurations,"
+
 
 output_config() {
 	echo "##########################"
