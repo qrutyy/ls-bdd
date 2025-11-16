@@ -21,9 +21,10 @@ The primary interface is `main.sh`, which orchestrates the entire test system wo
 ### Configuration Parameters
 
 Configuration parameters are defined in `configurable_params.sh`.
-Edit this file as needed, then run `main.sh` with the desired mode.
-For example:
+1. Edit this file as needed, then run `main.sh` with the desired mode.
+2. Edit the `reinit_lsvbd` functions by removing the ramdisk initialisation if you are using some non-virtual device as an underlying one.
 
+Then you can run the main script(e.g.):
 ```bash
 ./main.sh --setup --cplots
 ```
