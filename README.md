@@ -5,7 +5,7 @@ The log-structured approach is designed to accelerate certain read workflows by 
 Although the log-structured concept is well known, the details of its implementation remain insufficiently studied.
 This framework explores the efficiency and behavior of various data structures used in LS-based systems.
 
-The framework provides a modifiable block device driver where the LS's underlying data structures can be added or modified.
+The framework provides a modifiable block device driver in which the LS underlying data structures can be added or modified.
 The current version of the driver includes several already implemented data structures in both **lock-free** and **synchronous** versions: **B+-tree**, **RB-tree**, **Skiplist**, and **Hashtable**.
 
 The driver is based on BIO request management and supports BIO splitting (i.e., different block sizes for operations, such as 4 KB writes and 16 KB reads).
@@ -18,27 +18,24 @@ For more information, see:
 
 ***Compatible with Linux Kernel 6.15.7***
 
-
 ## Block Device Driver
 
 It is highly recommended to test the driver in a virtual machine to prevent data corruption.
 
-
 ### Adding Your Data Structure
 
-Here are the steps to add a new data structure as the underlying mechanism for storing the LBA–PBA mapping in LS:
+Below are the steps for adding a new data structure as the underlying mechanism for storing the LBA–PBA mapping in LS:
 
 1. Place your implementation in the **`utils/<mode>`** directory, where **`<mode>`** denotes the parallelism model of your data structure (*sync* or *lock-free*).
-   **Note:** The method implementations must comply with the standard described in [this file](https://github.com/qrutyy/ls-bdd/blob/main/src/README.md).
+   **Note:** The implementation must comply with the standard described in [this file](https://github.com/qrutyy/ls-bdd/blob/main/src/README.md).
 
 2. Append the **`lsbdd-objs`** list in **`Kbuild`** with the path to the `.o` file of your data structure.
 
-3. Update the **`ds_control`** system (both header and source files) with calls to your data structure’s API.
+3. Update the **`ds_control`** system (both the header and source files) with calls to your data structure’s API.
 
 4. Assign a name to your data structure and add this identifier to the **`available_ds`** array in `main.h`.
 
 5. Initialize the module by passing your identifier via the **`ds_name`** option.
-
 
 ### Initialization
 
@@ -46,10 +43,9 @@ Here are the steps to add a new data structure as the underlying mechanism for s
 make init DS="ds_name" TY="io_type" BD="bd_name"
 ```
 
-* **`ds_name`** – one of the available data structures used for mapping storage (`bt`, `ht`, `sl`, `rb`, or your custom one)
+* **`ds_name`** – one of the available data structures used for mapping (`bt`, `ht`, `sl`, `rb`, or your custom one)
 * **`io_type`** – block device mode (`lf` – lock-free, `sy` – synchronous)
-* **`bd_name`** – target block device (e.g., `ram0`, `vdb`, `sdc`, etc.)
-
+* **`bd_name`** – target block device (e.g., `ram0`, `vdb`, `sdc`)
 
 ### Sending Requests
 
@@ -67,7 +63,7 @@ dd of=test2.txt if=/dev/lsvbd1 iflag=direct bs=4K count=10
 
 ### Testing
 
-You can use the provided FIO tests (or write your own) that measure execution time and perform pattern verification:
+You can use the provided FIO tests (or write your own) to measure execution time and perform pattern verification:
 
 ```bash
 make fio_verify IO=io_uring FS=lsvbd1 WBS=8 RBS=8 NJ=8 ID=8 SIZE=1000
@@ -75,7 +71,7 @@ make fio_verify IO=io_uring FS=lsvbd1 WBS=8 RBS=8 NJ=8 ID=8 SIZE=1000
 
 A description of all options is provided in the `Makefile`.
 
-If you need more customizable FIO testing, check the `test/fio/` directory for predefined configurations.
+For more customizable FIO testing, check the `test/fio/` directory for predefined configurations.
 
 ## Performance Evaluation
 
