@@ -50,6 +50,7 @@ The `plots.sh` script provides extensive customization options:
 
 
 ### Plots examples
+P.S. The generated plots in this repository are in English.
 | ![Figure 1](https://github.com/qrutyy/ls-bdd/blob/main/test/plots/iops/IOPS_general_hist_nj8_id32.png) | ![Figure 2](https://github.com/qrutyy/ls-bdd/blob/main/test/plots/iops/AVG_IOPS_bars_idnj_0-100_8_randrw.png) |
 |----------------------------|----------------------------|
 | *Figure 1: AVG IOPS for different operations with specified NJ/ID, BS*    | *Figure 2: AVG IOPS for different NJ/ID with specified BS*     |
