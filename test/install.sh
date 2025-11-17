@@ -13,7 +13,7 @@ else
 fi 
 
 echo -e "Installing perf"
-sudo "$pm" install -y $perf_pkg
+sudo "$pm" install -y "$perf_pkg"
 
 echo -e "Installing fio and make"
 sudo "$pm" install -y fio make

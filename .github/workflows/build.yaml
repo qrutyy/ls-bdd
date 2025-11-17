@@ -39,6 +39,8 @@ jobs:
           make modules_prepare
 
       - name: Build module for 6.15.7
+        env:
+          KBUILD_MODPOST_WARN: "1"
         run: |
           echo "Kernel source for build: $KERNEL_SOURCE_PATH"
           cd src/

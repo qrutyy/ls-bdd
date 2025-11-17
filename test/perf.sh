@@ -3,7 +3,7 @@
 ###											###
 ###		  PERFORMANCE ANALYSIS PART			###
 ###											###
-
+# shellcheck disable=SC1091
 source ./configurable_params.sh
 
 readonly FLAMEGRAPH_PATH="./FlameGraph"
