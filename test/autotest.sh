@@ -12,6 +12,7 @@ reinit_lsvbd() {
 	make -C ../src exit DBI=1 > /dev/null
 
 	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
+	# paste the reinition of the module
 	modprobe brd rd_nr=1 rd_size=$(("$NBD_SIZE" * 1048576))
 	make -C ../src init_no_recompile DS="${BD_DS}" TY="${BD_TYPE}" > /dev/null
 }

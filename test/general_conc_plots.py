@@ -4,17 +4,27 @@ import numpy as np
 import os
 import re
 import pandas as pd
+import config_parsers as cfg_parser
 
-RESULTS_FILE = "logs/fio_results.dat"
+RESULTS_FILE_PATH = "logs/fio_results.dat"
+
+# Predefined defaults
+DEFAULT_DS_MAPPING = {
+    "ht": "Hash-table",
+    "sl": "Skiplist",
+    "bt": "B+ tree",
+    "rb": "Red-Black tree",
+}
 
 # Define column names, including IODEPTH and NUMJOBS for conc_mode
 # If these are not always present, you might need more sophisticated loading or error handling
-lat_column_names = [
+LAT_COLUMN_NAMES = [
     "RunID",
     "DS",
     "BS",
     "RW_MIX",
     "RW_TYPE",
+    "MODE",
     "Avg_SLAT",
     "Avg_CLAT",
     "Avg_LAT",
@@ -25,10 +35,10 @@ lat_column_names = [
     "P99_CLAT",
     "P99_LAT",
     "IODEPTH",
-    "NUMJOBS"
+    "NUMJOBS",
 ]
 
-iops_column_names = [
+IOPS_COLUMN_NAMES = [
     "RunID",
     "DS",
     "BS",
@@ -38,16 +48,10 @@ iops_column_names = [
     "MODE",
     "RW_TYPE",
     "IODEPTH",
-    "NUMJOBS"
+    "NUMJOBS",
 ]
 
-ds_colors = {
-    "sl": "steelblue",
-    "ht": "indianred",
-    "rb": "seagreen",
-    "bt": "darkkhaki"
-}
-
+DS_COLORS = {"sl": "steelblue", "ht": "indianred", "rb": "seagreen", "bt": "darkkhaki"}
 parser = argparse.ArgumentParser(
     description="Generate plots from FIO benchmark results."
 )
@@ -63,6 +67,14 @@ try:
     plot_colors = plt.get_cmap("tab10", 10).colors
 except AttributeError:  # Matplotlib < 2.0
     plot_colors = [plt.get_cmap("tab10")(i) for i in np.linspace(0, 1, 10)]
+
+PLOT_TITLES = cfg_parser.parse_plot_titles()
+
+# Load user mapping from shell file
+USER_DS_MAPPING = cfg_parser.load_ds_mapping()
+
+# Merge: user mapping overrides defaults
+DS_MAPPING = {**DEFAULT_DS_MAPPING, **USER_DS_MAPPING}
 
 
 def clean_numeric(series):
@@ -89,26 +101,24 @@ def parse_block_size_for_sorting(bs_str):
 
 
 def get_formatted_ds_name(ds):
-    match(ds):
-        case "ht":
-            return "Хеш-таблица"
-        case "sl":
-            return "Список с пропусками"
-        case "bt":
-            return "Б+ дерево"
-        case "rb":
-            return "Красно-черное дерево"
-        case _:
-            print("Unknown ds type, check get_formatted_ds_name function in iops_conc_plots.py")
-            return "unknown"
+    """
+    Return the formatted name using merged mapping (defaults + PY_PL_NEW_DS).
+    """
+    if ds in DS_MAPPING:
+        return DS_MAPPING[ds]
+    else:
+        print("Unknown ds type, check PY_PL_NEW_DS in configurable_params.sh")
+        return "unknown"
 
 
+# ill just leave it here pog
+# ps: child of regression
 def get_metric():
-    match(args.metric):
+    match (args.metric):
         case "IOPS":
             return "IOPS"
         case "LAT":
-            return "P99_LAT"
+            return "LAT"
 
 
 def plot_general_hist(
@@ -119,7 +129,7 @@ def plot_general_hist(
     metric,
     ds_values=("sl", "ht"),
     save_directory="iops",
-    filename="general_iops.png"
+    filename="general_iops.png",
 ):
     """
     Builds 1 plot with 4 pairs of histograms:
@@ -133,10 +143,10 @@ def plot_general_hist(
 
     # map workload groups
     workloads = [
-        ("0-100", "randrw", "Случайное чтение"),
-        ("0-100", "rw",  "Последовательное чтение"),
-        ("100-0", "randrw", "Случайная запись"),
-        ("100-0", "rw",  "Последовательная запись"),
+        ("0-100", "randrw", "Random read"),
+        ("0-100", "rw", "Sequential read"),
+        ("100-0", "randrw", "Random write"),
+        ("100-0", "rw", "Sequential write"),
     ]
 
     values_per_group = {label: [] for _, _, label in workloads}
@@ -144,15 +154,18 @@ def plot_general_hist(
     for mix, rw_type, label in workloads:
         for ds in ds_values:
             row = df[
-                (df["NUMJOBS"] == nj) &
-                (df["IODEPTH"] == iodepth) &
-                (df["BS"] == bs_val) &
-                (df["RW_MIX"] == mix) &
-                (df["RW_TYPE"] == rw_type) &
-                (df["DS"] == ds)
+                (df["NUMJOBS"] == nj)
+                & (df["IODEPTH"] == iodepth)
+                & (df["BS"] == bs_val)
+                & (df["RW_MIX"] == mix)
+                & (df["RW_TYPE"] == rw_type)
+                & (df["DS"] == ds)
             ]
             if not row.empty:
-                values_per_group[label].append(row[metric].median())
+                if metric == "LAT":
+                    values_per_group[label].append(row["P99_LAT"].median())
+                else:
+                    values_per_group[label].append(row[metric].median())
             else:
                 values_per_group[label].append(0)
 
@@ -163,25 +176,30 @@ def plot_general_hist(
 
     plt.figure(figsize=(10, 6))
 
-    # sl bars
-    plt.bar(x - width/2,
-            [values_per_group[label][0] for label in x_labels],
-            width,
-            color=ds_colors.get("sl", None),
-            label="Список с пропусками")
+    for idx, ds in enumerate(ds_values):
+        plt.bar(
+            x - width / 2 + idx * width / len(ds_values),
+            [values_per_group[label][idx] for label in x_labels],
+            width / len(ds_values),
+            color=DS_COLORS.get(ds, None),
+            label=get_formatted_ds_name(ds),
+        )
 
-    # ht bars
-    plt.bar(x + width/2,
-            [values_per_group[label][1] for label in x_labels],
-            width,
-            color=ds_colors.get("ht", None),
-            label="Хеш-таблица")
-
-    y_label = "IOPS (тыс. операций/c)" if (metric == "IOPS") else "Общая задержка (мс)"
-    title_tmplt = "Медианные значения IOPS" if (metric == "IOPS") else "99-е перцентили общей задержки"
+    y_label = (
+        PLOT_TITLES["PL_GENERAL_IOPS_Y_TITLE"]
+        if (metric == "IOPS")
+        else PLOT_TITLES["PL_GENERAL_LAT_Y_TITLE"]
+    )
+    title_tmplt = (
+        PLOT_TITLES["PL_GENERAL_IOPS_TITLE_TEMPLATE"]
+        if (metric == "IOPS")
+        else PLOT_TITLES["PL_GENERAL_LAT_TITLE_TEMPLATE"]
+    )
     plt.xticks(x, x_labels)
     plt.ylabel(y_label)
-    plt.title(f"{title_tmplt} для различных операций,\nпри NJ={nj}, ID={iodepth}, BS={bs_val}K")
+    plt.title(
+        f"{title_tmplt} for different operations,\nNJ={nj}, ID={iodepth}, BS={bs_val}K"
+    )
 
     plt.legend()
     plt.tight_layout()
@@ -198,9 +216,9 @@ def plot_general_hist(
 
 
 def process_df():
-    csv_columns = iops_column_names if (args.metric == "IOPS") else lat_column_names
+    csv_columns = IOPS_COLUMN_NAMES if (args.metric == "IOPS") else LAT_COLUMN_NAMES
     df = pd.read_csv(
-        RESULTS_FILE,
+        RESULTS_FILE_PATH,
         sep=r"\s+",
         skiprows=0,
         # Ensure all potential columns are named for robust parsing
@@ -211,7 +229,15 @@ def process_df():
     print(df)
 
     # Centralized numeric cleaning for relevant columns
-    cols_to_make_numeric = ["RunID", "IOPS", "IODEPTH", "NUMJOBS"] if (args.metric == "IOPS") else [col for col in df.columns if col not in ["BS", "DS", "RW_MIX", "RW_TYPE"]]
+    cols_to_make_numeric = (
+        ["RunID", "IOPS", "IODEPTH", "NUMJOBS"]
+        if (args.metric == "IOPS")
+        else [
+            col
+            for col in df.columns
+            if col not in ["BS", "DS", "RW_MIX", "RW_TYPE", "MODE"]
+        ]
+    )
 
     for col in cols_to_make_numeric:
         if col in df.columns:  # Check if column actually exists from CSV read
@@ -226,13 +252,17 @@ def verify_and_gen_iops_general_plots(df):
     metric = get_metric()
 
     if df.empty:
-        print("DataFrame is empty after loading and cleaning. No plots will be generated.")
+        print(
+            "DataFrame is empty after loading and cleaning. No plots will be generated."
+        )
         return
 
     df_m = df[df["MODE"] == metric].copy()
 
     if not ("IODEPTH" in df_m.columns and "NUMJOBS" in df_m.columns):
-        print("IODEPTH and/or NUMJOBS columns are missing. Skipping concurrent average performance bars.")
+        print(
+            "IODEPTH and/or NUMJOBS columns are missing. Skipping concurrent average performance bars."
+        )
     else:
         unique_mixes_conc = df_m["RW_MIX"].unique()
         unique_mix_types_conc = df_m["RW_TYPE"].unique()
@@ -249,13 +279,15 @@ def verify_and_gen_iops_general_plots(df):
         assert len(unique_id) == 1
         assert len(unique_bss_conc) == 1
 
+        ds_names = cfg_parser.get_ds_names_from_cfg()
+
         plot_general_hist(
             df=df_m,
             nj=unique_nj[0],
             iodepth=unique_id[0],
             bs_val=unique_bss_conc[0],
             metric=metric,
-            ds_values=["ht", "sl"], # TODO: pass from plots.sh
+            ds_values=ds_names,
             save_directory="plots/",
             filename=f"{metric}_general_hist_nj{unique_nj[0]}_id{unique_id[0]}",
         )

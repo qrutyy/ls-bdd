@@ -98,7 +98,7 @@ fi
 
 if [ "$PERF" == "true" ]; then
 	echo -e "\nPerfofm a block device warm up"
-	make fio_perf_w_opt ID=64 NJ=1 
+	make fio_perf_w_opt ID="$IO_DEPTH" NJ="$JOBS_NUM"
 
 	### Run config setup script
 	if [ "$VERIFY" == "true" ]; then

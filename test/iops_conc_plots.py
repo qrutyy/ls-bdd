@@ -4,21 +4,32 @@ import pandas as pd
 import os
 import argparse
 import re
+import config_parsers as cfg_parser
 
 RESULTS_FILE = "logs/fio_results.dat"
 
-ds_colors = {
-    "sl": "steelblue",
-    "ht": "indianred",
-    "rb": "seagreen",
-    "bt": "darkkhaki"
-}
+DS_COLORS = {"sl": "steelblue", "ht": "indianred", "rb": "seagreen", "bt": "darkkhaki"}
 
+DEFAULT_DS_MAPPING = {
+    "ht": "Hash-table",
+    "sl": "Skiplist",
+    "bt": "B+ tree",
+    "rb": "Red-Black tree",
+}
 
 try:
     plot_colors = plt.get_cmap("tab10", 10).colors
 except AttributeError:  # Matplotlib < 2.0
     plot_colors = [plt.get_cmap("tab10")(i) for i in np.linspace(0, 1, 10)]
+
+PLOT_TITLES = cfg_parser.parse_plot_titles()
+
+# Load user mapping from shell file
+USER_DS_MAPPING = cfg_parser.load_ds_mapping()
+
+# Merge: user mapping overrides defaults
+DS_MAPPING = {**DEFAULT_DS_MAPPING, **USER_DS_MAPPING}
+
 
 def clean_numeric(series):
     return pd.to_numeric(series, errors="coerce")
@@ -44,28 +55,26 @@ def parse_block_size_for_sorting(bs_str):
 
 
 def get_formatted_ds_name(ds):
-    match(ds):
-        case "ht":
-            return "Хеш-таблица"
-        case "sl":
-            return "Список с пропусками"
-        case "bt":
-            return "Б+ дерево"
-        case "rb":
-            return "Красно-черное дерево"
-        case _:
-            print("Unknown ds type, check get_formatted_ds_name function in iops_conc_plots.py")
-            return "unknown"
-   
+    """
+    Return the formatted name using merged mapping (defaults + PY_PL_NEW_DS).
+    """
+    if ds in DS_MAPPING:
+        return DS_MAPPING[ds]
+    else:
+        print("Unknown ds type, check PY_PL_NEW_DS in configurable_params.sh")
+        return "unknown"
+
 
 def get_formatted_rw_type(rw):
     match (rw):
         case "rw":
-            return "последовательной"
+            return "sequential"
         case "randrw":
-            return "случайной"
+            return "random"
         case _:
-            print("Unknown rw type, check get_formatted_rw_type function in iops_conc_plots.py")
+            print(
+                "Unknown rw type, check get_formatted_rw_type function in iops_conc_plots.py"
+            )
             return "unknown"
 
 
@@ -77,7 +86,7 @@ def plot_conc_iops_hist(
     ds_values=None,
     save_directory_base="iops_conc",
     filename_prefix_detail="",
-    is_rewrite=False
+    is_rewrite=False,
 ):
     """
     Bar-chart: median IOPS vs (NUMJOBS, IODEPTH) for specified BS и MIX.
@@ -93,9 +102,7 @@ def plot_conc_iops_hist(
         ds_values = sorted(subset["ds"].unique())
 
     grouped = (
-        subset.groupby(["NUMJOBS", "IODEPTH", "DS"])["IOPS"]
-        .median()
-        .reset_index()
+        subset.groupby(["NUMJOBS", "IODEPTH", "DS"])["IOPS"].median().reset_index()
     )
 
     x_groups = sorted(grouped[["NUMJOBS", "IODEPTH"]].drop_duplicates().values.tolist())
@@ -106,9 +113,9 @@ def plot_conc_iops_hist(
         labels.append(f"NJ={nj}, ID={iod}")
         for ds in ds_values:
             row = grouped[
-                (grouped["NUMJOBS"] == nj) &
-                (grouped["IODEPTH"] == iod) &
-                (grouped["DS"] == ds)
+                (grouped["NUMJOBS"] == nj)
+                & (grouped["IODEPTH"] == iod)
+                & (grouped["DS"] == ds)
             ]
             values_per_ds[ds].append(row["IOPS"].iloc[0] if not row.empty else 0)
 
@@ -117,17 +124,20 @@ def plot_conc_iops_hist(
 
     plt.figure(figsize=(12, 7))
     for i, ds in enumerate(ds_values):
-        plt.bar(x + (i - len(ds_values)/2)*width + width/2,
-                values_per_ds[ds],
-                width,
-                color=ds_colors.get(ds, None),
-                label=f"{get_formatted_ds_name(ds)}")
+        plt.bar(
+            x + (i - len(ds_values) / 2) * width + width / 2,
+            values_per_ds[ds],
+            width,
+            color=DS_COLORS.get(ds, None),
+            label=f"{get_formatted_ds_name(ds)}",
+        )
 
     plt.xticks(x, labels, rotation=45, ha="right")
-    plt.ylabel("Медиана IOPS (тыс. операций/c)")
-    plt.xlabel("NUMJOBS / IODEPTH")
-    op = "записи" if (mix_val == "0-100") else "чтения"
-    plt.title(f"Медианное значение IOPS для различных конфигураций NJ/ID,\nBS={bs_val}K при операциях {get_formatted_rw_type(rw_type)} {op}")
+    plt.ylabel(PLOT_TITLES["PL_IOPS_CONC_Y_TITLE"])
+    plt.xlabel(PLOT_TITLES["PL_IOPS_CONC_X_TITLE"])
+    op = "write operations" if (mix_val == "0-100") else "read operations"
+    tmplt = PLOT_TITLES["PL_IOPS_CONC_TITLE_TEMPLATE"]
+    plt.title(f"{tmplt}\nBS={bs_val}K while {get_formatted_rw_type(rw_type)} {op}")
 
     plt.legend()
     plt.tight_layout()
@@ -142,13 +152,17 @@ def plot_conc_iops_hist(
 
 def verify_and_gen_iops_conc_plots(df):
     if df.empty:
-        print("DataFrame is empty after loading and cleaning. No plots will be generated.")
+        print(
+            "DataFrame is empty after loading and cleaning. No plots will be generated."
+        )
         return
-   
-    df_iops = df[df["MODE"] == "iops"].copy()
+
+    df_iops = df[df["MODE"] == "IOPS"].copy()
 
     if not ("IODEPTH" in df_iops.columns and "NUMJOBS" in df_iops.columns):
-        print("IODEPTH and/or NUMJOBS columns are missing. Skipping concurrent average performance bars.")
+        print(
+            "IODEPTH and/or NUMJOBS columns are missing. Skipping concurrent average performance bars."
+        )
     else:
         unique_bss_conc = sorted(
             list(df_iops["BS"].unique()),
@@ -156,8 +170,9 @@ def verify_and_gen_iops_conc_plots(df):
         )
         unique_mixes_conc = df_iops["MIX"].unique()
         unique_mix_types_conc = df_iops["RW_TYPE"].unique()
-        assert len(unique_mix_types_conc) == 1
+        print(df_iops)
         assert len(unique_mixes_conc) == 1
+        assert len(unique_mix_types_conc) == 1
         assert len(unique_bss_conc) == 1
 
         bs_val_c = unique_bss_conc[0]
@@ -165,7 +180,8 @@ def verify_and_gen_iops_conc_plots(df):
         rw_type_c = unique_mix_types_conc[0]
         subset_bs_mix_c = df_iops[
             (df_iops["BS"] == bs_val_c)
-            & (df_iops["MIX"] == mix_val_c) & (df_iops["RW_TYPE"] == rw_type_c)
+            & (df_iops["MIX"] == mix_val_c)
+            & (df_iops["RW_TYPE"] == rw_type_c)
         ]
         if not subset_bs_mix_c.empty:
             plot_conc_iops_hist(
@@ -185,7 +201,18 @@ def process_df():
         sep=r"\s+",
         skiprows=0,
         # Ensure all potential columns are named for robust parsing
-        names=["RunID", "DS", "BS", "MIX", "BW", "IOPS", "MODE", "RW_TYPE", "IODEPTH", "NUMJOBS"],
+        names=[
+            "RunID",
+            "DS",
+            "BS",
+            "MIX",
+            "BW",
+            "IOPS",
+            "MODE",
+            "RW_TYPE",
+            "IODEPTH",
+            "NUMJOBS",
+        ],
         header=None,  # Explicitly state no header row in data to use our names
     )
     print("Original DataFrame head (first 2 rows):")

@@ -5,12 +5,12 @@ source ./configurable_params.sh
 readonly LOGS_PATH="logs"
 readonly PLOTS_PATH="./plots"
 readonly RESULTS_FILE="$LOGS_PATH/fio_results.dat"
-readonly LAT_RESULTS_FILE="$LOGS_PATH/fio_lat_results.dat"
+readonly LAT_RESULTS_FILE="$LOGS_PATH/fio_results.dat"
 readonly CONC_IOPS_PLOTS_SCRIPT="iops_conc_plots.py"
 readonly CONC_GENERAL_DIFF_PLOT="general_conc_plots.py"
 
 usage() {
-    echo "Usage: $0 [--io_depth number] [--jobs_num number]"
+    echo "Usage: $0"
     exit 1
 }
 
@@ -46,6 +46,8 @@ reinit_lsvbd() {
 
 	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
 
+	modprobe brd rd_nr=1 rd_size=$((2 * 1048576))
+
 	make -C ../src init_no_recompile DS="$ds" TY="$PL_TYPE" BD="$BD_NAME" > /dev/null
 }
 
@@ -57,7 +59,7 @@ workload_independent_preconditioning() {
 
 	echo -e "\nRunning warm-up with size $wf_size_per_job for each job"
 
-	fio --name=prep --rw=write --bs="$wbs"K --numjobs=10 --iodepth=32 --ioengine=io_uring --size="$wf_size_per_job"G \
+	fio --name=prep --rw=write --bs="$wbs"K --numjobs=$PL_PRECOND_JOBS_NUM --iodepth=$PL_PRECOND_IODEPTH --ioengine=io_uring --size="$wf_size_per_job"G \
         --filename=/dev/$VBD_NAME --direct=1 --output="$LOGS_PATH/preconditioning.log"
 }
 
@@ -169,17 +171,18 @@ Includes:
 - 99 percentile of latency
 
 @param run_id - number of the run (repeat id) 
-@param log_file - path to FIO log_file being the FIO's log gathered with --write_lat_log option
+@param log_file - path to FIO log_file being the FIOs log gathered with --write_lat_log option
 @param bs - used block size
 @param rw_mix - current Read/Write mix used (see fio docs - rwmixread/rwmixwrite)
 docs
 extract_latency_metrics() {
     local run_id=$1
-    local log_file=$2
+	local ds=$2
     local bs=$3
     local rw_mix=$4
-	local iodepth=$5 
-	local numjobs=$6
+    local rw_type=$5
+	local iodepth=$6
+	local numjobs=$7
 
     calc_avg_latency() {
         local file=$1
@@ -212,9 +215,9 @@ extract_latency_metrics() {
 		echo "$result"
 	}
 
-	local slat_file="${log_file}_slat.1.log"
-	local clat_file="${log_file}_clat.1.log"
-	local lat_file="${log_file}_lat.1.log"
+	local slat_file="logs/${run_id}_slat.1.log"
+	local clat_file="logs/${run_id}_clat.1.log"
+	local lat_file="logs/${run_id}_lat.1.log"
 
     local avg_slat
 	avg_slat=$(calc_avg_latency "$slat_file")
@@ -244,7 +247,7 @@ extract_latency_metrics() {
 
 	echo -e "DEBUG: extracted \nId:$run_id \nBS:$bs \nAVG_SLAT:$avg_slat AVG_CLAT:$avg_clat AVG_LAT:$avg_lat \nMAX_SLAT:$max_slat MAX_CLAT:$max_clat MAX_LAT:$max_lat \nP99_LAT:$p99_slat P99_CLAT:$p99_clat P99_LAT:$p99_lat \nRW_MIX:$rw_mix\n"
 
-	echo "$run_id $ds $bs $rw_mix $rw_type $avg_slat $avg_clat $avg_lat $max_slat $max_clat $max_lat $p99_slat $p99_clat $p99_lat $iodepth $numjobs" >> "$LAT_RESULTS_FILE"
+	echo "$run_id $ds $bs $rw_mix $rw_type LAT $avg_slat $avg_clat $avg_lat $max_slat $max_clat $max_lat $p99_slat $p99_clat $p99_lat $iodepth $numjobs" >> "$LAT_RESULTS_FILE"
 }
 
 <<docs
@@ -258,7 +261,7 @@ Runs IOPS tests based on SNIA specification. Uses fio_iops_mix cfg from ./Makefi
 @param ds - data structure (sl/ht/...)
 docs
 run_iops_for_each_nj_id() {
-    local mode=$1 raw_bs_list=$2 log_file fs_flag iodepth bs_list rw_mix 
+    local mode=$1 raw_bs_list=$2 log_file iodepth bs_list rw_mix 
 	local IFS=','
 
 	read -r -a bs_list <<< "$raw_bs_list"
@@ -279,7 +282,7 @@ run_iops_for_each_nj_id() {
 	
 	echo "$rw_mix_read"
 	echo "$rw_mix_write"
-	
+
 	for rw_type in "${PL_RW_TYPES[@]}"; do
 		for bs in "${bs_list[@]}"; do
 			for ds in "${PL_AVAILABLE_DS[@]}"; do 
@@ -308,9 +311,9 @@ run_iops_for_each_nj_id() {
 
 			echo "Data collected in $RESULTS_FILE"
 			python3 "$CONC_IOPS_PLOTS_SCRIPT"  
+			make clean_logs > /dev/null
 		done
 	done
-	make clean_logs > /dev/null
 }
 
 <<docs
@@ -330,7 +333,7 @@ run_general_conc_cases() {
 	read -r -a bs_list <<< "$raw_bs_list"
 
 	echo -e "---Starting General (IOPS + LAT) Benchmark on $BD_NAME...---\n"
-	
+	echo "${PL_RW_TYPES[*]}"	
 
 	for ds in "${PL_AVAILABLE_DS[@]}"; do 
 		reinit_lsvbd "$ds" 
@@ -356,9 +359,9 @@ run_general_conc_cases() {
 							extract_iops_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$id" "$nj"
 
 						elif [ "$metric" == "LAT" ]; then 
-							make fio_lat_mix FS=$VBD_NAME RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$id" NJ="1" > "$log_file"
+							make fio_lat_mix FS=$VBD_NAME RW_TYPE="$rw_type" RWMIX_READ="$rw_mix_read" RWMIX_WRITE="$rw_mix_write" BS="$bs" ID="$id" NJ="1" LAT_INDEX="$i" > "$log_file"
 
-							extract_latency_metrics "$log_file" "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$id" "1"
+							extract_latency_metrics "$i" "$ds" "$bs" "$rw_mix" "$rw_type" "$id" "1"
 						else 
 							echo -e "unknown metric"
 						fi
@@ -371,8 +374,8 @@ run_general_conc_cases() {
 	done 
 
 	echo "Data collected in $RESULTS_FILE"
+	cat $RESULTS_FILE
 	python3 "$CONC_GENERAL_DIFF_PLOT" "$metric"
-#	make clean_logs > /dev/null
 }
 
 # Parse options
@@ -386,9 +389,8 @@ done
 
 prepare_env
 
-for cfg_entry in "${PL_GENERAL_CONC_CFG[@]}"; do
+for cfg_entry in "${PL_IOPS_FOR_EACH_NJID_CFG[@]}"; do
 	read -r operation block_size <<< "$cfg_entry"
-
 	run_iops_for_each_nj_id "$operation" "$block_size"
 done
 
@@ -398,5 +400,5 @@ for cfg_entry in "${PL_GENERAL_CONC_CFG[@]}"; do
 	run_general_conc_cases "$block_size" "$nj" "$id" "$metric"
 done
 
-#echo -e "\nCleaning the logs directory"
-#make clean > /dev/null
+echo -e "\nCleaning the logs directory"
+make clean > /dev/null
