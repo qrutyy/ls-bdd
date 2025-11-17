@@ -19,13 +19,15 @@ FS="lsvbd1"
 RWMIX_READ?=50
 # Ratio of write operations in the mix workflow
 RWMIX_WRITE?=50
+# FIO latency results file index
+LAT_INDEX?=1
 # Log file path (pretty intuitive)
-LOG_FILE_PATH?=logs/latency_idk
-
-RUNTIME=30
-
+LAT_LOG_FILE_PATH?=logs/$(LAT_INDEX)
+# FIO main (performance) workflow runtime
+RUNTIME=15
+# FIO ramptime before performance workflow
 RAMPTIME=30
-
+# Read Write operation type
 RW_TYPE="randrw"
 
 
@@ -46,7 +48,7 @@ fio_perf_mix:
 		--bs=$(BS)k \
 		--numjobs=$(NJ) \
 		--iodepth=$(ID) \
-		--time_based \
+		--time_based=1 \
 		--runtime=$(RUNTIME) \
 		--ramp_time=$(RAMPTIME) \
 		--direct=1 \
@@ -69,11 +71,11 @@ fio_lat_mix:
 	--bs=$(BS)k \
 	--numjobs=1 \
 	--iodepth=$(ID) \
-	--time_based \
+	--time_based=1 \
 	--runtime=$(RUNTIME) \
 	--ramp_time=$(RAMPTIME) \
 	--direct=1 \
-	--write_lat_log=$(LOG_FILE_PATH) \
+	--write_lat_log=$(LAT_LOG_FILE_PATH) \
 	--ioengine=$(IO) \
 	--registerfiles=1 \
 	--hipri=0 \

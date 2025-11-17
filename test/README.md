@@ -4,6 +4,7 @@ The test framework is designed to benchmark, verify, and analyze the performance
 
 **Limitations:**
 * The performance measurement system does not support mixed workflows.
+* Sadly, the code itself kinda lacks documentation. Feel free to contact me for details if youre stuck with something.
 
 ## Automated Testing Tools
 
@@ -87,8 +88,41 @@ Performance data files store extracted results from automated test suites for la
 
 | File                  | Content                                                     |
 | --------------------- | ----------------------------------------------------------- |
-| `fio_results.dat`     | Primary FIO performance metrics collected during evaluation |
-| `fio_lat_results.dat` | Detailed latency statistics and percentile data             |
+| `fio_results.dat`     | Primary FIO performance metrics collected during evaluation or detailed latency statistics and percentile data |
+| `fio_{rw-mix}_run_id.log` | FIO performance for the specific run. (are cleared time to time) |
+| `id_(s|c)lat.log` | Detailed FIO data about specific latency type for specific run. |
+| `preconditioning.log` | Auxiliary log for preconditioning. Can be useful for debug/some inaccurate performance comparisons. |
+
+
+#### Latency results
+
+Its important to mention that `fio_results.dat` consists not only from default AVG latency measurements, but also P99 and MAX for each SLAT (submission latency), CLAT(completion latency), and LAT(general latency).
+
+More detailed structure of the `fio_results` is represented below:
+
+|Index | **LAT** |  **IOPS** |
+| ---- | --------------------- | ----------------------------------------------------------- |
+| 1    | RunID | RunID |
+| 2 | Data structure | Data structure |
+| 3 | Block size | Block size |
+| 4 | Read-Write mix (0-100/100-0) | Read-Write mix (0-100/100-0) |
+| 5 | Read-Write type (sequential/random) | _ |
+| 6 | "LAT" string | IOPS median value |
+| 7 | Average SLAT | "IOPS" string |
+| 8 | Average CLAT | Read-Write type (sequential/random) |
+| 9 | Average LAT | IO depth |
+| 10 | Max SLAT | Jobs number |
+| 11 | Max CLAT | |
+| 12 | Max LAT | |
+| 13 | P99 SLAT | |
+| 14 | P99 CLAT | |
+| 15 | P99 LAT | |
+| 16 | IO depth | |
+| 17 | Jobs number | |
+
+Implementation of parsers are presented in `plots.sh` inside  `extract_lat_metrics` and `extract_iops_metrics` function respectively.
+
+P.S. by AVG i mean median
 
 ### Workflow Templates (`Makefile`)
 
