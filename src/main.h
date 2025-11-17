@@ -22,11 +22,11 @@ struct lsbdd_value_redir {
 	u32 block_size;
 };
 
-// Block device manager structure for saving the linked meta data
-struct lsbdd_bd_manager {
+// Block device mng structure for saving the linked meta data
+struct lsbdd_bd_mng {
 	char *vbd_name;
 	struct gendisk *vbd_disk;
-	struct bdev_handle *bd_handler;
-	struct data_struct *sel_data_struct;
+	struct file *bd_file;
+	struct lsbdd_ds *sel_ds;
 	struct list_head list;
 };

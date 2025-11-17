@@ -13,7 +13,7 @@
 #endif
 
 
-s32 ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mng)
+s32 ds_init(struct lsbdd_ds *ds, char *sel_ds, struct lsbdd_cache_mng *cache_mng)
 {
 	BUG_ON(!ds || !cache_mng);
 
@@ -95,7 +95,7 @@ mem_err:
 	return -ENOMEM;
 }
 
-void ds_free(struct data_struct *ds, struct cache_manager *cache_mng, struct kmem_cache *lsbdd_value_cache)
+void ds_free(struct lsbdd_ds *ds, struct lsbdd_cache_mng *cache_mng, struct kmem_cache *lsbdd_value_cache)
 {
 	BUG_ON(!ds || !cache_mng || !lsbdd_value_cache);
 
@@ -119,7 +119,7 @@ void ds_free(struct data_struct *ds, struct cache_manager *cache_mng, struct kme
 	}
 }
 
-void *ds_lookup(struct data_struct *ds, sector_t key)
+void *ds_lookup(struct lsbdd_ds *ds, sector_t key)
 {
 	BUG_ON(!ds);
 
@@ -156,7 +156,7 @@ void *ds_lookup(struct data_struct *ds, sector_t key)
 	return NULL;
 }
 
-void ds_remove(struct data_struct *ds, sector_t key, struct kmem_cache *lsbdd_value_cache)
+void ds_remove(struct lsbdd_ds *ds, sector_t key, struct kmem_cache *lsbdd_value_cache)
 {
 	BUG_ON(!ds || !lsbdd_value_cache);
 
@@ -179,7 +179,7 @@ void ds_remove(struct data_struct *ds, sector_t key, struct kmem_cache *lsbdd_va
 	}
 }
 
-s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng, struct kmem_cache *lsbdd_value_cache)
+s32 ds_insert(struct lsbdd_ds *ds, sector_t key, void *value, struct lsbdd_cache_mng *cache_mng, struct kmem_cache *lsbdd_value_cache)
 {
 	BUG_ON(!ds || !cache_mng || !lsbdd_value_cache);
 	u64 *kp = NULL;
@@ -202,7 +202,7 @@ s32 ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_ma
 	return 0;
 }
 
-sector_t ds_last(struct data_struct *ds, sector_t key)
+sector_t ds_last(struct lsbdd_ds *ds, sector_t key)
 {
 	BUG_ON(!ds);
 	#ifdef LF_MODE
@@ -237,7 +237,7 @@ sector_t ds_last(struct data_struct *ds, sector_t key)
 	BUG();
 }
 
-void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key)
+void *ds_prev(struct lsbdd_ds *ds, sector_t key, sector_t *prev_key)
 {
 	BUG_ON(!ds);
 
@@ -276,17 +276,17 @@ void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key)
 	BUG();
 }
 
-s32 ds_empty_check(struct data_struct *ds)
+bool ds_empty_check(struct lsbdd_ds *ds)
 {
 	BUG_ON(!ds);
 
 	if (ds->type == BTREE_TYPE && ds->structure.map_btree->head->height == 0)
-		return 1;
+		return true;
 	if (ds->type == SKIPLIST_TYPE && skiplist_is_empty(ds->structure.map_list))
-		return 1;
+		return true;
 	if (ds->type == HASHTABLE_TYPE && hashtable_is_empty(ds->structure.map_hash))
-		return 1;
+		return true;
 	if (ds->type == RBTREE_TYPE && ds->structure.map_rbtree->node_num == 0)
-		return 1;
-	return 0;
+		return true;
+	return false;
 }

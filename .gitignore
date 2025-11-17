@@ -109,6 +109,5 @@ test/FlameGraph
 *.folded
 
 test/logs/*
-test/plots/*
 
 .clang-format

@@ -169,7 +169,7 @@ void lf_list_free(struct lf_list *list, struct kmem_cache *lsbdd_node_cache, str
 	if (list) { // Check if list itself is not NULL
 		kfree(list);
 	}
-	pr_info("Linked list cleanup finished.\n");
+	//pr_info("Linked list cleanup finished.\n");
 }
 
 struct lf_list_node *lf_list_lookup(struct lf_list *list, sector_t key, struct lf_list_node **left_node_out)

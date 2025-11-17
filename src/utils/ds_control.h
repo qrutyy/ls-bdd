@@ -19,10 +19,10 @@
 			return node->value;                                                                                                \
 	} while (0)
 
-enum data_type { BTREE_TYPE, SKIPLIST_TYPE, HASHTABLE_TYPE, RBTREE_TYPE };
+enum lsbdd_ds_type { BTREE_TYPE, SKIPLIST_TYPE, HASHTABLE_TYPE, RBTREE_TYPE };
 
-struct data_struct {
-	enum data_type type;
+struct lsbdd_ds {
+	enum lsbdd_ds_type type;
 	union {
 		struct btree *map_btree;
 		struct skiplist *map_list;
@@ -31,7 +31,7 @@ struct data_struct {
 	} structure;
 };
 
-struct cache_manager {
+struct lsbdd_cache_mng {
 	struct kmem_cache *ht_cache;
 	struct kmem_cache *sl_cache;
 	struct kmem_cache *bt_cache;
@@ -40,13 +40,13 @@ struct cache_manager {
 
 // pretty intuitive, specific data structure methods used in ds_control.c got more detailed docs ;)
 
-int ds_init(struct data_struct *ds, char *sel_ds, struct cache_manager *cache_mng);
-void ds_free(struct data_struct *ds, struct cache_manager *cache_mng, struct kmem_cache *value_cache);
-void *ds_lookup(struct data_struct *ds, sector_t key);
-void ds_remove(struct data_struct *ds, sector_t key, struct kmem_cache *value_cache);
-int ds_insert(struct data_struct *ds, sector_t key, void *value, struct cache_manager *cache_mng, struct kmem_cache *value_cache);
-sector_t ds_last(struct data_struct *ds, sector_t key);
-void *ds_prev(struct data_struct *ds, sector_t key, sector_t *prev_key);
-int ds_empty_check(struct data_struct *ds);
+int ds_init(struct lsbdd_ds *ds, char *sel_ds, struct lsbdd_cache_mng *lsbdd_cache_mng);
+void ds_free(struct lsbdd_ds *ds, struct lsbdd_cache_mng *lsbdd_cache_mng, struct kmem_cache *value_cache);
+void *ds_lookup(struct lsbdd_ds *ds, sector_t key);
+void ds_remove(struct lsbdd_ds *ds, sector_t key, struct kmem_cache *value_cache);
+int ds_insert(struct lsbdd_ds *ds, sector_t key, void *value, struct lsbdd_cache_mng *lsbdd_cache_mng, struct kmem_cache *value_cache);
+sector_t ds_last(struct lsbdd_ds *ds, sector_t key);
+void *ds_prev(struct lsbdd_ds *ds, sector_t key, sector_t *prev_key);
+bool ds_empty_check(struct lsbdd_ds *ds);
 
 #endif

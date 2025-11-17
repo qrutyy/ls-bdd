@@ -3,11 +3,11 @@
 ###											###
 ###		  PERFORMANCE ANALYSIS PART			###
 ###											###
+# shellcheck disable=SC1091
+source ./configurable_params.sh
 
-FLAMEGRAPH_PATH="./FlameGraph"
+readonly FLAMEGRAPH_PATH="./FlameGraph"
 VERIFY="false"
-JOBS_NUM=1
-IO_DEPTH=16
 
 # Function to display help
 usage() {
@@ -31,14 +31,6 @@ while [[ "$#" -gt 0 ]]; do
         -v|--verify)
             VERIFY="true"
             ;;
-		--io_depth)
-			IO_DEPTH="$2"
-			shift 
-			;;
-		--jobs_num)
-			JOBS_NUM="$2"
-			shift 
-			;;
         -h|--help)
             usage
             ;;
@@ -68,7 +60,7 @@ if [[ ! -f "$FLAMEGRAPH_PATH/stackcollapse-perf.pl" || ! -f "$FLAMEGRAPH_PATH/fl
     echo "FlameGraph successfully cloned."
 fi
 
-echo -e "\nAdding probes for lsvbd.ko functions..."
+echo -e "\nAdding probes for lsvbdd.ko functions..."
 sudo perf probe -x ../src/lsbdd.ko --add '*(*)' || echo "Warning: Some probes may already exist."
 
 if [ "$VERIFY" == "true" ]; then

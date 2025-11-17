@@ -1,18 +1,17 @@
 #!/bin/bash
+# shellcheck disable=SC1091
+source ./configurable_params.sh
 
-DEPENDENCY_LIST=("fio" "make")
-BD_NAME="nullb0"
-IO_DEPTH=32
+readonly DEPENDENCY_LIST=("fio" "make")
+
 VERIFY="false"
 SETUP="false"
 PERF="false"
 PLOTS="false"
-JOBS_NUM=8
-BRD_SIZE=400
 
 # Function to display help
 usage() {
-	echo -e "Main orchestration script for all test suites and performance analysis.\n\nCan be used to:\n - run the test scripts\n - setup the experiment environment\n - generate plots based on auto-tests\n - generate the call-stack analysis flamegraphs.\n\nUsage: $0 [-v|--verify] [-s|--setup] [-p|--perf] [-c|--cplots] [-a|--auto] [--bd_name name_without_/dev/] [--io_depth number] [--jobs_num number]"
+	echo -e "Main orchestration script for all test suites and performance analysis.\n\nCan be used to:\n - run the test scripts\n - setup the experiment environment\n - generate plots based on auto-tests\n - generate the call-stack analysis flamegraphs.\n\nUsage: $0 [-v|--verify] [-s|--setup] [-p|--perf] [-c|--cplots] [-a|--auto] "
     exit 1
 }
 
@@ -60,22 +59,6 @@ while [[ "$#" -gt 0 ]]; do
 		-a|--auto)
 			AUTO_TEST="true"
 			;;
-		--bd_name)
-            BD_NAME="$2"
-            shift 
-            ;;
-		--io_depth)
-			IO_DEPTH="$2"
-			shift 
-			;;
-		--jobs_num)
-			JOBS_NUM="$2"
-			shift 
-			;;
-		--init)
-			BRD_SIZE="$2"
-			shift
-			;;
         -h|--help)
             usage
             ;;
@@ -94,12 +77,7 @@ validate_verify_input
 free -m
 mkdir -p plots logs
 
-echo -e "\n\n\n--- CONFIGURATION: ---\n\n\n"
-echo "Underlying block device name: $BD_NAME"
-echo "Verify option: $VERIFY"
-echo "IO depth: $IO_DEPTH"
-echo "Jobs number: $JOBS_NUM"
-
+output_config
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script should be run from a root."
@@ -107,28 +85,25 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 if [ "$SETUP" == "true" ]; then
-	# Setup the machine for performance testing
-	./setup.sh --bd_name "$BD_NAME" --io_depth "$IO_DEPTH"
+	./setup.sh 
 fi
 
 if [ "$AUTO_TEST" == "true" ]; then
-	# Run auto fio tests ;) 
-	./autotest.sh --jobs_num "$JOBS_NUM" --io_depth "$IO_DEPTH" --brd_size "$BRD_SIZE"
+	./autotest.sh
 fi
 
 if [ "$PLOTS" == "true" ]; then
-	sudo ./plots.sh  --io_depth "$IO_DEPTH" --jobs_num "$JOBS_NUM" --brd_size "$BRD_SIZE"
+	sudo ./plots.sh  
 fi
-
 
 if [ "$PERF" == "true" ]; then
 	echo -e "\nPerfofm a block device warm up"
-	make fio_perf_w_opt ID=64 NJ=1 
+	make fio_perf_w_opt ID="$IO_DEPTH" NJ="$JOBS_NUM"
 
 	### Run config setup script
 	if [ "$VERIFY" == "true" ]; then
-		./perf.sh --io_depth "$IO_DEPTH" --jobs_num "$JOBS_NUM" -v
+		./perf.sh -v
 	else
-		./perf.sh --io_depth "$IO_DEPTH" --jobs_num "$JOBS_NUM"
+		./perf.sh 
 	fi
 fi
