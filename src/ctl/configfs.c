@@ -3,6 +3,7 @@
 #include <linux/blkdev.h>
 #include <linux/configfs.h>
 #include <linux/ctype.h>
+#include <linux/log2.h>
 #include <linux/kernel.h>
 #include <linux/limits.h>
 #include <linux/module.h>
@@ -11,6 +12,7 @@
 #include <linux/string.h>
 
 #include "../core/dev.h"
+#include "../utils/ds_control.h"
 #include "configfs.h"
 
 /*
@@ -19,6 +21,7 @@
  *	mkdir /sys/kernel/config/lsv/lsv0
  *	echo /dev/nvme0n1 > /sys/kernel/config/lsv/lsv0/backing_path
  *	echo ht		  > /sys/kernel/config/lsv/lsv0/index_ds
+ *	echo 4096	  > /sys/kernel/config/lsv/lsv0/cell_size
  *	echo 2097152	  > /sys/kernel/config/lsv/lsv0/segment_size
  *	echo 1		  > /sys/kernel/config/lsv/lsv0/create_new
  *
@@ -26,22 +29,6 @@
  * is instantiated by writing to create_new, once every attribute is set.
  * Attributes are immutable after that; rmdir tears the description down.
  */
-
-static const char *g_lsv_available_ds[] = { "bt", "sl", "ht", "rb" };
-
-s32 lsv_ds_check_available(char *current_ds)
-{
-	u8 i = 0;
-	u8 len = 0;
-
-	len = ARRAY_SIZE(available_ds);
-
-	for (i = 0; i < len; ++i) {
-		if (!strcmp(available_ds[i], current_ds))
-			return 0;
-	}
-	return -1;
-}
 
 static inline struct lsv_cfg_dev *to_lsv_cfg_dev(struct config_item *item)
 {
@@ -54,7 +41,7 @@ static inline struct lsv_cfg_dev *to_lsv_cfg_dev(struct config_item *item)
  */
 static ssize_t lsv_cfg_store_str(struct lsv_cfg_dev *cfg, char *dst, size_t dst_size, const char *page, size_t count)
 {
-	ssize_t status = count;
+	ssize_t rc = count;
 
 	if (!count || count >= dst_size)
 		return -EINVAL;
@@ -62,7 +49,7 @@ static ssize_t lsv_cfg_store_str(struct lsv_cfg_dev *cfg, char *dst, size_t dst_
 	mutex_lock(&cfg->lock);
 
 	if (cfg->created) {
-		status = -EBUSY;
+		rc = -EBUSY;
 		goto out;
 	}
 
@@ -71,11 +58,11 @@ static ssize_t lsv_cfg_store_str(struct lsv_cfg_dev *cfg, char *dst, size_t dst_
 	strim(dst);
 
 	if (!dst[0])
-		status = -EINVAL;
+		rc = -EINVAL;
 
 out:
 	mutex_unlock(&cfg->lock);
-	return status;
+	return rc;
 }
 
 static ssize_t lsv_cfg_dev_backing_path_show(struct config_item *item, char *page)
@@ -108,40 +95,6 @@ static ssize_t lsv_cfg_dev_index_ds_show(struct config_item *item, char *page)
 	mutex_unlock(&cfg->lock);
 
 	return len;
-}
-- В Kbuild нет core/dev.o и core/map.o, а для включений вида "core/map.h" нужен ccflags-y += -I$(src).
-- ctl/configfs.c:98 — твой index_ds_store оборван: пустое тело у if и нет return. Оттуда же обе оставшиеся претензии checkpatch (пробел в конце строки, отступ).
-- core/dev.h — struct lsv_stats map; дублирует имя поля с struct lsv_map map.
-- core/dev.c:96 — sizeof(*struct lsv_dev).
-- struct lsv_gc, struct lsv_stats ещё не определены.
-
-SPDX в configfs.c у тебя вернулся к /* */; в остальных .c репозитория используется //, checkpatch просит его же — но это косметика, на твоё усмотрение.
-
-✻ Cogitated for 1m 26s · done 12:07 AM
-
-❯ static ssize_t lsv_cfg_dev_index_ds_store(struct config_item *item, const char *page, size_t count)
-  {
-Как я бы написал
-
-static ssize_t lsv_cfg_dev_index_ds_store(struct config_item *item, const char *page, size_t count)
-{
-      struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
-      char buf[LSV_CTL_MAX_DS_NAME_LEN + 1];
-      char *name;
-
-      if (!count || count >= sizeof(buf))
-              return -EINVAL;
-
-      memcpy(buf, page, count);
-      buf[count] = '\0';
-      name = strim(buf);
-
-      if (!lsv_ds_check_available(name)) {
-              pr_warn("lsv: unknown data structure '%s'\n", name);
-              return -EINVAL;
-      }
-
-      return lsv_cfg_store_str(cfg, cfg->index_ds, sizeof(cfg->index_ds), name, strlen(name));
 }
 
 static ssize_t lsv_cfg_dev_index_ds_store(struct config_item *item, const char *page, size_t count)
@@ -181,7 +134,7 @@ static ssize_t lsv_cfg_dev_segment_size_show(struct config_item *item, char *pag
 static ssize_t lsv_cfg_dev_segment_size_store(struct config_item *item, const char *page, size_t count)
 {
 	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
-	ssize_t status = count;
+	ssize_t rc = count;
 	u64 value;
 
 	if (kstrtou64(page, 0, &value) || !value)
@@ -190,14 +143,50 @@ static ssize_t lsv_cfg_dev_segment_size_store(struct config_item *item, const ch
 	mutex_lock(&cfg->lock);
 
 	if (cfg->created)
-		status = -EBUSY;
+		rc = -EBUSY;
 	else
 		cfg->segment_size = value;
 
 	mutex_unlock(&cfg->lock);
-	return status;
+	return rc;
 }
 CONFIGFS_ATTR(lsv_cfg_dev_, segment_size);
+
+static ssize_t lsv_cfg_dev_cell_size_show(struct config_item *item, char *page)
+{
+	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
+	ssize_t len;
+
+	mutex_lock(&cfg->lock);
+	len = snprintf(page, PAGE_SIZE, "%u\n", cfg->cell_size);
+	mutex_unlock(&cfg->lock);
+
+	return len;
+}
+
+static ssize_t lsv_cfg_dev_cell_size_store(struct config_item *item, const char *page, size_t count)
+{
+	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
+	ssize_t rc = count;
+	u32 value;
+
+	if (kstrtou32(page, 0, &value))
+		return -EINVAL;
+
+	if (value < LSV_CELL_SIZE_MIN || value > LSV_CELL_SIZE_MAX || !is_power_of_2(value) || (value & (SECTOR_SIZE - 1)))
+		return -EINVAL;
+
+	mutex_lock(&cfg->lock);
+
+	if (cfg->created)
+		rc = -EBUSY;
+	else
+		cfg->cell_size = value;
+
+	mutex_unlock(&cfg->lock);
+	return rc;
+}
+CONFIGFS_ATTR(lsv_cfg_dev_, cell_size);
 
 static ssize_t lsv_cfg_dev_create_new_show(struct config_item *item, char *page)
 {
@@ -210,7 +199,7 @@ static ssize_t lsv_cfg_dev_create_new_store(struct config_item *item, const char
 {
 	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
 	struct lsv_dev_params params;
-	ssize_t status = count;
+	ssize_t rc = count;
 	bool trigger;
 
 	if (kstrtobool(page, &trigger))
@@ -223,17 +212,22 @@ static ssize_t lsv_cfg_dev_create_new_store(struct config_item *item, const char
 	mutex_lock(&cfg->lock);
 
 	if (cfg->created) {
-		status = -EEXIST;
+		rc = -EEXIST;
 		goto out;
 	}
 
 	if (!cfg->backing_path[0]) {
-		status = -EINVAL;
+		rc = -EINVAL;
 		goto out;
 	}
 
 	if (!strlen(cfg->index_ds)) {
-		status = -EINVAL;
+		rc = -EINVAL;
+		goto out;
+	}
+
+	if (!cfg->cell_size) {
+		rc = -EINVAL;
 		goto out;
 	}
 
@@ -243,26 +237,28 @@ static ssize_t lsv_cfg_dev_create_new_store(struct config_item *item, const char
 	 * parameter struct: core must not know about configfs.
 	 */
 	params.name = config_item_name(&cfg->item);
-	params.backing_path = cfg->backing_path;
+	params.back_path = cfg->backing_path;
 	params.index_ds = cfg->index_ds;
+	params.cell_size = cfg->cell_size;
 	params.segment_size = cfg->segment_size;
 
-	status = lsv_dev_create(&params, &cfg->dev);
-	if (status)
+	rc = lsv_dev_create(&params, &cfg->dev);
+	if (rc)
 		goto out;
 
 	cfg->created = true;
-	status = count;
+	rc = count;
 
 out:
 	mutex_unlock(&cfg->lock);
-	return status;
+	return rc;
 }
 CONFIGFS_ATTR(lsv_cfg_dev_, create_new);
 
 static struct configfs_attribute *lsv_cfg_dev_attrs[] = {
 	&lsv_cfg_dev_attr_backing_path,
 	&lsv_cfg_dev_attr_index_ds,
+	&lsv_cfg_dev_attr_cell_size,
 	&lsv_cfg_dev_attr_segment_size,
 	&lsv_cfg_dev_attr_create_new,
 	NULL,
@@ -333,16 +329,16 @@ static struct configfs_subsystem lsv_cfg_subsys = {
 
 s32 lsv_configfs_register(void)
 {
-	s32 status;
+	s32 rc;
 
 	config_group_init(&lsv_cfg_subsys.su_group);
 	mutex_init(&lsv_cfg_subsys.su_mutex);
 
-	status = configfs_register_subsystem(&lsv_cfg_subsys);
-	if (status)
-		pr_err("lsv: configfs registration failed: %d\n", status);
+	rc = configfs_register_subsystem(&lsv_cfg_subsys);
+	if (rc)
+		pr_err("lsv: configfs registration failed: %d\n", rc);
 
-	return status;
+	return rc;
 }
 
 void lsv_configfs_unregister(void)

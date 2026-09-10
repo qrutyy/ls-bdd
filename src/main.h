@@ -1,32 +1,21 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
-#pragma once
+#ifndef LSV_MAIN_H
+#define LSV_MAIN_H
 
-#define LSBDD_MAX_BD_NAME_LENGTH 15
-#define LSBDD_MAX_MINORS_AM 20
-#define LSBDD_MAX_DS_NAME_LEN 2
-#define LSBDD_BLKDEV_NAME_PREFIX "lsvbd"
-#define LSBDD_SECTOR_OFFSET 32
+#include <linux/list.h>
+#include <linux/mutex.h>
 
-static const char *available_ds[] = { "bt", "sl", "ht", "rb" };
+#include "core/map.h"
 
-// Returns "ret_val" if el == NULL
-#define IF_NULL_RETURN(el, ret_val)                                                                                                        \
-	do {                                                                                                                               \
-		if (!el)                                                                                                                   \
-			return ret_val;                                                                                                    \
-	} while (0)
+struct lsv_mng {
+	s32 major;
+	struct list_head dev_list;
+	struct mutex lock; /* guards dev_list */
 
-struct lsbdd_value_redir {
-	sector_t redirected_sector;
-	u32 block_size;
+	struct lsv_map_cache map_cache; /* shared by every device */
 };
 
-// Block device mng structure for saving the linked meta data
-struct lsbdd_bd_mng {
-	char *vbd_name;
-	struct gendisk *vbd_disk;
-	struct file *bd_file;
-	struct lsbdd_ds *sel_ds;
-	struct list_head list;
-};
+extern struct lsv_mng *g_mng;
+
+#endif

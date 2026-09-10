@@ -48,7 +48,7 @@ static int ds_init_type(struct lsv_ds *ds, char *sel_ds)
 		return 0;
 	}
 
-	return -1;
+	return -EINVAL;
 }
 
 static int lsv_btree_init(struct lsv_ds *ds)
@@ -84,51 +84,51 @@ mem_err:
 static int lsv_skiplist_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng)
 {
 	struct skiplist *skiplist = NULL;
-	int rc = 0;
 
-	cache_mng->sl_cache = kmem_cache_create(
-		"lsv_skiplist_cache", sizeof(struct skiplist_node) + 24 * sizeof(struct skiplist_node *), 0, SLAB_HWCACHE_ALIGN, NULL);
-	if (cache_mng->sl_cache)
-		goto mem_err;
+	/* Node caches are shared by every device, so create them only once. */
+	if (!cache_mng->sl_cache)
+		cache_mng->sl_cache = kmem_cache_create(
+			"lsv_skiplist_cache", sizeof(struct skiplist_node) + 24 * sizeof(struct skiplist_node *), 0,
+			SLAB_HWCACHE_ALIGN, NULL);
+	if (!cache_mng->sl_cache)
+		return -ENOMEM;
 
 	skiplist = skiplist_init(cache_mng->sl_cache);
 	if (!skiplist)
-		goto mem_err;
+		return -ENOMEM;
 
 	ds->type = SKIPLIST_TYPE;
 	ds->structure.map_list = skiplist;
 
-	return rc;
-
-mem_err:
-	kfree(btree_map);
-	kfree(root);
-	return -ENOMEM;
+	return 0;
 }
 
 static int lsv_hashtable_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng)
 {
 	struct hashtable *hash_table = NULL;
-	int rc;
 
-	#ifdef LF_MODE
-	cache_mng->ht_cache = kmem_cache_create("lsv_hashtable_cache", sizeof(struct lf_list_node), 0, SLAB_HWCACHE_ALIGN, NULL);
-	#endif
-
-	#ifdef SY_MODE
-	cache_mng->ht_cache = kmem_cache_create("lsv_hashtable_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
-	#endif
+	if (!cache_mng->ht_cache) {
+#ifdef LF_MODE
+		cache_mng->ht_cache = kmem_cache_create("lsv_hashtable_cache", sizeof(struct lf_list_node), 0, SLAB_HWCACHE_ALIGN,
+							NULL);
+#endif
+#ifdef SY_MODE
+		cache_mng->ht_cache = kmem_cache_create("lsv_hashtable_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
+#endif
+	}
 
 	if (!cache_mng->ht_cache)
-		goto mem_err;
+		return -ENOMEM;
 
 	hash_table = hashtable_init(cache_mng->ht_cache);
 	if (!hash_table)
-		goto mem_err;
+		return -ENOMEM;
 
 	ds->type = HASHTABLE_TYPE;
 	ds->structure.map_hash = hash_table;
 	ds->structure.map_hash->max_bck_num = 0;
+
+	return 0;
 }
 
 static int lsv_rbtree_init(struct lsv_ds *ds)
@@ -147,7 +147,7 @@ static int lsv_rbtree_init(struct lsv_ds *ds)
 
 s32 lsv_ds_init(struct lsv_ds *ds, char *sel_ds, struct lsv_cache_mng *cache_mng)
 {
-	s32 status = 0;
+	s32 rc;
 
 	BUG_ON(!ds || !cache_mng);
 
@@ -155,7 +155,7 @@ s32 lsv_ds_init(struct lsv_ds *ds, char *sel_ds, struct lsv_cache_mng *cache_mng
 	if (rc)
 		return rc;
 
-	switch(ds->type) {
+	switch (ds->type) {
 	case BTREE_TYPE:
 		rc = lsv_btree_init(ds);
 		break;
@@ -181,7 +181,7 @@ static void lsv_btree_free(struct lsv_ds *ds)
 
 static void lsv_skiplist_free(struct lsv_ds *ds, struct lsv_map_cache *map_cache)
 {
-	skiplist_free(ds->structure.map_list, map_cache->entry_cache_mng->skiplist_cache, map_cache->cell_cachep);
+	skiplist_free(ds->structure.map_list, map_cache->entry_cache_mng->sl_cache, map_cache->cell_cachep);
 	ds->structure.map_list = NULL;
 }
 
@@ -199,18 +199,18 @@ static void lsv_rbtree_free(struct lsv_ds *ds)
 
 void lsv_ds_free(struct lsv_ds *ds, struct lsv_map_cache *map_cache)
 {
-	BUG_ON(!ds || !cache_mng || !lsv_value_cache);
+	BUG_ON(!ds || !map_cache);
 
 	switch (ds->type) {
 	case BTREE_TYPE:
-		lsv_btree_destroy(ds);
+		lsv_btree_free(ds);
 		break;
 	case SKIPLIST_TYPE:
-		lsv_skiplist_destroy(ds, map_cache);
+		lsv_skiplist_free(ds, map_cache);
 		break;
 	case HASHTABLE_TYPE:
-		break;
 		lsv_hashtable_free(ds, map_cache);
+		break;
 	case RBTREE_TYPE:
 		lsv_rbtree_free(ds);
 		break;
@@ -251,7 +251,7 @@ static void *lsv_ht_lookup(struct lsv_ds *ds, sector_t key)
 	if (!hm_node || !hm_node->value)
 		return NULL;
 
-	return hm_node;
+	return hm_node->value;
 }
 
 static void *lsv_rbtree_lookup(struct lsv_ds *ds, sector_t key)
@@ -262,7 +262,7 @@ static void *lsv_rbtree_lookup(struct lsv_ds *ds, sector_t key)
 	if (!rb_node || !rb_node->value)
 		return NULL;
 
-	return rb_node;
+	return rb_node->value;
 }
 
 void *lsv_ds_lookup(struct lsv_ds *ds, sector_t key)
@@ -281,22 +281,6 @@ void *lsv_ds_lookup(struct lsv_ds *ds, sector_t key)
 	}
 
 	return NULL;
-}
-
-sector_t lsv_ds_lookup_value(struct lsv_ds *ds, sector_t key)
-{
-	void *node = lsv_ds_lookup(ds, key);
-
-	switch (ds->type) {
-	case BTREE_TYPE:
-		return ;
-	case SKIPLIST_TYPE:
-		return lsv_skiplist_lookup(ds, key);
-	case HASHTABLE_TYPE:
-		return lsv_ht_lookup(ds, key);
-	case RBTREE_TYPE:
-		return lsv_rbtree_lookup(ds, key);
-	}
 }
 
 void lsv_ds_remove(struct lsv_ds *ds, sector_t key, struct kmem_cache *lsv_value_cache)
