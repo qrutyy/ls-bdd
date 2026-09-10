@@ -84,55 +84,51 @@ mem_err:
 static int lsv_skiplist_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng)
 {
 	struct skiplist *skiplist = NULL;
+	int rc = 0;
 
 	cache_mng->sl_cache = kmem_cache_create(
 		"lsv_skiplist_cache", sizeof(struct skiplist_node) + 24 * sizeof(struct skiplist_node *), 0, SLAB_HWCACHE_ALIGN, NULL);
-	if (!cache_mng->sl_cache)
-		return -ENOMEM;
+	if (cache_mng->sl_cache)
+		goto mem_err;
 
 	skiplist = skiplist_init(cache_mng->sl_cache);
 	if (!skiplist)
-		goto cache_err;
+		goto mem_err;
 
 	ds->type = SKIPLIST_TYPE;
 	ds->structure.map_list = skiplist;
 
-	return 0;
+	return rc;
 
-cache_err:
-	kmem_cache_destroy(cache_mng->sl_cache);
-	cache_mng->sl_cache = NULL;
+mem_err:
+	kfree(btree_map);
+	kfree(root);
 	return -ENOMEM;
 }
 
 static int lsv_hashtable_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng)
 {
 	struct hashtable *hash_table = NULL;
+	int rc;
 
-#ifdef LF_MODE
+	#ifdef LF_MODE
 	cache_mng->ht_cache = kmem_cache_create("lsv_hashtable_cache", sizeof(struct lf_list_node), 0, SLAB_HWCACHE_ALIGN, NULL);
-#endif
-#ifdef SY_MODE
+	#endif
+
+	#ifdef SY_MODE
 	cache_mng->ht_cache = kmem_cache_create("lsv_hashtable_cache", sizeof(struct hash_el), 0, SLAB_HWCACHE_ALIGN, NULL);
-#endif
+	#endif
 
 	if (!cache_mng->ht_cache)
-		return -ENOMEM;
+		goto mem_err;
 
 	hash_table = hashtable_init(cache_mng->ht_cache);
 	if (!hash_table)
-		goto cache_err;
+		goto mem_err;
 
 	ds->type = HASHTABLE_TYPE;
 	ds->structure.map_hash = hash_table;
 	ds->structure.map_hash->max_bck_num = 0;
-
-	return 0;
-
-cache_err:
-	kmem_cache_destroy(cache_mng->ht_cache);
-	cache_mng->ht_cache = NULL;
-	return -ENOMEM;
 }
 
 static int lsv_rbtree_init(struct lsv_ds *ds)
@@ -151,30 +147,30 @@ static int lsv_rbtree_init(struct lsv_ds *ds)
 
 s32 lsv_ds_init(struct lsv_ds *ds, char *sel_ds, struct lsv_cache_mng *cache_mng)
 {
-	s32 status;
+	s32 status = 0;
 
 	BUG_ON(!ds || !cache_mng);
 
-	status = ds_init_type(ds, sel_ds);
-	if (status)
-		return status;
+	rc = ds_init_type(ds, sel_ds);
+	if (rc)
+		return rc;
 
-	switch (ds->type) {
+	switch(ds->type) {
 	case BTREE_TYPE:
-		status = lsv_btree_init(ds);
+		rc = lsv_btree_init(ds);
 		break;
 	case SKIPLIST_TYPE:
-		status = lsv_skiplist_init(ds, cache_mng);
+		rc = lsv_skiplist_init(ds, cache_mng);
 		break;
 	case HASHTABLE_TYPE:
-		status = lsv_hashtable_init(ds, cache_mng);
+		rc = lsv_hashtable_init(ds, cache_mng);
 		break;
 	case RBTREE_TYPE:
-		status = lsv_rbtree_init(ds);
+		rc = lsv_rbtree_init(ds);
 		break;
 	}
 
-	return status;
+	return rc;
 }
 
 static void lsv_btree_free(struct lsv_ds *ds)
@@ -185,7 +181,7 @@ static void lsv_btree_free(struct lsv_ds *ds)
 
 static void lsv_skiplist_free(struct lsv_ds *ds, struct lsv_map_cache *map_cache)
 {
-	skiplist_free(ds->structure.map_list, map_cache->entry_cache_mng->sl_cache, map_cache->cell_cachep);
+	skiplist_free(ds->structure.map_list, map_cache->entry_cache_mng->skiplist_cache, map_cache->cell_cachep);
 	ds->structure.map_list = NULL;
 }
 
@@ -203,18 +199,18 @@ static void lsv_rbtree_free(struct lsv_ds *ds)
 
 void lsv_ds_free(struct lsv_ds *ds, struct lsv_map_cache *map_cache)
 {
-	BUG_ON(!ds || !map_cache);
+	BUG_ON(!ds || !cache_mng || !lsv_value_cache);
 
 	switch (ds->type) {
 	case BTREE_TYPE:
-		lsv_btree_free(ds);
+		lsv_btree_destroy(ds);
 		break;
 	case SKIPLIST_TYPE:
-		lsv_skiplist_free(ds, map_cache);
+		lsv_skiplist_destroy(ds, map_cache);
 		break;
 	case HASHTABLE_TYPE:
-		lsv_hashtable_free(ds, map_cache);
 		break;
+		lsv_hashtable_free(ds, map_cache);
 	case RBTREE_TYPE:
 		lsv_rbtree_free(ds);
 		break;
@@ -285,6 +281,22 @@ void *lsv_ds_lookup(struct lsv_ds *ds, sector_t key)
 	}
 
 	return NULL;
+}
+
+sector_t lsv_ds_lookup_value(struct lsv_ds *ds, sector_t key)
+{
+	void *node = lsv_ds_lookup(ds, key);
+
+	switch (ds->type) {
+	case BTREE_TYPE:
+		return ;
+	case SKIPLIST_TYPE:
+		return lsv_skiplist_lookup(ds, key);
+	case HASHTABLE_TYPE:
+		return lsv_ht_lookup(ds, key);
+	case RBTREE_TYPE:
+		return lsv_rbtree_lookup(ds, key);
+	}
 }
 
 void lsv_ds_remove(struct lsv_ds *ds, sector_t key, struct kmem_cache *lsv_value_cache)
