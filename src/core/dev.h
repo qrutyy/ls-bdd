@@ -38,7 +38,7 @@ struct lsv_dev_params {
 struct lsv_dev {
 	struct lsv_front front;
 	struct lsv_back back;
-	struct lsv_map map;
+	struct lsv_lmap map;
 
 	struct list_head node; /* node in the module wide device list */
 };

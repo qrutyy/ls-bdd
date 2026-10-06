@@ -179,13 +179,13 @@ static void lsv_btree_free(struct lsv_ds *ds)
 	ds->structure.map_btree = NULL;
 }
 
-static void lsv_skiplist_free(struct lsv_ds *ds, struct lsv_map_cache *map_cache)
+static void lsv_skiplist_free(struct lsv_ds *ds, struct lsv_lmap_cache *map_cache)
 {
 	skiplist_free(ds->structure.map_list, map_cache->entry_cache_mng->sl_cache, map_cache->cell_cachep);
 	ds->structure.map_list = NULL;
 }
 
-static void lsv_hashtable_free(struct lsv_ds *ds, struct lsv_map_cache *map_cache)
+static void lsv_hashtable_free(struct lsv_ds *ds, struct lsv_lmap_cache *map_cache)
 {
 	hashtable_free(ds->structure.map_hash, map_cache->entry_cache_mng->ht_cache, map_cache->cell_cachep);
 	ds->structure.map_hash = NULL;
@@ -197,7 +197,7 @@ static void lsv_rbtree_free(struct lsv_ds *ds)
 	ds->structure.map_rbtree = NULL;
 }
 
-void lsv_ds_free(struct lsv_ds *ds, struct lsv_map_cache *map_cache)
+void lsv_ds_free(struct lsv_ds *ds, struct lsv_lmap_cache *map_cache)
 {
 	BUG_ON(!ds || !map_cache);
 
@@ -313,14 +313,14 @@ static s32 lsv_btree_insert(struct lsv_ds *ds, sector_t key, void *value)
 	return btree_insert(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp, value, GFP_KERNEL);
 }
 
-static s32 lsv_skiplist_insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_map_cache *map_cache)
+static s32 lsv_skiplist_insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_lmap_cache *map_cache)
 {
 	skiplist_insert(ds->structure.map_list, key, value, map_cache->entry_cache_mng->sl_cache, map_cache->cell_cachep);
 
 	return 0;
 }
 
-static s32 lsv_hashtable_insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_map_cache *map_cache)
+static s32 lsv_hashtable_insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_lmap_cache *map_cache)
 {
 	hashtable_insert(ds->structure.map_hash, key, value, map_cache->entry_cache_mng->ht_cache, map_cache->cell_cachep);
 
@@ -334,7 +334,7 @@ static s32 lsv_rbtree_insert(struct lsv_ds *ds, sector_t key, void *value)
 	return 0;
 }
 
-s32 lsv_ds_insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_map_cache *map_cache)
+s32 lsv_ds_insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_lmap_cache *map_cache)
 {
 	BUG_ON(!ds || !map_cache);
 

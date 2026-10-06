@@ -35,7 +35,7 @@ static s32 lsv_mng_init(void)
 	}
 	mng->major = rc;
 
-	rc = lsv_map_cache_alloc(&mng->map_cache);
+	rc = lsv_lmap_cache_alloc(&mng->map_cache);
 	if (rc)
 		goto unregister;
 
@@ -48,7 +48,7 @@ static s32 lsv_mng_init(void)
 	return 0;
 
 free_map_cache:
-	lsv_map_cache_free(&mng->map_cache);
+	lsv_lmap_cache_free(&mng->map_cache);
 unregister:
 	unregister_blkdev(mng->major, LSV_BLKDEV_NAME_PREFIX);
 free_mng:
@@ -73,7 +73,7 @@ static void lsv_mng_deinit(void)
 	lsv_dev_destroy_all(mng);
 
 	lsv_bio_cache_free();
-	lsv_map_cache_free(&mng->map_cache);
+	lsv_lmap_cache_free(&mng->map_cache);
 	unregister_blkdev(mng->major, LSV_BLKDEV_NAME_PREFIX);
 
 	g_mng = NULL;
