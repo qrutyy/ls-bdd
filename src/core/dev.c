@@ -112,8 +112,8 @@ s32 lsv_dev_create(const struct lsv_dev_params *params, struct lsv_dev **out)
 	if (rc)
 		goto free_dev;
 
-	rc = lsv_lmap_init(&dev->map, &g_mng->map_cache, params->index_ds, params->cell_size, params->segment_size,
-			      get_capacity(dev->back.bd->bd_disk));
+	rc = lsv_lmap_init(&dev->map, params->index_ds, params->cell_size, params->segment_size,
+			   get_capacity(dev->back.bd->bd_disk));
 	if (rc)
 		goto close_back;
 
