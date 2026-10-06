@@ -49,4 +49,10 @@ bool lsv_ds_empty_check(struct lsv_ds *ds);
 
 bool lsv_ds_check_available(char *sel_ds);
 
+/* The hashtable takes no entry under key 0: insertion refuses it. */
+static inline bool lsv_ht_key_is_reserved(sector_t key)
+{
+	return !key;
+}
+
 #endif

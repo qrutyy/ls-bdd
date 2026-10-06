@@ -22,6 +22,7 @@ struct lsv_cfg_dev {
 	char index_ds[LSV_CTL_MAX_DS_NAME_LEN + 1];
 	u32 cell_size;
 	u64 segment_size;
+	bool dedup;
 
 	bool created;
 	struct lsv_dev *dev; /* set by create_new, torn down on rmdir */

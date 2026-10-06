@@ -4,7 +4,7 @@
 #include <linux/kernel.h>
 #include <linux/string.h>
 
-#include "core/digest.h"
+#include "core/dedup/digest.h"
 #include "utils/xxh3.h"
 
 static const struct lsv_digest_spec lsv_digest_specs[] = {

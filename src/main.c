@@ -5,8 +5,8 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 
-#include "core/bio.h"
-#include "core/dedup.h"
+#include "core/bio/bio.h"
+#include "core/dedup/dedup.h"
 #include "core/dev.h"
 #include "ctl/configfs.h"
 #include "main.h"

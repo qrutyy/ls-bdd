@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 #include <linux/blkdev.h>
+#include <linux/err.h>
 #include <linux/idr.h>
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 
-#include "core/bio.h"
+#include "core/bio/bio.h"
+#include "core/dedup/dedup.h"
 #include "core/dev.h"
 #include "main.h"
 
@@ -112,15 +114,23 @@ s32 lsv_dev_create(const struct lsv_dev_params *params, struct lsv_dev **out)
 	if (rc)
 		goto free_dev;
 
-	rc = lsv_lmap_init(&dev->map, params->index_ds, params->cell_size, params->segment_size,
+	rc = lsv_lmap_init(&dev->lmap, params->index_ds, params->cell_size, params->segment_size,
 			   get_capacity(dev->back.bd->bd_disk));
 	if (rc)
 		goto close_back;
 
+	if (params->dedup) {
+		dev->dedup = lsv_dedup_create(&dev->lmap, dev->back.bd);
+		if (IS_ERR(dev->dedup)) {
+			rc = PTR_ERR(dev->dedup);
+			dev->dedup = NULL;
+			goto deinit_lmap;
+		}
+	}
 
 	rc = lsv_dev_add_disk(dev);
 	if (rc)
-		goto deinit_map;
+		goto destroy_dedup;
 
 	mutex_lock(&g_mng->lock);
 	list_add_tail(&dev->node, &g_mng->dev_list);
@@ -128,13 +138,15 @@ s32 lsv_dev_create(const struct lsv_dev_params *params, struct lsv_dev **out)
 
 	*out = dev;
 
-	pr_info("lsv: created '%s' on %s, cell %u B, %llu cells\n", dev->front.name, dev->back.path, dev->map.cell_size,
-		dev->map.capacity_cells);
+	pr_info("lsv: created '%s' on %s, cell %u B, %llu cells, dedup %s\n", dev->front.name, dev->back.path,
+		dev->lmap.cell_size, dev->lmap.capacity_cells, dev->dedup ? "on" : "off");
 
 	return 0;
 
-deinit_map:
-	lsv_lmap_deinit(&dev->map);
+destroy_dedup:
+	lsv_dedup_destroy(dev->dedup);
+deinit_lmap:
+	lsv_lmap_deinit(&dev->lmap);
 close_back:
 	lsv_dev_close_back(dev);
 free_dev:
@@ -152,7 +164,9 @@ void lsv_dev_destroy(struct lsv_dev *dev)
 	mutex_unlock(&g_mng->lock);
 
 	lsv_dev_del_disk(dev);
-	lsv_lmap_deinit(&dev->map);
+	/* Before lmap: pending verifies still hold pblks and bios of this device. */
+	lsv_dedup_destroy(dev->dedup);
+	lsv_lmap_deinit(&dev->lmap);
 	lsv_dev_close_back(dev);
 
 	kfree(dev);
