@@ -30,16 +30,16 @@ struct lsv_cache_mng {
 };
 
 /* Node caches plus the cache the mapping cells themselves come from. */
-struct lsv_map_cache {
+struct lsv_lmap_cache {
 	struct lsv_cache_mng *entry_cache_mng;
 	struct kmem_cache *cell_cachep;
 };
 
 s32 lsv_ds_init(struct lsv_ds *ds, char *sel_ds, struct lsv_cache_mng *cache_mng);
-void lsv_ds_free(struct lsv_ds *ds, struct lsv_map_cache *map_cache);
+void lsv_ds_free(struct lsv_ds *ds, struct lsv_lmap_cache *map_cache);
 
 void *lsv_ds_lookup(struct lsv_ds *ds, sector_t key);
-s32 lsv_ds_insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_map_cache *map_cache);
+s32 lsv_ds_insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_lmap_cache *map_cache);
 void lsv_ds_remove(struct lsv_ds *ds, sector_t key, struct kmem_cache *cell_cachep);
 
 sector_t lsv_ds_last(struct lsv_ds *ds, sector_t key);

@@ -25,9 +25,9 @@ struct lsv_cell {
 	u64 pba; /* physical cell number */
 };
 
-/* struct lsv_map_cache lives in utils/ds_control.h and is owned by the module. */
+/* struct lsv_lmap_cache lives in utils/ds_control.h and is owned by the module. */
 
-struct lsv_map {
+struct lsv_lmap {
 	struct lsv_ds index;
 	char ds_type[LSV_DS_NAME_LEN];
 
@@ -41,27 +41,27 @@ struct lsv_map {
 	u64 capacity_cells;
 
 	struct bio_set bio_set;
-	struct lsv_map_cache *cache; /* module owned */
+	struct lsv_lmap_cache *cache; /* module owned */
 };
 
-s32 lsv_map_cache_alloc(struct lsv_map_cache *cache);
-void lsv_map_cache_free(struct lsv_map_cache *cache);
+s32 lsv_lmap_cache_alloc(struct lsv_lmap_cache *cache);
+void lsv_lmap_cache_free(struct lsv_lmap_cache *cache);
 
-s32 lsv_map_init(struct lsv_map *map, struct lsv_map_cache *cache, const char *ds_type, u32 cell_size, u64 segment_size,
+s32 lsv_lmap_init(struct lsv_lmap *map, struct lsv_lmap_cache *cache, const char *ds_type, u32 cell_size, u64 segment_size,
 		 sector_t backing_sectors);
-void lsv_map_deinit(struct lsv_map *map);
+void lsv_lmap_deinit(struct lsv_lmap *map);
 
-struct lsv_cell *lsv_map_lookup(struct lsv_map *map, u64 lba);
-s32 lsv_map_remap(struct lsv_map *map, u64 lba, u64 *pba);
+struct lsv_cell *lsv_lmap_lookup(struct lsv_lmap *map, u64 lba);
+s32 lsv_lmap_remap(struct lsv_lmap *map, u64 lba, u64 *pba);
 
 /* Where a sector lands inside the cell grid. */
-struct lsv_map_pos {
+struct lsv_lmap_pos {
 	u64 lba; /* logical cell number */
 	u32 offset; /* sector inside that cell */
 	u32 sectors; /* sectors left until the end of the cell */
 };
 
-static inline void lsv_map_locate(const struct lsv_map *map, sector_t sector, struct lsv_map_pos *pos)
+static inline void lsv_lmap_locate(const struct lsv_lmap *map, sector_t sector, struct lsv_lmap_pos *pos)
 {
 	pos->lba = sector >> map->cell_sect_shift;
 	pos->offset = sector & (map->cell_sectors - 1);
@@ -70,9 +70,9 @@ static inline void lsv_map_locate(const struct lsv_map *map, sector_t sector, st
 
 /*
  * Logical addresses belong to the virtual device and start at zero; physical
- * ones are shifted by the metadata zone, hence the asymmetry with lsv_map_locate().
+ * ones are shifted by the metadata zone, hence the asymmetry with lsv_lmap_locate().
  */
-static inline sector_t lsv_map_data_sector(const struct lsv_map *map, u64 pba)
+static inline sector_t lsv_lmap_data_sector(const struct lsv_lmap *map, u64 pba)
 {
 	return LSV_META_SECTORS + (pba << map->cell_sect_shift);
 }

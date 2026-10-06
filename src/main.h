@@ -13,7 +13,7 @@ struct lsv_mng {
 	struct list_head dev_list;
 	struct mutex lock; /* guards dev_list */
 
-	struct lsv_map_cache map_cache; /* shared by every device */
+	struct lsv_lmap_cache map_cache; /* shared by every device */
 };
 
 extern struct lsv_mng *g_mng;

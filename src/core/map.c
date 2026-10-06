@@ -7,7 +7,7 @@
 
 #include "core/map.h"
 
-s32 lsv_map_cache_alloc(struct lsv_map_cache *cache)
+s32 lsv_lmap_cache_alloc(struct lsv_lmap_cache *cache)
 {
 	cache->cell_cachep = kmem_cache_create("lsv_cell", sizeof(struct lsv_cell), 0,
 					       SLAB_HWCACHE_ALIGN, NULL);
@@ -24,7 +24,7 @@ s32 lsv_map_cache_alloc(struct lsv_map_cache *cache)
 	return 0;
 }
 
-void lsv_map_cache_free(struct lsv_map_cache *cache)
+void lsv_lmap_cache_free(struct lsv_lmap_cache *cache)
 {
 	struct lsv_cache_mng *mng = cache->entry_cache_mng;
 
@@ -41,7 +41,7 @@ void lsv_map_cache_free(struct lsv_map_cache *cache)
 	cache->cell_cachep = NULL;
 }
 
-static s32 lsv_map_setup_geometry(struct lsv_map *map, u32 cell_size, sector_t backing_sectors)
+static s32 lsv_lmap_setup_geometry(struct lsv_lmap *map, u32 cell_size, sector_t backing_sectors)
 {
 	if (cell_size < LSV_CELL_SIZE_MIN || cell_size > LSV_CELL_SIZE_MAX)
 		return -EINVAL;
@@ -65,7 +65,7 @@ static s32 lsv_map_setup_geometry(struct lsv_map *map, u32 cell_size, sector_t b
 	return 0;
 }
 
-s32 lsv_map_init(struct lsv_map *map, struct lsv_map_cache *cache, const char *ds_type,
+s32 lsv_lmap_init(struct lsv_lmap *map, struct lsv_lmap_cache *cache, const char *ds_type,
 		 u32 cell_size, u64 segment_size, sector_t backing_sectors)
 {
 	s32 rc;
@@ -73,7 +73,7 @@ s32 lsv_map_init(struct lsv_map *map, struct lsv_map_cache *cache, const char *d
 	if (strscpy(map->ds_type, ds_type, sizeof(map->ds_type)) < 0)
 		return -ENAMETOOLONG;
 
-	rc = lsv_map_setup_geometry(map, cell_size, backing_sectors);
+	rc = lsv_lmap_setup_geometry(map, cell_size, backing_sectors);
 	if (rc)
 		return rc;
 
@@ -95,7 +95,7 @@ bioset_err:
 	return rc;
 }
 
-void lsv_map_deinit(struct lsv_map *map)
+void lsv_lmap_deinit(struct lsv_lmap *map)
 {
 	if (!map->cache)
 		return;
@@ -105,12 +105,12 @@ void lsv_map_deinit(struct lsv_map *map)
 	map->cache = NULL;
 }
 
-struct lsv_cell *lsv_map_lookup(struct lsv_map *map, u64 lba)
+struct lsv_cell *lsv_lmap_lookup(struct lsv_lmap *map, u64 lba)
 {
 	return lsv_ds_lookup(&map->index, lba);
 }
 
-static s32 lsv_map_alloc_pba(struct lsv_map *map, u64 *pba)
+static s32 lsv_lmap_alloc_pba(struct lsv_lmap *map, u64 *pba)
 {
 	s64 allocated;
 
@@ -134,14 +134,14 @@ static s32 lsv_map_alloc_pba(struct lsv_map *map, u64 *pba)
  * which a concurrent read of the same lba would find no mapping at all and be
  * served zeroes for data that does exist.
  */
-s32 lsv_map_remap(struct lsv_map *map, u64 lba, u64 *pba)
+s32 lsv_lmap_remap(struct lsv_lmap *map, u64 lba, u64 *pba)
 {
-	struct lsv_map_cache *cache = map->cache;
+	struct lsv_lmap_cache *cache = map->cache;
 	struct lsv_cell *cell;
 	u64 allocated;
 	s32 rc;
 
-	rc = lsv_map_alloc_pba(map, &allocated);
+	rc = lsv_lmap_alloc_pba(map, &allocated);
 	if (rc)
 		return rc;
 

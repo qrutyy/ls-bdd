@@ -112,7 +112,7 @@ s32 lsv_dev_create(const struct lsv_dev_params *params, struct lsv_dev **out)
 	if (rc)
 		goto free_dev;
 
-	rc = lsv_map_init(&dev->map, &g_mng->map_cache, params->index_ds, params->cell_size, params->segment_size,
+	rc = lsv_lmap_init(&dev->map, &g_mng->map_cache, params->index_ds, params->cell_size, params->segment_size,
 			      get_capacity(dev->back.bd->bd_disk));
 	if (rc)
 		goto close_back;
@@ -134,7 +134,7 @@ s32 lsv_dev_create(const struct lsv_dev_params *params, struct lsv_dev **out)
 	return 0;
 
 deinit_map:
-	lsv_map_deinit(&dev->map);
+	lsv_lmap_deinit(&dev->map);
 close_back:
 	lsv_dev_close_back(dev);
 free_dev:
@@ -152,7 +152,7 @@ void lsv_dev_destroy(struct lsv_dev *dev)
 	mutex_unlock(&g_mng->lock);
 
 	lsv_dev_del_disk(dev);
-	lsv_map_deinit(&dev->map);
+	lsv_lmap_deinit(&dev->map);
 	lsv_dev_close_back(dev);
 
 	kfree(dev);

@@ -79,11 +79,11 @@ static s32 lsv_bio_setup_write(struct lsv_dev *dev, struct bio *bio, u64 lba, u3
 		return -EOPNOTSUPP;
 	}
 
-	rc = lsv_map_remap(&dev->map, lba, &pba);
+	rc = lsv_lmap_remap(&dev->map, lba, &pba);
 	if (rc)
 		return rc;
 
-	bio->bi_iter.bi_sector = lsv_map_data_sector(&dev->map, pba);
+	bio->bi_iter.bi_sector = lsv_lmap_data_sector(&dev->map, pba);
 
 	return LSV_BIO_SUBMIT;
 }
@@ -96,14 +96,14 @@ static s32 lsv_bio_setup_read(struct lsv_dev *dev, struct bio *bio, u64 lba, u32
 {
 	struct lsv_cell *cell;
 
-	cell = lsv_map_lookup(&dev->map, lba);
+	cell = lsv_lmap_lookup(&dev->map, lba);
 	if (!cell) {
 		zero_fill_bio(bio);
 		bio_endio(bio);
 		return LSV_BIO_DONE;
 	}
 
-	bio->bi_iter.bi_sector = lsv_map_data_sector(&dev->map, READ_ONCE(cell->pba)) + offset;
+	bio->bi_iter.bi_sector = lsv_lmap_data_sector(&dev->map, READ_ONCE(cell->pba)) + offset;
 
 	return LSV_BIO_SUBMIT;
 }
@@ -125,7 +125,7 @@ static s32 lsv_bio_setup_bio(struct lsv_bio_req *req, struct bio *bio, u64 lba, 
  */
 static void lsv_bio_process(struct lsv_bio_req *req)
 {
-	struct lsv_map *map = &req->dev->map;
+	struct lsv_lmap *map = &req->dev->map;
 	struct bio *clone = req->clone;
 	struct bio *bio;
 	s32 rc;
@@ -137,10 +137,10 @@ static void lsv_bio_process(struct lsv_bio_req *req)
 	}
 
 	while (true) {
-		struct lsv_map_pos pos;
+		struct lsv_lmap_pos pos;
 		u32 chunk;
 
-		lsv_map_locate(map, clone->bi_iter.bi_sector, &pos);
+		lsv_lmap_locate(map, clone->bi_iter.bi_sector, &pos);
 		chunk = min_t(u32, pos.sectors, bio_sectors(clone));
 
 		bio = clone;
