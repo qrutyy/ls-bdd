@@ -16,7 +16,7 @@ For more information, see:
 * [ru-presentation 2025](https://github.com/qrutyy/ls-bdd/blob/main/docs/4-semester/%28ru-presentation-conf%29%20Research%20on%20the%20implementation%20of%20log-structured%20block%20devicesd%20in%20Linux%20kernel.pdf)
 * [eng-presentation (LS implementation)](https://github.com/qrutyy/ls-bdd/blob/main/docs/3-semester/%28eng-presentation%29%20Implementation%20of%20log-structured%20block%20device%20in%20Linux%20kernel.pdf)
 
-***Compatible with Linux Kernel 6.15.7***
+***Compatible with Linux Kernel 7.2.9***
 
 ## Block Device Driver
 
