@@ -2,13 +2,14 @@
 
 #include <linux/bio.h>
 #include <linux/blkdev.h>
+#include <linux/err.h>
 #include <linux/minmax.h>
 #include <linux/slab.h>
 
-#include "core/bio.h"
-#include "core/map.h"
+#include "core/bio/bio.h"
+#include "core/dedup/dedup.h"
+#include "core/lmap/lmap.h"
 
-/* Outcome of remapping a single cell sized bio. */
 #define LSV_BIO_SUBMIT 0
 #define LSV_BIO_DONE 1
 
@@ -48,7 +49,7 @@ static struct lsv_bio_req *lsv_bio_req_alloc(struct lsv_dev *dev, struct bio *bi
 	if (!req)
 		return NULL;
 
-	req->clone = bio_alloc_clone(dev->back.bd, bio, GFP_NOIO, &dev->map.bio_set);
+	req->clone = bio_alloc_clone(dev->back.bd, bio, GFP_NOIO, &dev->lmap.bio_set);
 	if (!req->clone) {
 		kmem_cache_free(g_lsv_bio_req_cachep, req);
 		return NULL;
@@ -65,25 +66,61 @@ static struct lsv_bio_req *lsv_bio_req_alloc(struct lsv_dev *dev, struct bio *bi
 }
 
 /*
- * Every write lands on a freshly allocated physical cell, so the mapping is
- * repointed before the bio is handed to the backing device.
+ * Lets dedup pick the physical cell. Returns LSV_BIO_SUBMIT with *|pblk| set when
+ * the data is to be written out, LSV_BIO_DONE when dedup took the bio over, or a
+ * negative error.
  */
+static s32 lsv_bio_setup_dedup_write(struct lsv_dev *dev, struct bio *bio, u64 lba, struct lsv_pblk **pblk)
+{
+	s32 rc;
+
+	rc = lsv_dedup_write(dev->dedup, bio, lba, pblk);
+	if (rc < 0)
+		return rc;
+
+	if (!lsv_de_is_new(rc))
+		return LSV_BIO_DONE;
+
+	return LSV_BIO_SUBMIT;
+}
+
 static s32 lsv_bio_setup_write(struct lsv_dev *dev, struct bio *bio, u64 lba, u32 offset, u32 sectors)
 {
+	struct lsv_lmap *lmap = &dev->lmap;
+	struct lsv_pblk *pblk;
 	u64 pba;
 	s32 rc;
 
-	if (offset || sectors != dev->map.cell_sectors) {
+	if (offset || sectors != lmap->cell_sectors) {
 		/* TODO: read-modify-write for partial cell writes. */
 		pr_warn_once("lsv: partial cell write is not implemented yet\n");
 		return -EOPNOTSUPP;
 	}
 
-	rc = lsv_lmap_remap(&dev->map, lba, &pba);
-	if (rc)
-		return rc;
+	if (dev->dedup) {
+		/* Either an error, or the bio is not ours to submit any more. */
+		rc = lsv_bio_setup_dedup_write(dev, bio, lba, &pblk);
+		if (rc)
+			return rc;
+	} else {
+		pblk = lsv_pblk_alloc(lmap);
+		if (IS_ERR(pblk))
+			return PTR_ERR(pblk);
+	}
 
-	bio->bi_iter.bi_sector = lsv_lmap_data_sector(&dev->map, pba);
+	/*
+	 * read before binding: from then on the reference is the cell's, and a
+	 * concurrent overwrite of this lba may drop it and free the pblk.
+	 */
+	pba = pblk->pba;
+
+	rc = lsv_lmap_bind(lmap, lba, pblk);
+	if (rc) {
+		lsv_pblk_put(lmap, pblk);
+		return rc;
+	}
+
+	bio->bi_iter.bi_sector = lsv_lmap_data_sector(lmap, pba);
 
 	return LSV_BIO_SUBMIT;
 }
@@ -94,16 +131,15 @@ static s32 lsv_bio_setup_write(struct lsv_dev *dev, struct bio *bio, u64 lba, u3
  */
 static s32 lsv_bio_setup_read(struct lsv_dev *dev, struct bio *bio, u64 lba, u32 offset)
 {
-	struct lsv_cell *cell;
+	u64 pba;
 
-	cell = lsv_lmap_lookup(&dev->map, lba);
-	if (!cell) {
+	if (!lsv_lmap_lookup_pba(&dev->lmap, lba, &pba)) {
 		zero_fill_bio(bio);
 		bio_endio(bio);
 		return LSV_BIO_DONE;
 	}
 
-	bio->bi_iter.bi_sector = lsv_lmap_data_sector(&dev->map, READ_ONCE(cell->pba)) + offset;
+	bio->bi_iter.bi_sector = lsv_lmap_data_sector(&dev->lmap, pba) + offset;
 
 	return LSV_BIO_SUBMIT;
 }
@@ -125,7 +161,7 @@ static s32 lsv_bio_setup_bio(struct lsv_bio_req *req, struct bio *bio, u64 lba, 
  */
 static void lsv_bio_process(struct lsv_bio_req *req)
 {
-	struct lsv_lmap *map = &req->dev->map;
+	struct lsv_lmap *lmap = &req->dev->lmap;
 	struct bio *clone = req->clone;
 	struct bio *bio;
 	s32 rc;
@@ -140,13 +176,13 @@ static void lsv_bio_process(struct lsv_bio_req *req)
 		struct lsv_lmap_pos pos;
 		u32 chunk;
 
-		lsv_lmap_locate(map, clone->bi_iter.bi_sector, &pos);
+		lsv_lmap_locate(lmap, clone->bi_iter.bi_sector, &pos);
 		chunk = min_t(u32, pos.sectors, bio_sectors(clone));
 
 		bio = clone;
 
 		if (chunk < bio_sectors(clone)) {
-			bio = bio_split(clone, chunk, GFP_NOIO, &map->bio_set);
+			bio = bio_split(clone, chunk, GFP_NOIO, &lmap->bio_set);
 			if (!bio) {
 				rc = -ENOMEM;
 				goto err;

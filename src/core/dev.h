@@ -6,10 +6,12 @@
 #include <linux/blkdev.h>
 #include <linux/list.h>
 
-#include "core/map.h"
+#include "core/lmap/lmap.h"
 
 #define LSV_BLKDEV_NAME_PREFIX "lsv"
 #define LSV_MAX_MINORS 64
+
+struct lsv_dedup;
 
 struct lsv_front {
 	char name[DISK_NAME_LEN];
@@ -33,12 +35,15 @@ struct lsv_dev_params {
 	const char *index_ds;
 	u32 cell_size;
 	u64 segment_size;
+	bool dedup;
 };
 
 struct lsv_dev {
 	struct lsv_front front;
 	struct lsv_back back;
-	struct lsv_lmap map;
+
+	struct lsv_lmap lmap;
+	struct lsv_dedup *dedup; /* NULL when dedup is off */
 
 	struct list_head node; /* node in the module wide device list */
 };

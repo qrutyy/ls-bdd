@@ -23,6 +23,7 @@
  *	echo ht		  > /sys/kernel/config/lsv/lsv0/index_ds
  *	echo 4096	  > /sys/kernel/config/lsv/lsv0/cell_size
  *	echo 2097152	  > /sys/kernel/config/lsv/lsv0/segment_size
+ *	echo 1		  > /sys/kernel/config/lsv/lsv0/dedup
  *	echo 1		  > /sys/kernel/config/lsv/lsv0/create_new
  *
  * mkdir only allocates a description of a future device. The device itself
@@ -188,6 +189,39 @@ static ssize_t lsv_cfg_dev_cell_size_store(struct config_item *item, const char 
 }
 CONFIGFS_ATTR(lsv_cfg_dev_, cell_size);
 
+static ssize_t lsv_cfg_dev_dedup_show(struct config_item *item, char *page)
+{
+	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
+	ssize_t len;
+
+	mutex_lock(&cfg->lock);
+	len = snprintf(page, PAGE_SIZE, "%d\n", cfg->dedup ? 1 : 0);
+	mutex_unlock(&cfg->lock);
+
+	return len;
+}
+
+static ssize_t lsv_cfg_dev_dedup_store(struct config_item *item, const char *page, size_t count)
+{
+	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
+	ssize_t rc = count;
+	bool value;
+
+	if (kstrtobool(page, &value))
+		return -EINVAL;
+
+	mutex_lock(&cfg->lock);
+
+	if (cfg->created)
+		rc = -EBUSY;
+	else
+		cfg->dedup = value;
+
+	mutex_unlock(&cfg->lock);
+	return rc;
+}
+CONFIGFS_ATTR(lsv_cfg_dev_, dedup);
+
 static ssize_t lsv_cfg_dev_create_new_show(struct config_item *item, char *page)
 {
 	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
@@ -241,6 +275,7 @@ static ssize_t lsv_cfg_dev_create_new_store(struct config_item *item, const char
 	params.index_ds = cfg->index_ds;
 	params.cell_size = cfg->cell_size;
 	params.segment_size = cfg->segment_size;
+	params.dedup = cfg->dedup;
 
 	rc = lsv_dev_create(&params, &cfg->dev);
 	if (rc)
@@ -260,6 +295,7 @@ static struct configfs_attribute *lsv_cfg_dev_attrs[] = {
 	&lsv_cfg_dev_attr_index_ds,
 	&lsv_cfg_dev_attr_cell_size,
 	&lsv_cfg_dev_attr_segment_size,
+	&lsv_cfg_dev_attr_dedup,
 	&lsv_cfg_dev_attr_create_new,
 	NULL,
 };

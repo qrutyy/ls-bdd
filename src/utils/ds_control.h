@@ -30,6 +30,7 @@ struct lsv_cache_mng {
 };
 
 /* Node caches plus the cache the mapping cells themselves come from. */
+/* TODO(qrutyy): make it generic so every caller can pass it. think about verification */
 struct lsv_lmap_cache {
 	struct lsv_cache_mng *entry_cache_mng;
 	struct kmem_cache *cell_cachep;
@@ -47,5 +48,11 @@ void *lsv_ds_prev(struct lsv_ds *ds, sector_t key, sector_t *prev_key);
 bool lsv_ds_empty_check(struct lsv_ds *ds);
 
 bool lsv_ds_check_available(char *sel_ds);
+
+/* The hashtable takes no entry under key 0: insertion refuses it. */
+static inline bool lsv_ht_key_is_reserved(sector_t key)
+{
+	return !key;
+}
 
 #endif
