@@ -24,7 +24,8 @@ $(error Invalid type specified. Use "make type=lf" or "make type=sy")
 
 endif
 
-lsv-objs += main.o ctl/configfs.o core/dev.o core/map.o core/bio.o utils/ds_control.o \
+lsv-objs += main.o ctl/configfs.o core/dev.o core/map.o core/bio.o core/dedup.o core/digest.o \
+	utils/ds_control.o utils/xxh3.o \
 	$(DIR)/btree_utils.o $(DIR)/skiplist.o \
 	$(DIR)/hashtable.o $(DIR)/rbtree.o  \
 

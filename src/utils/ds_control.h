@@ -30,6 +30,7 @@ struct lsv_cache_mng {
 };
 
 /* Node caches plus the cache the mapping cells themselves come from. */
+/* TODO(qrutyy): make it generic so every caller can pass it. think about verification */
 struct lsv_lmap_cache {
 	struct lsv_cache_mng *entry_cache_mng;
 	struct kmem_cache *cell_cachep;

@@ -7,38 +7,70 @@
 
 #include "core/map.h"
 
-s32 lsv_lmap_cache_alloc(struct lsv_lmap_cache *cache)
+/*
+ * Module wide state of the mapping layer: the node caches every index
+ * implementation allocates from and the cache the cells come from. Created once
+ * at module load and shared by every device.
+ */
+struct lsv_lmap_engine {
+	struct lsv_lmap_cache map_cache;
+};
+
+static struct lsv_lmap_engine *g_lmap_engine;
+
+s32 lsv_lmap_engine_init(void)
 {
+	struct lsv_lmap_engine *engine;
+	struct lsv_lmap_cache *cache;
+
+	engine = kzalloc(sizeof(*engine), GFP_KERNEL);
+	if (!engine)
+		return -ENOMEM;
+
+	cache = &engine->map_cache;
 	cache->cell_cachep = kmem_cache_create("lsv_cell", sizeof(struct lsv_cell), 0,
 					       SLAB_HWCACHE_ALIGN, NULL);
 	if (!cache->cell_cachep)
-		return -ENOMEM;
+		goto free_engine;
 
 	cache->entry_cache_mng = kzalloc(sizeof(*cache->entry_cache_mng), GFP_KERNEL);
-	if (!cache->entry_cache_mng) {
-		kmem_cache_destroy(cache->cell_cachep);
-		cache->cell_cachep = NULL;
-		return -ENOMEM;
-	}
+	if (!cache->entry_cache_mng)
+		goto destroy_cell_cache;
+
+	g_lmap_engine = engine;
 
 	return 0;
+
+destroy_cell_cache:
+	kmem_cache_destroy(cache->cell_cachep);
+free_engine:
+	kfree(engine);
+	return -ENOMEM;
 }
 
-void lsv_lmap_cache_free(struct lsv_lmap_cache *cache)
+void lsv_lmap_engine_deinit(void)
 {
-	struct lsv_cache_mng *mng = cache->entry_cache_mng;
+	struct lsv_lmap_engine *engine = g_lmap_engine;
+	struct lsv_lmap_cache *cache;
+	struct lsv_cache_mng *mng;
 
-	if (mng) {
-		kmem_cache_destroy(mng->ht_cache);
-		kmem_cache_destroy(mng->sl_cache);
-		kmem_cache_destroy(mng->bt_cache);
-		kmem_cache_destroy(mng->rb_cache);
-		kfree(mng);
-		cache->entry_cache_mng = NULL;
-	}
+	if (!engine)
+		return;
+
+	cache = &engine->map_cache;
+	mng = cache->entry_cache_mng;
+
+	/* The index node caches are created lazily by the first device using them. */
+	kmem_cache_destroy(mng->ht_cache);
+	kmem_cache_destroy(mng->sl_cache);
+	kmem_cache_destroy(mng->bt_cache);
+	kmem_cache_destroy(mng->rb_cache);
+	kfree(mng);
 
 	kmem_cache_destroy(cache->cell_cachep);
-	cache->cell_cachep = NULL;
+
+	g_lmap_engine = NULL;
+	kfree(engine);
 }
 
 static s32 lsv_lmap_setup_geometry(struct lsv_lmap *map, u32 cell_size, sector_t backing_sectors)
@@ -65,8 +97,8 @@ static s32 lsv_lmap_setup_geometry(struct lsv_lmap *map, u32 cell_size, sector_t
 	return 0;
 }
 
-s32 lsv_lmap_init(struct lsv_lmap *map, struct lsv_lmap_cache *cache, const char *ds_type,
-		 u32 cell_size, u64 segment_size, sector_t backing_sectors)
+s32 lsv_lmap_init(struct lsv_lmap *map, const char *ds_type, u32 cell_size, u64 segment_size,
+		 sector_t backing_sectors)
 {
 	s32 rc;
 
@@ -78,13 +110,12 @@ s32 lsv_lmap_init(struct lsv_lmap *map, struct lsv_lmap_cache *cache, const char
 		return rc;
 
 	map->segment_size = segment_size;
-	map->cache = cache;
 
 	rc = bioset_init(&map->bio_set, BIO_POOL_SIZE, 0, BIOSET_NEED_BVECS);
 	if (rc)
 		return rc;
 
-	rc = lsv_ds_init(&map->index, map->ds_type, cache->entry_cache_mng);
+	rc = lsv_ds_init(&map->index, map->ds_type, g_lmap_engine->map_cache.entry_cache_mng);
 	if (rc)
 		goto bioset_err;
 
@@ -97,12 +128,8 @@ bioset_err:
 
 void lsv_lmap_deinit(struct lsv_lmap *map)
 {
-	if (!map->cache)
-		return;
-
-	lsv_ds_free(&map->index, map->cache);
+	lsv_ds_free(&map->index, &g_lmap_engine->map_cache);
 	bioset_exit(&map->bio_set);
-	map->cache = NULL;
 }
 
 struct lsv_cell *lsv_lmap_lookup(struct lsv_lmap *map, u64 lba)
@@ -134,16 +161,16 @@ static s32 lsv_lmap_alloc_pba(struct lsv_lmap *map, u64 *pba)
  * which a concurrent read of the same lba would find no mapping at all and be
  * served zeroes for data that does exist.
  */
-s32 lsv_lmap_remap(struct lsv_lmap *map, u64 lba, u64 *pba)
+struct lsv_cell *lsv_lmap_process(struct lsv_lmap *map, u64 lba)
 {
-	struct lsv_lmap_cache *cache = map->cache;
+	struct lsv_lmap_cache *cache = &g_lmap_engine->map_cache;
 	struct lsv_cell *cell;
 	u64 allocated;
 	s32 rc;
 
 	rc = lsv_lmap_alloc_pba(map, &allocated);
 	if (rc)
-		return rc;
+		return ERR_PTR(rc);
 
 	cell = lsv_ds_lookup(&map->index, lba);
 	if (cell) {
@@ -155,26 +182,69 @@ s32 lsv_lmap_remap(struct lsv_lmap *map, u64 lba, u64 *pba)
 		 * Nothing is released here on purpose: reclaiming physical space
 		 * is the collector's job, the write path only repoints.
 		 */
-		WRITE_ONCE(cell->pba, allocated);
-		*pba = allocated;
+		WRITE_ONCE(cell->pblk->pba, allocated);
 
-		return 0;
+		return cell;
 	}
 
 	cell = kmem_cache_alloc(cache->cell_cachep, GFP_NOIO);
 	if (!cell)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 
 	cell->lba = lba;
-	cell->pba = allocated;
+	cell->pblk.pba = allocated;
 
 	rc = lsv_ds_insert(&map->index, lba, cell, cache);
 	if (rc) {
 		kmem_cache_free(cache->cell_cachep, cell);
-		return rc;
+		return ERR_PTR(rc);
 	}
 
-	*pba = allocated;
+	return cell;
+}
+
+void lsv_pblk_put(struct lsv_pblk *pblk) {
+	if (!refcount_dec_and_test(&pblk->ref))
+		return;
+
+	if (pblk->de)
+		lsv_dedup_forget(pblk->de);
+
+	/* TODO(?) mark slot as dead in the segment
+	 * lsv_seg_invalidate(map, pblk->pba);     dead++
+	 */
+
+	/* TODO(?) kfree_rcu(pblk); */
+}
+
+s32 *lsv_lmap_repoint(struct lsv_lmap *map, u64 lba, struct lsv_pblk *pblk)
+{
+	struct lsv_lmap_cache *cache = &g_lmap_engine->map_cache;
+	struct lsv_cell *cell;
+	u64 allocated;
+	s32 rc;
+
+	cell = lsv_ds_lookup(&map->index, lba);
+	      if (cell) {
+		      old = xchg(&cell->pblk, pblk);
+
+		      lsv_pblk_put(map, old); /* ref-- ; на 0 — dead++ в сегменте, снять de */
+		      return 0;
+	      }
+
+	/* TODO(qrutyy): move in sep function (like init_cell) */
+	cell = kmem_cache_alloc(cache->cell_cachep, GFP_NOIO);
+	if (!cell)
+		return ERR_PTR(-ENOMEM);
+
+	cell->lba = lba;
+	cell->pblk = pblk;
+
+	rc = lsv_ds_insert(&map->index, lba, cell, cache);
+	if (rc) {
+		kmem_cache_free(cache->cell_cachep, cell);
+		return ERR_PTR(rc);
+	}
 
 	return 0;
 }

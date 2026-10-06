@@ -6,6 +6,7 @@
 #include <linux/slab.h>
 
 #include "core/bio.h"
+#include "core/dedup.h"
 #include "core/dev.h"
 #include "ctl/configfs.h"
 #include "main.h"
@@ -35,20 +36,26 @@ static s32 lsv_mng_init(void)
 	}
 	mng->major = rc;
 
-	rc = lsv_lmap_cache_alloc(&mng->map_cache);
+	rc = lsv_lmap_engine_init();
 	if (rc)
 		goto unregister;
 
+	rc = lsv_dedup_engine_init();
+	if (rc)
+		goto deinit_lmap_engine;
+
 	rc = lsv_bio_cache_alloc();
 	if (rc)
-		goto free_map_cache;
+		goto deinit_dedup_engine;
 
 	g_mng = mng;
 
 	return 0;
 
-free_map_cache:
-	lsv_lmap_cache_free(&mng->map_cache);
+deinit_dedup_engine:
+	lsv_dedup_engine_deinit();
+deinit_lmap_engine:
+	lsv_lmap_engine_deinit();
 unregister:
 	unregister_blkdev(mng->major, LSV_BLKDEV_NAME_PREFIX);
 free_mng:
@@ -73,7 +80,8 @@ static void lsv_mng_deinit(void)
 	lsv_dev_destroy_all(mng);
 
 	lsv_bio_cache_free();
-	lsv_lmap_cache_free(&mng->map_cache);
+	lsv_dedup_engine_deinit();
+	lsv_lmap_engine_deinit();
 	unregister_blkdev(mng->major, LSV_BLKDEV_NAME_PREFIX);
 
 	g_mng = NULL;

@@ -15,17 +15,19 @@
 #define LSV_CELL_SIZE_MAX (1024 * 1024)
 #define LSV_DS_NAME_LEN 8
 
-/*
- * One mapping entry. The index is keyed by the logical cell number, so the lba
- * below is redundant for lookups; it is kept because the reverse direction
- * (segment summary, GC) will need it.
- */
-struct lsv_cell {
-	u64 lba; /* logical cell number */
+
+struct lsv_pblk {
 	u64 pba; /* physical cell number */
+	refcount_t ref;
+
+	/* back link to de */
+	struct lsv_de *de;
 };
 
-/* struct lsv_lmap_cache lives in utils/ds_control.h and is owned by the module. */
+struct lsv_cell {
+	u64 lba; /* logical cell number */
+	struct lsv_pblk pblk;
+};
 
 struct lsv_lmap {
 	struct lsv_ds index;
@@ -41,18 +43,18 @@ struct lsv_lmap {
 	u64 capacity_cells;
 
 	struct bio_set bio_set;
-	struct lsv_lmap_cache *cache; /* module owned */
 };
 
-s32 lsv_lmap_cache_alloc(struct lsv_lmap_cache *cache);
-void lsv_lmap_cache_free(struct lsv_lmap_cache *cache);
+s32 lsv_lmap_engine_init(void);
+void lsv_lmap_engine_deinit(void);
 
-s32 lsv_lmap_init(struct lsv_lmap *map, struct lsv_lmap_cache *cache, const char *ds_type, u32 cell_size, u64 segment_size,
+s32 lsv_lmap_init(struct lsv_lmap *map, const char *ds_type, u32 cell_size, u64 segment_size,
 		 sector_t backing_sectors);
 void lsv_lmap_deinit(struct lsv_lmap *map);
 
 struct lsv_cell *lsv_lmap_lookup(struct lsv_lmap *map, u64 lba);
-s32 lsv_lmap_remap(struct lsv_lmap *map, u64 lba, u64 *pba);
+struct lsv_cell *lsv_lmap_process(struct lsv_lmap *map, u64 lba);
+s32 lsv_lmap_repoint(struct lsv_lmap *map, u64 lba, struct lsv_pblk *pblk);
 
 /* Where a sector lands inside the cell grid. */
 struct lsv_lmap_pos {
