@@ -45,6 +45,14 @@ ifeq ($(KERNELRELEASE),)
 modules:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
+# Runs the KUnit suites built into lsv.ko. KUnit is a module in Fedora
+# (kernel-modules-internal) and disabled by default, hence enable=1.
+kunit:
+	modprobe kunit enable=1
+	-rmmod $(name) 2>/dev/null
+	insmod $(name).ko
+	cat /sys/kernel/debug/kunit/*/results
+
 modules_install:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules_install
 
@@ -64,6 +72,7 @@ lint:
 clean:
 	rm -rf core/*.o core/bio/*.o core/dedup/*.o core/lmap/*.o
 	rm -rf utils/*.o utils/.*.cmd utils/.*.o.d utils/*/*.o utils/*/.*.cmd utils/*/.*.o.d
+	find utils -name "*.o" -o -name ".*.cmd" -o -name ".*.o.d" | xargs rm -f
 	rm -rf *.out *.folded *.perf *.old *.svg *.data *.dat *.dump
 	make clean -C ../test/
 
@@ -82,7 +91,7 @@ init_no_recompile:
 	echo "$(DS)" > /sys/module/lsbdd/parameters/set_data_structure
 	make set
 
-.PHONY: all modules modules_install clean test nulld
+.PHONY: all modules modules_install clean test nulld kunit
 
 endif
 

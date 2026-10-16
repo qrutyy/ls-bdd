@@ -155,7 +155,8 @@ struct lsv_dedup *lsv_dedup_create(struct lsv_lmap *lmap, struct block_device *b
 	if (!dedup->map->ds)
 		goto free_map;
 
-	rc = lsv_ds_init(dedup->map->ds, lsv_dedup_index_ds, g_dedup_engine->dedup_cache.entry_cache_mng);
+	rc = lsv_ds_init(dedup->map->ds, lsv_dedup_index_ds, g_dedup_engine->dedup_cache.entry_cache_mng,
+			 lmap->capacity_cells);
 	if (rc)
 		goto free_ds;
 
@@ -197,7 +198,7 @@ void lsv_dedup_destroy(struct lsv_dedup *dedup)
 
 static bool lsv_dedup_digest_is_usable(u64 digest)
 {
-	return !lsv_ht_key_is_reserved(digest);
+	return !lsv_ds_key_is_reserved(digest);
 }
 
 static void *lsv_dedup_data_buf_alloc(void)

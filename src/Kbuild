@@ -10,27 +10,38 @@ ccflags-y := 	-Wall							\
 
 obj-m := lsv.o
 
+lsv-ht-dta := utils/wq.o utils/lock-free/ht-dta/dta.o utils/lock-free/ht-dta/ht_dta.o
+lsv-ht-dta-tests := utils/lock-free/ht-dta/tests/lsv_kunit_ht.o \
+	utils/lock-free/ht-dta/tests/suites/kunit_lsv_dta_reg.o \
+	utils/lock-free/ht-dta/tests/suites/kunit_lsv_dta_stress.o \
+	utils/lock-free/ht-dta/tests/suites/kunit_lsv_ht_dta_perf.o
+
 ifeq ($(type), lf)
 DIR := utils/lock-free
 ccflags-y += -DLF_MODE
-lsv-objs := $(DIR)/lf_list.o
+lsv-objs := $(DIR)/lf_list.o $(lsv-ht-dta)
+
+# KUnit suites of the DtA hash table, in lsv.ko whenever the kernel has KUnit
+ifneq ($(CONFIG_KUNIT),)
+lsv-objs += $(lsv-ht-dta-tests)
+endif
 
 else ifeq ($(type), sy)
 DIR := utils/sync
 ccflags-y += -DSY_MODE
+lsv-objs := $(DIR)/hashtable.o
 
 else
 $(error Invalid type specified. Use "make type=lf" or "make type=sy")
-
 endif
+
+lsv-ds := utils/ds_control.o utils/xxh3.o \
+	$(DIR)/btree_utils.o $(DIR)/skiplist.o \
+	$(DIR)/rbtree.o
 
 lsv-objs += main.o ctl/configfs.o core/dev.o \
 	core/lmap/lmap.o core/bio/bio.o core/bio/io.o core/dedup/dedup.o core/dedup/digest.o \
-	utils/ds_control.o utils/xxh3.o \
-	$(DIR)/btree_utils.o $(DIR)/skiplist.o \
-	$(DIR)/hashtable.o $(DIR)/rbtree.o  \
+	$(lsv-ds)
 
 # Add dynamical include path for the ds-control headers.
 ccflags-y += -I$(src) -I$(src)/$(DIR)
-
-
