@@ -49,6 +49,9 @@ stats ?= 1
 ifneq ($(stats), 0)
 ccflags-y += -DLSV_STATS
 lsv-objs += core/stats/stats.o
+ifneq ($(CONFIG_KUNIT),)
+lsv-objs += core/stats/kunit_lsv_stats.o
+endif
 endif
 
 # define_trace.h re-includes the event header by its own directory.
