@@ -228,6 +228,16 @@ void lsv_pblk_put(struct lsv_lmap *lmap, struct lsv_pblk *pblk)
 	lsv_stats_inc(lmap->stats, LSV_CNT_PBLK_FREE);
 }
 
+/*
+ * Index key of a logical cell. Cell 0 is as valid as any other, but 0 is a key
+ * no index has to take (lsv_ds_key_is_reserved()), so keys are shifted by one;
+ * an lba is far below U64_MAX - 1, the other reserved key.
+ */
+static inline sector_t lsv_lmap_key(u64 lba)
+{
+	return lba + 1;
+}
+
 /* Points |lba| at |pblk|, consuming the reference the caller holds on it.  */
 s32 lsv_lmap_bind(struct lsv_lmap *lmap, u64 lba, struct lsv_pblk *pblk)
 {
@@ -238,7 +248,7 @@ s32 lsv_lmap_bind(struct lsv_lmap *lmap, u64 lba, struct lsv_pblk *pblk)
 	s32 rc;
 
 	start = lsv_stats_now();
-	cell = lsv_ds_lookup(&lmap->index, lba);
+	cell = lsv_ds_lookup(&lmap->index, lsv_lmap_key(lba));
 	lsv_stats_since(lmap->stats, LSV_LAT_IDX_LOOKUP, start);
 
 	if (cell) {
@@ -261,7 +271,7 @@ s32 lsv_lmap_bind(struct lsv_lmap *lmap, u64 lba, struct lsv_pblk *pblk)
 	RCU_INIT_POINTER(cell->pblk, pblk);
 
 	start = lsv_stats_now();
-	rc = lsv_ds_insert(&lmap->index, lba, cell, cache);
+	rc = lsv_ds_insert(&lmap->index, lsv_lmap_key(lba), cell, cache);
 	lsv_stats_since(lmap->stats, LSV_LAT_IDX_INSERT, start);
 
 	if (rc) {
@@ -284,7 +294,7 @@ bool lsv_lmap_lookup_pba(struct lsv_lmap *lmap, u64 lba, u64 *pba)
 	rcu_read_lock();
 
 	start = lsv_stats_now();
-	cell = lsv_ds_lookup(&lmap->index, lba);
+	cell = lsv_ds_lookup(&lmap->index, lsv_lmap_key(lba));
 	lsv_stats_since(lmap->stats, LSV_LAT_IDX_LOOKUP, start);
 
 	if (cell) {
