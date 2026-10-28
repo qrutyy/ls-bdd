@@ -1,0 +1,20 @@
+# A minute-long sanity check of the whole pipeline: one index, one workload
+# each way, against the bare ramdisk.
+name = "smoke"
+
+[device]
+backing = "brd"
+backing_size_gib = 2
+
+[matrix]
+ds = ["ht"]
+rw = ["randwrite", "randread"]
+bs = ["4k"]
+
+[fio]
+ioengine = "io_uring"
+runtime = 5
+
+[run]
+repeats = 2
+baseline = true
