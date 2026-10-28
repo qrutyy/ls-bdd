@@ -22,7 +22,7 @@ REPO = Path(__file__).resolve().parents[2]
 
 
 def cmd_load(args) -> None:
-    ctl.load_module(args.ko)
+    ctl.load_module(args.ko, {"stats_enabled": int(not args.no_stats)})
 
 
 def cmd_unload(args) -> None:
@@ -44,6 +44,14 @@ def cmd_create(args) -> None:
 
 def cmd_destroy(args) -> None:
     ctl.Device(ctl.DeviceSpec(args.name, "", "")).destroy()
+
+
+def cmd_stats(args) -> None:
+    stats = ctl.read_stats(args.name)
+    if stats is None:
+        raise ctl.LsvError(f"no stats for {args.name}: built with stats=0?")
+    for key, value in stats.items():
+        print(key, value)
 
 
 def cmd_list(args) -> None:
@@ -86,6 +94,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("load", help="insmod the module, mounting configfs if needed")
     p.add_argument("ko", type=Path, nargs="?", default=Path("../src/lsv.ko"))
+    p.add_argument(
+        "--no-stats", action="store_true", help="load with the stats probes off"
+    )
     p.set_defaults(func=cmd_load)
 
     p = sub.add_parser("unload", help="destroy every device and rmmod the module")
@@ -103,6 +114,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("destroy", help="tear a device down")
     p.add_argument("name")
     p.set_defaults(func=cmd_destroy)
+
+    p = sub.add_parser("stats", help="print a device's kernel stats")
+    p.add_argument("name")
+    p.set_defaults(func=cmd_stats)
 
     p = sub.add_parser("list", help="list the configured devices")
     p.set_defaults(func=cmd_list)

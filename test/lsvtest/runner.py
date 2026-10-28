@@ -7,8 +7,13 @@ Layout of a result directory:
     experiment.toml   the spec as it was run
     meta.json         environment fingerprint
     runs.csv          one row per run and IO direction
+    kstats.csv        the driver's own stats per run: run_id, key, value
     failures.jsonl    runs fio failed on, with its stderr
     fio/<run_id>.json raw fio output
+    hist/<run_id>.txt the driver's latency histograms, raw
+
+The driver's stats are reset after preconditioning, so they cover exactly
+the measured workload.
 
 Repeats are the outer loop: each pass goes over the whole matrix, so a slow
 drift of the machine (thermal, page cache, background load) spreads over
@@ -94,6 +99,16 @@ class System:
     def settle(self) -> None:
         ctl.drop_caches()
 
+    def reset_stats(self, name: str) -> None:
+        ctl.reset_stats(name)
+
+    def read_stats(self, name: str) -> Optional[tuple[dict, str]]:
+        """The device's stats and its raw histograms; None without stats."""
+        stats = ctl.read_stats(name)
+        if stats is None:
+            return None
+        return stats, (ctl.stats_dir(name) / "hist").read_text()
+
     def fio(self, args: list[str]) -> Optional[dict]:
         proc = subprocess.run(args, capture_output=True, text=True)
         if proc.returncode:
@@ -132,6 +147,12 @@ class DryRun(System):
 
     def settle(self) -> None:
         pass
+
+    def reset_stats(self, name: str) -> None:
+        pass
+
+    def read_stats(self, name: str) -> Optional[tuple[dict, str]]:
+        return None
 
     def fio(self, args: list[str]) -> Optional[dict]:
         print("  " + " ".join(args))
@@ -209,6 +230,7 @@ class Runner:
         plan = plan_io(point, dev_bytes, self.exp.region, self.exp.precondition)
         lsv = point.target != RAW
         args: list[str] = []
+        kstats = None
         try:
             if lsv:
                 target = self.system.create_device(
@@ -226,8 +248,11 @@ class Runner:
 
             if plan.precondition:
                 self.system.fio(fio.precondition_args(target, plan.size))
+            if lsv:
+                self.system.reset_stats(DEVICE_NAME)
             args = fio.job_args(point, target, self.exp.fio, plan.size, plan.io_size)
             result = self.system.fio(args)
+            kstats = self.system.read_stats(DEVICE_NAME) if lsv else None
         except (FioError, ctl.LsvError) as e:
             print(f"  failed: {e}", flush=True)
             self._failure(run_id, args, str(e))
@@ -240,6 +265,8 @@ class Runner:
         if result is None:
             return True
         self._record(point, repeat, run_id, result)
+        if kstats:
+            self._record_kstats(run_id, *kstats)
         return True
 
     def _record(self, point: Point, repeat: int, run_id: str, result: dict) -> None:
@@ -264,6 +291,18 @@ class Runner:
                     f"p99 {row['lat_p99_us'] or 0:.1f} us",
                     flush=True,
                 )
+
+    def _record_kstats(self, run_id: str, stats: dict, hist: str) -> None:
+        (self.out / "hist").mkdir(exist_ok=True)
+        (self.out / "hist" / f"{run_id}.txt").write_text(hist)
+        path = self.out / "kstats.csv"
+        new = not path.exists()
+        with path.open("a", newline="") as f:
+            writer = csv.writer(f)
+            if new:
+                writer.writerow(["run_id", "key", "value"])
+            for key, value in stats.items():
+                writer.writerow([run_id, key, value])
 
     def _failure(self, run_id: str, args: list[str], error: str) -> None:
         if self.dry:
