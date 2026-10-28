@@ -43,6 +43,11 @@ lsv-objs += main.o ctl/configfs.o core/dev.o \
 	core/lmap/lmap.o core/bio/bio.o core/bio/io.o core/dedup/dedup.o core/dedup/digest.o \
 	core/stats/trace.o $(lsv-ds)
 
+# The contract and benchmark suites of every registered index, in both modes.
+ifneq ($(CONFIG_KUNIT),)
+lsv-objs += utils/tests/kunit_lsv_ds.o
+endif
+
 # Per-device stats in debugfs; stats=0 compiles every probe out, to measure
 # what they cost.
 stats ?= 1
