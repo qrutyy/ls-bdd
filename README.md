@@ -24,18 +24,19 @@ It is highly recommended to test the driver in a virtual machine to prevent data
 
 ### Adding Your Data Structure
 
-Below are the steps for adding a new data structure as the underlying mechanism for storing the LBA–PBA mapping in LS:
+The LBA-to-PBA mapping is kept in an index chosen per device. Every index is a
+`struct lsv_ds_ops` in the registry of `src/utils/ds_control.c`; configfs, the
+mapping layer, dedup and the KUnit suites find it there by name.
 
-1. Place your implementation in the **`utils/<mode>`** directory, where **`<mode>`** denotes the parallelism model of your data structure (*sync* or *lock-free*).
-   **Note:** The implementation must comply with the standard described in [this file](https://github.com/qrutyy/ls-bdd/blob/main/src/README.md).
-
-2. Append the **`lsv-objs`** list in **`Kbuild`** with the path to the `.o` file of your data structure.
-
-3. Update the **`ds_control`** system (both the header and source files) with calls to your data structure’s API.
-
-4. Assign a name to your data structure and add this identifier to the **`available_ds`** array in `main.h`.
-
-5. Initialize the module by passing your identifier via the **`ds_name`** option.
+1. Place your implementation in **`src/utils/<mode>`**, where **`<mode>`** is the
+   parallelism model of your data structure (*sync* or *lock-free*), and add its
+   object to **`lsv-objs`** in **`src/Kbuild`**.
+2. Fill a `struct lsv_ds_ops` with a name of at most two letters, your functions and
+   the `caps` that describe them, and append it to `lsv_ds_registry[]`. The interface
+   is described in [src/README.md](src/README.md).
+3. Build with KUnit (`make kunit`): the `lsv_ds` suite runs the index contract against
+   it and `lsv_ds_bench` reports its ns/op next to the others.
+4. Create a device with `index_ds` set to your name.
 
 ### Initialization
 
