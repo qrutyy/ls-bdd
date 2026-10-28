@@ -5,6 +5,7 @@
 
 /* General data structures API */
 
+#include <linux/limits.h>
 #include <linux/types.h>
 
 struct kmem_cache;
@@ -17,6 +18,7 @@ struct lsv_ds {
 		struct btree *map_btree;
 		struct skiplist *map_list;
 		struct hashtable *map_hash;
+		struct lsv_ht *map_lsv_ht;
 		struct rbtree *map_rbtree;
 	} structure;
 };
@@ -36,7 +38,11 @@ struct lsv_lmap_cache {
 	struct kmem_cache *cell_cachep;
 };
 
-s32 lsv_ds_init(struct lsv_ds *ds, char *sel_ds, struct lsv_cache_mng *cache_mng);
+/*
+ * |max_entries| sizes the indexes that are bounded (the lock-free hashtable,
+ * which refuses insertions beyond it); the others ignore it.
+ */
+s32 lsv_ds_init(struct lsv_ds *ds, char *sel_ds, struct lsv_cache_mng *cache_mng, u64 max_entries);
 void lsv_ds_free(struct lsv_ds *ds, struct lsv_lmap_cache *map_cache);
 
 void *lsv_ds_lookup(struct lsv_ds *ds, sector_t key);
@@ -49,10 +55,13 @@ bool lsv_ds_empty_check(struct lsv_ds *ds);
 
 bool lsv_ds_check_available(char *sel_ds);
 
-/* The hashtable takes no entry under key 0: insertion refuses it. */
-static inline bool lsv_ht_key_is_reserved(sector_t key)
+/*
+ * Keys no index is guaranteed to take: the hashtables keep their head and tail
+ * sentinels under them and refuse to insert them.
+ */
+static inline bool lsv_ds_key_is_reserved(sector_t key)
 {
-	return !key;
+	return key == 0 || key == U64_MAX;
 }
 
 #endif

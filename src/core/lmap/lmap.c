@@ -128,7 +128,7 @@ s32 lsv_lmap_init(struct lsv_lmap *lmap, const char *ds_type, u32 cell_size, u64
 	if (rc)
 		return rc;
 
-	rc = lsv_ds_init(&lmap->index, lmap->ds_type, g_lmap_engine->map_cache.entry_cache_mng);
+	rc = lsv_ds_init(&lmap->index, lmap->ds_type, g_lmap_engine->map_cache.entry_cache_mng, lmap->capacity_cells);
 	if (rc)
 		goto bioset_err;
 
@@ -222,8 +222,7 @@ void lsv_pblk_put(struct lsv_lmap *lmap, struct lsv_pblk *pblk)
 	kfree_rcu(pblk, rcu);
 }
 
-/*
- * Points |lba| at |pblk|, consuming the reference the caller holds on it.  */
+/* Points |lba| at |pblk|, consuming the reference the caller holds on it.  */
 s32 lsv_lmap_bind(struct lsv_lmap *lmap, u64 lba, struct lsv_pblk *pblk)
 {
 	struct lsv_lmap_cache *cache = &g_lmap_engine->map_cache;
