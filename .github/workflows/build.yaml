@@ -9,6 +9,13 @@ jobs:
   build:
     runs-on: ubuntu-24.04
 
+    # Both index families, each with the KUnit suites, stats and tracepoints
+    # compiled in.
+    strategy:
+      fail-fast: false
+      matrix:
+        type: [lf, sy]
+
     env:
       # The only place the target kernel version is spelled out.
       KERNEL_VERSION: 7.2.9
@@ -60,7 +67,10 @@ jobs:
             --enable MODULES \
             --enable BLOCK \
             --enable BLK_DEV \
-            --enable CONFIGFS_FS
+            --enable CONFIGFS_FS \
+            --enable DEBUG_FS \
+            --enable FTRACE \
+            --enable KUNIT
           make olddefconfig
           make prepare
           make modules_prepare
@@ -71,7 +81,7 @@ jobs:
         run: |
           echo "Kernel source for build: $KERNEL_SOURCE_PATH"
           cd src/
-          make type=lf KERNELDIR="$KERNEL_SOURCE_PATH"
+          make type=${{ matrix.type }} KERNELDIR="$KERNEL_SOURCE_PATH"
 
       - name: List built artifacts (optional)
         if: always()
@@ -80,3 +90,27 @@ jobs:
           ls -l src/
           echo "Looking for .ko files:"
           find src/ -name "*.ko"
+
+  harness:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install harness dependencies
+        run: pip install -r requirements.txt
+
+      - name: Unit tests of lsvtest
+        working-directory: test
+        run: python -m pytest -q
+
+      - name: Every shipped experiment expands
+        working-directory: test
+        run: |
+          for exp in experiments/*.toml; do
+            python -m lsvtest run "$exp" --dry-run > /dev/null
+          done
