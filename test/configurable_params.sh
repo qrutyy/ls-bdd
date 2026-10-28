@@ -6,8 +6,8 @@
 
 JOBS_NUM=8 # number of jobs
 IO_DEPTH=32
-VBD_NAME="lsvbd1"
-BD_NAME="nullb0"
+VBD_NAME="lsv0"
+BD_NAME="ram0"
 BD_SIZE=400
 BD_TYPE="lf"
 BD_DS="sl"

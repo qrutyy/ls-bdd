@@ -34,7 +34,7 @@ prepare_env() {
     "$PLOTS_PATH"/latency/{rewrite,non_rewrite}/{raw,vbd} 
 }
 
-# Reinits the lsbdd module
+# Reinits the lsv module
 reinit_lsvbd() {
 	local ds=$1
 
@@ -42,13 +42,13 @@ reinit_lsvbd() {
 		ds=$PL_CUR_DS
 	fi 
 
-	make -C ../src exit DBI=1 > /dev/null
+	make -C ../src exit > /dev/null
 
 	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
 
 	modprobe brd rd_nr=1 rd_size=$((2 * 1048576))
 
-	make -C ../src init_no_recompile DS="$ds" TY="$PL_TYPE" BD="$BD_NAME" > /dev/null
+	make -C ../src init_no_recompile DS="$ds" TY="$PL_TYPE" BD="$BD_NAME" NAME="$VBD_NAME" > /dev/null
 }
 
 # Performs warm-up with workload as big as the block device.
@@ -253,7 +253,7 @@ extract_latency_metrics() {
 <<docs
 Runs IOPS tests based on SNIA specification. Uses fio_iops_mix cfg from ./Makefile. 
 
-@param device - target device (f.e. /dev/lsvbd1) (just log needed)
+@param device - target device (f.e. /dev/lsv0) (just log needed)
 @param rewrite_mode - shows if warm-up is needed and if the read tests are included
 	1 - mode is on (enables warm-up and read tests)
 	0 - mode is off
@@ -319,7 +319,7 @@ run_iops_for_each_nj_id() {
 <<docs
 Runs IOPS tests based on SNIA specification. Uses fio_iops_mix cfg from ./Makefile. 
 
-@param device - target device (f.e. /dev/lsvbd1) (just log needed)
+@param device - target device (f.e. /dev/lsv0) (just log needed)
 @param rewrite_mode - shows if warm-up is needed and if the read tests are included
 	1 - mode is on (enables warm-up and read tests)
 	0 - mode is off

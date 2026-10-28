@@ -60,8 +60,8 @@ if [[ ! -f "$FLAMEGRAPH_PATH/stackcollapse-perf.pl" || ! -f "$FLAMEGRAPH_PATH/fl
     echo "FlameGraph successfully cloned."
 fi
 
-echo -e "\nAdding probes for lsvbdd.ko functions..."
-sudo perf probe -x ../src/lsbdd.ko --add '*(*)' || echo "Warning: Some probes may already exist."
+echo -e "\nAdding probes for lsv.ko functions..."
+sudo perf probe -x ../src/lsv.ko --add '*(*)' || echo "Warning: Some probes may already exist."
 
 if [ "$VERIFY" == "true" ]; then
 	echo -e "\nStarting fio read&write verify workload ..."
@@ -83,26 +83,26 @@ if [ ! -s perf_write.data ] || [ ! -s perf_read.data ]; then
     exit 1
 fi
 
-#echo "Filtering traces for lsvbd.ko..."
-#sudo perf script | grep lsbdd > lsbdd-trace-spec.txt
-#sudo perf script > lsbdd-trace.txt
+#echo "Filtering traces for lsv.ko..."
+#sudo perf script | grep lsv_ > lsv-trace-spec.txt
+#sudo perf script > lsv-trace.txt
 
-echo -e "\nGenerating FlameGraph... (lsbdd only)"
+echo -e "\nGenerating FlameGraph... (lsv only)"
 
 if [ "$VERIFY" == "true" ]; then
-	perf script -f -i perf_write.data | $FLAMEGRAPH_PATH/stackcollapse-perf.pl | grep lsbdd > out_wr.folded
-	sudo $FLAMEGRAPH_PATH/flamegraph.pl --width 2500 --height 16 out_wr.folded | sudo tee lsbdd_fg_spec_wr.svg > /dev/null
+	perf script -f -i perf_write.data | $FLAMEGRAPH_PATH/stackcollapse-perf.pl | grep lsv_ > out_wr.folded
+	sudo $FLAMEGRAPH_PATH/flamegraph.pl --width 2500 --height 16 out_wr.folded | sudo tee lsv_fg_spec_wr.svg > /dev/null
 else 
-	perf script -f -i perf_write.data | $FLAMEGRAPH_PATH/stackcollapse-perf.pl | grep lsbdd > out_write.folded
-	sudo $FLAMEGRAPH_PATH/flamegraph.pl --width 2500 --height 16 out_write.folded | sudo tee lsbdd_fg_spec_write.svg > /dev/null
+	perf script -f -i perf_write.data | $FLAMEGRAPH_PATH/stackcollapse-perf.pl | grep lsv_ > out_write.folded
+	sudo $FLAMEGRAPH_PATH/flamegraph.pl --width 2500 --height 16 out_write.folded | sudo tee lsv_fg_spec_write.svg > /dev/null
 
-	perf script -f -i perf_read.data | $FLAMEGRAPH_PATH/stackcollapse-perf.pl | grep lsbdd > out_read.folded
-	sudo $FLAMEGRAPH_PATH/flamegraph.pl --width 2500 --height 16 out_read.folded | sudo tee lsbdd_fg_spec_read.svg > /dev/null
+	perf script -f -i perf_read.data | $FLAMEGRAPH_PATH/stackcollapse-perf.pl | grep lsv_ > out_read.folded
+	sudo $FLAMEGRAPH_PATH/flamegraph.pl --width 2500 --height 16 out_read.folded | sudo tee lsv_fg_spec_read.svg > /dev/null
 fi
 
-if [ ! -f lsbdd_fg_spec_read.svg ] || [ ! -f lsbdd_fg_spec_write.svg ]; then
+if [ ! -f lsv_fg_spec_read.svg ] || [ ! -f lsv_fg_spec_write.svg ]; then
  echo "Error: local FlameGraph generation failed."
 exit 1
 fi
 
-echo -e "\nFlameGraph successfully generated: lsbdd_fg_spec_read.svg and lsbdd_fg_spec_write.svg"
+echo -e "\nFlameGraph successfully generated: lsv_fg_spec_read.svg and lsv_fg_spec_write.svg"
