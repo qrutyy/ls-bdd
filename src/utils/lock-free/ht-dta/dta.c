@@ -1,5 +1,7 @@
 #include <linux/build_bug.h>
+#include <linux/jiffies.h>
 #include <linux/printk.h>
+#include <linux/slab.h>
 #include <kunit/static_stub.h>
 #include <kunit/visibility.h>
 
