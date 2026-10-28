@@ -1,8 +1,14 @@
 CONFIG_MODULE_SIG=n
-name=lsbdd
+name=lsv
 
-# Delete Block device Index
-DBI?=1
+# Name of the lsv device, also its configfs directory (/dev/$(NAME))
+NAME?=lsv0
+# Mapping cell size in bytes (power of two, 512..1M)
+CS?=4096
+# Inline deduplication (0/1)
+DEDUP?=0
+# configfs directory of the module
+CFS?=/sys/kernel/config/lsv
 #Data Structure name (bt, ht, sl, rb. For more info - see README)
 DS?=bt
 # Read operation block size in KB(2, 4, 8...)
@@ -45,9 +51,13 @@ ifeq ($(KERNELRELEASE),)
 modules:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
+build:
+	make modules
+
 # Runs the KUnit suites built into lsv.ko. KUnit is a module in Fedora
 # (kernel-modules-internal) and disabled by default, hence enable=1.
 kunit:
+	make build type="$(TY)"
 	modprobe kunit enable=1
 	-rmmod $(name) 2>/dev/null
 	insmod $(name).ko
@@ -56,15 +66,24 @@ kunit:
 modules_install:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules_install
 
+# Devices are described in configfs, so it has to be mounted before insmod.
 ins:
+	mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
 	insmod $(name).ko
 
-set:
-	echo -n "1 /dev/$(BD)" > /sys/module/$(name)/parameters/set_redirect_bd
-#	**index** - postfix for a 'device in the middle' (prefix is 'lsvbd'), **bd** - to which block device to redirect
+# Creates /dev/$(NAME) on top of /dev/$(BD), see ctl/configfs.c for the protocol.
+create:
+	mkdir $(CFS)/$(NAME)
+	echo /dev/$(BD) > $(CFS)/$(NAME)/backing_path
+	echo $(DS) > $(CFS)/$(NAME)/index_ds
+	echo $(CS) > $(CFS)/$(NAME)/cell_size && echo $(DEDUP) > $(CFS)/$(NAME)/dedup
+	echo 1 > $(CFS)/$(NAME)/create_new
+
+destroy:
+	rmdir $(CFS)/$(NAME)
 
 nulld:
-	modprobe null_blk queue_mode=0 gb=$(ND_SIZE_GB) bs=512 irqmode=0 nr_devices=1
+	modprobe null_blk gb=$(ND_SIZE_GB) bs=512 irqmode=0 nr_devices=1
 
 lint:
 	find . -name "*.c" -o -name "*.h" | xargs ./checkpatch.pl -f --no-tree
@@ -76,22 +95,21 @@ clean:
 	rm -rf *.out *.folded *.perf *.old *.svg *.data *.dat *.dump
 	make clean -C ../test/
 
+# Every device holds a reference on the module, so they go first.
 exit:
-	echo "$(DBI)" > /sys/module/lsbdd/parameters/delete_bd
-	rmmod lsbdd.ko
+	find $(CFS) -mindepth 1 -maxdepth 1 -type d -exec rmdir {} +
+	rmmod $(name)
 
 init:
-	make type="$(TY)"
+	make build type="$(TY)"
 	make ins
-	echo "$(DS)" > /sys/module/lsbdd/parameters/set_data_structure
-	make set
+	make create
 
 init_no_recompile:
 	make ins
-	echo "$(DS)" > /sys/module/lsbdd/parameters/set_data_structure
-	make set
+	make create
 
-.PHONY: all modules modules_install clean test nulld kunit
+.PHONY: all modules modules_install build clean test nulld kunit ins create destroy exit init init_no_recompile
 
 endif
 

@@ -29,7 +29,7 @@ Below are the steps for adding a new data structure as the underlying mechanism 
 1. Place your implementation in the **`utils/<mode>`** directory, where **`<mode>`** denotes the parallelism model of your data structure (*sync* or *lock-free*).
    **Note:** The implementation must comply with the standard described in [this file](https://github.com/qrutyy/ls-bdd/blob/main/src/README.md).
 
-2. Append the **`lsbdd-objs`** list in **`Kbuild`** with the path to the `.o` file of your data structure.
+2. Append the **`lsv-objs`** list in **`Kbuild`** with the path to the `.o` file of your data structure.
 
 3. Update the **`ds_control`** system (both the header and source files) with calls to your data structure’s API.
 
@@ -40,25 +40,40 @@ Below are the steps for adding a new data structure as the underlying mechanism 
 ### Initialization
 
 ```bash
-make init DS="ds_name" TY="io_type" BD="bd_name"
+make init DS="ds_name" TY="io_type" BD="bd_name" [NAME="lsv0"] [CS=4096] [DEDUP=0]
 ```
 
 * **`ds_name`** – one of the available data structures used for mapping (`bt`, `ht`, `sl`, `rb`, or your custom one)
 * **`io_type`** – block device mode (`lf` – lock-free, `sy` – synchronous)
-* **`bd_name`** – target block device (e.g., `ram0`, `vdb`, `sdc`)
+* **`bd_name`** – backing block device (e.g., `ram0`, `vdb`, `sdc`)
+* **`NAME`** – name of the created device, it appears as `/dev/NAME`
+* **`CS`** – mapping cell size in bytes, **`DEDUP`** – inline deduplication
+
+Devices are configured through configfs, `make init` is a shortcut for:
+
+```bash
+insmod src/lsv.ko
+mkdir /sys/kernel/config/lsv/lsv0
+echo /dev/ram0 > /sys/kernel/config/lsv/lsv0/backing_path
+echo ht        > /sys/kernel/config/lsv/lsv0/index_ds
+echo 4096      > /sys/kernel/config/lsv/lsv0/cell_size
+echo 1         > /sys/kernel/config/lsv/lsv0/create_new
+```
+
+`make destroy NAME=lsv0` removes one device, `make exit` removes all of them and unloads the module.
 
 ### Sending Requests
 
 #### Writing
 
 ```bash
-dd if=/dev/urandom of=/dev/lsvbd1 oflag=direct bs=2K count=10
+dd if=/dev/urandom of=/dev/lsv0 oflag=direct bs=2K count=10
 ```
 
 #### Reading
 
 ```bash
-dd of=test2.txt if=/dev/lsvbd1 iflag=direct bs=4K count=10
+dd of=test2.txt if=/dev/lsv0 iflag=direct bs=4K count=10
 ```
 
 ### Testing
@@ -66,7 +81,7 @@ dd of=test2.txt if=/dev/lsvbd1 iflag=direct bs=4K count=10
 You can use the provided FIO tests (or write your own) to measure execution time and perform pattern verification:
 
 ```bash
-make fio_verify IO=io_uring FS=lsvbd1 WBS=8 RBS=8 NJ=8 ID=8 SIZE=1000
+make fio_verify IO=io_uring FS=lsv0 WBS=8 RBS=8 NJ=8 ID=8 SIZE=1000
 ```
 
 A description of all options is provided in the `Makefile`.
