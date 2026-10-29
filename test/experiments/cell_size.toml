@@ -1,0 +1,22 @@
+# Cost of the mapping granularity: small cells mean more index entries and
+# more splitting, large ones mean read-modify-write on partial writes.
+name = "cell_size"
+
+[device]
+backing = "brd"
+backing_size_gib = 8
+ds = "ht"
+
+[matrix]
+cell_size = ["4k", "16k", "64k"]
+dedup = [false, true]
+rw = ["randwrite", "randread"]
+bs = ["4k", "64k"]
+iodepth = [32]
+
+[fio]
+runtime = 30
+
+[run]
+repeats = 10
+baseline = true
