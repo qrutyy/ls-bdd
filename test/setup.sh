@@ -3,7 +3,7 @@
 IO_DEPTH=16
 BD_NAME="nullb0"
 SYSCTL_CONF="/etc/sysctl.conf"
-VBD_NAME="lsvbd1"
+VBD_NAME="lsv0"
 
 # Parse options using getopts
 while [[ "$#" -gt 0 ]]; do
@@ -38,8 +38,8 @@ usage() {
 echo -e "\nBlock device info"
 sudo lsblk -o NAME,MAJ:MIN,SIZE,TYPE,FSTYPE,SCHED,ROTA,PHY-SEC,TYPE,MIN-IO,OPT-IO | grep "$BD_NAME"
 
-echo -e "\nChecking symbols for lsvbd.ko..."
-sudo cat /proc/kallsyms | grep lsbdd
+echo -e "\nChecking symbols for lsv.ko..."
+sudo grep "\[lsv\]" /proc/kallsyms
 
 echo -e "\nChecking current native block device scheduler && setting it to none"
 sudo cat "$BD_SYS_PATH"queue/scheduler

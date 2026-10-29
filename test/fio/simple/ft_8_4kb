@@ -5,7 +5,7 @@ randrepeat=1
 size=1000M
 
 numjobs=1
-filename=/dev/lsvbd1
+filename=/dev/lsv0
 stonewall
 
 # 8k RANDOM WRITE TEST

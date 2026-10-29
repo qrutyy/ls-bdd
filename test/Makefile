@@ -14,7 +14,7 @@ ID?=32
 # INDEX
 IN?=""
 # Fio targets filename
-FS="lsvbd1"
+FS?=lsv0
 # Ratio of read opertations in the mix workflow
 RWMIX_READ?=50
 # Ratio of write operations in the mix workflow
@@ -59,7 +59,7 @@ fio_perf_mix:
 		--prio=0 \
 		--norandommap=0 \
 		--cpus_allowed_policy=shared \
-		--filename=/dev/lsvbd1 \
+		--filename=/dev/$(FS) \
 		--cpus_allowed=0-$(( $(NJ) - 1 )) \
 		--offset=16k
 

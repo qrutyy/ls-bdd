@@ -40,7 +40,7 @@ The `plots.sh` script provides extensive customization options:
 
 - **Concurrency Analysis**
   * **Parameter Sweep**: Tests various combinations of `iodepth` and `numjobs`
-  * **Comparison Mode**: Compares raw block device performance with `lsvbd1`
+  * **Comparison Mode**: Compares raw block device performance with `lsv0`
 
 - **Workload Parameters**
   * **I/O Workflow**: Configures read/write operation types

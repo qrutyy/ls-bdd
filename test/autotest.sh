@@ -7,14 +7,14 @@ usage() {
     exit 1
 }
 
-# Reinits the lsbdd and null_blk modules
+# Reinits the lsv module and the ramdisk under it
 reinit_lsvbd() {
-	make -C ../src exit DBI=1 > /dev/null
+	make -C ../src exit > /dev/null
 
 	sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
 	# paste the reinition of the module
 	modprobe brd rd_nr=1 rd_size=$(("$NBD_SIZE" * 1048576))
-	make -C ../src init_no_recompile DS="${BD_DS}" TY="${BD_TYPE}" > /dev/null
+	make -C ../src init_no_recompile DS="${BD_DS}" TY="${BD_TYPE}" BD="${BD_NAME}" NAME="${VBD_NAME}" > /dev/null
 }
 
 if [ "$BS_MIX_MODE" -ne 1 ]; then 
