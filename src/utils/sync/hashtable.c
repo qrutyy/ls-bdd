@@ -52,6 +52,12 @@ void hashtable_free(struct hashtable *ht, struct kmem_cache *lsbdd_node_cache, s
 	s32 bckt_iter = 0;
 	struct hash_el *el = NULL;
 	struct hlist_node *tmp = NULL;
+	/*
+	 * |last_el| is the initial sentinel or an element. A linked element is
+	 * freed by the walk below, anything else only here; asked before the
+	 * walk, which unlinks and frees it.
+	 */
+	bool last_linked = !hlist_unhashed(&ht->last_el->node);
 
 	hash_for_each_safe(ht->head, bckt_iter, tmp, el, node) {
 		if (el) {
@@ -59,7 +65,8 @@ void hashtable_free(struct hashtable *ht, struct kmem_cache *lsbdd_node_cache, s
 			kfree(el);
 		}
 	}
-	kfree(ht->last_el);
+	if (!last_linked)
+		kfree(ht->last_el);
 	kfree(ht);
 }
 

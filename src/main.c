@@ -8,6 +8,7 @@
 #include "core/bio/bio.h"
 #include "core/dedup/dedup.h"
 #include "core/dev.h"
+#include "core/stats/stats.h"
 #include "ctl/configfs.h"
 #include "main.h"
 
@@ -97,8 +98,15 @@ static s32 __init lsv_init(void)
 	if (rc)
 		return rc;
 
+	rc = lsv_stats_debugfs_init();
+	if (rc) {
+		lsv_mng_deinit();
+		return rc;
+	}
+
 	rc = lsv_configfs_register();
 	if (rc) {
+		lsv_stats_debugfs_deinit();
 		lsv_mng_deinit();
 		return rc;
 	}
@@ -112,6 +120,7 @@ static void __exit lsv_exit(void)
 {
 	lsv_configfs_unregister();
 	lsv_mng_deinit();
+	lsv_stats_debugfs_deinit();
 
 	pr_debug("lsv: module exited\n");
 }

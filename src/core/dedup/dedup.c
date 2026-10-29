@@ -10,6 +10,8 @@
 #include "core/dedup/dedup.h"
 #include "core/dedup/digest.h"
 #include "core/lmap/lmap.h"
+#include "core/stats/lsv_trace.h"
+#include "core/stats/stats.h"
 
 /* Dedup works on whole cells, and only on cells of this size. */
 #define LSV_DEDUP_BUF_SIZE 4096
@@ -25,6 +27,7 @@ struct lsv_dedup_verify {
 	u64 lba;
 	struct lsv_pblk *pblk; /* the candidate, one reference held */
 	void *data; /* copy of the bio payload the digest was taken from */
+	u64 digest;
 };
 
 /*
@@ -348,6 +351,7 @@ static void lsv_dedup_verify_fn(struct work_struct *work)
 	struct lsv_lmap *lmap = dedup->lmap;
 	struct lsv_pblk *pblk = vw->pblk;
 	struct bio *bio = vw->bio;
+	u64 start = lsv_stats_now();
 	bool same = false;
 	void *stored;
 	u64 pba;
@@ -366,9 +370,14 @@ static void lsv_dedup_verify_fn(struct work_struct *work)
 		if (rc)
 			goto put_pblk;
 
+		lsv_stats_inc(lmap->stats, LSV_CNT_DEDUP_HIT);
+		trace_lsv_dedup(dedup->bd->bd_dev, vw->lba, vw->digest, LSV_TRACE_DEDUP_HIT);
 		bio_endio(bio);
 		goto out;
 	}
+
+	lsv_stats_inc(lmap->stats, LSV_CNT_DEDUP_COLLISION);
+	trace_lsv_dedup(dedup->bd->bd_dev, vw->lba, vw->digest, LSV_TRACE_DEDUP_COLLISION);
 
 	/*
 	 * Same digest, different bytes: a genuine collision, or the stored cell is
@@ -402,6 +411,7 @@ fail:
 	bio->bi_status = errno_to_blk_status(rc);
 	bio_endio(bio);
 out:
+	lsv_stats_since(lmap->stats, LSV_LAT_DEDUP_VERIFY, start);
 	lsv_dedup_data_buf_free(vw->data);
 	kmem_cache_free(g_dedup_engine->verify_cachep, vw);
 }
@@ -412,21 +422,27 @@ out:
  */
 s32 lsv_dedup_write(struct lsv_dedup *dedup, struct bio *bio, u64 lba, struct lsv_pblk **pblk)
 {
+	struct lsv_stats *stats = dedup->lmap->stats;
 	struct lsv_dedup_verify *vw;
 	struct lsv_pblk *found;
 	void *tmp_buf;
 	u64 digest;
+	u64 start;
 
 	tmp_buf = lsv_dedup_data_buf_alloc();
 	if (!tmp_buf)
 		goto plain;
 
+	start = lsv_stats_now();
 	digest = lsv_dedup_buf_digest_get(bio, tmp_buf);
+	lsv_stats_since(stats, LSV_LAT_DEDUP_DIGEST, start);
 	if (!digest)
 		goto free_buf;
 
 	found = lsv_dedup_lookup(dedup, digest);
 	if (!found) {
+		lsv_stats_inc(stats, LSV_CNT_DEDUP_NEW);
+		trace_lsv_dedup(dedup->bd->bd_dev, lba, digest, LSV_TRACE_DEDUP_NEW);
 		lsv_dedup_data_buf_free(tmp_buf);
 		*pblk = lsv_dedup_insert(dedup, digest);
 		return IS_ERR(*pblk) ? PTR_ERR(*pblk) : LSV_DE_NEW;
@@ -445,7 +461,10 @@ s32 lsv_dedup_write(struct lsv_dedup *dedup, struct bio *bio, u64 lba, struct ls
 	vw->lba = lba;
 	vw->pblk = found;
 	vw->data = tmp_buf;
+	vw->digest = digest;
 
+	lsv_stats_inc(stats, LSV_CNT_DEDUP_CANDIDATE);
+	trace_lsv_dedup(dedup->bd->bd_dev, lba, digest, LSV_TRACE_DEDUP_CANDIDATE);
 	queue_work(g_dedup_engine->verify_wq, &vw->work);
 
 	return LSV_DE_DUPLICATE;
@@ -453,6 +472,7 @@ s32 lsv_dedup_write(struct lsv_dedup *dedup, struct bio *bio, u64 lba, struct ls
 free_buf:
 	lsv_dedup_data_buf_free(tmp_buf);
 plain:
+	lsv_stats_inc(stats, LSV_CNT_DEDUP_SKIPPED);
 	/* Dedup could not look at this write, but it still has to be stored. */
 	*pblk = lsv_pblk_alloc(dedup->lmap);
 	return IS_ERR(*pblk) ? PTR_ERR(*pblk) : LSV_DE_NEW;
