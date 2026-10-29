@@ -88,6 +88,35 @@ A description of all options is provided in the `Makefile`.
 
 For more customizable FIO testing, check the `test/fio/` directory for predefined configurations.
 
+## Driver Stats and Tracing
+
+The driver measures its own stages, the part of the latency fio cannot see.
+Every device gets a debugfs directory:
+
+```bash
+cat /sys/kernel/debug/lsv/lsv0/stats   # counters, gauges, per-stage latency summary
+cat /sys/kernel/debug/lsv/lsv0/hist    # raw latency histograms: stage floor_ns count
+echo 1 > /sys/kernel/debug/lsv/lsv0/reset
+```
+
+Stages are `bio` (whole request, submission to completion), `submit` (CPU time of
+`->submit_bio`), `remap_read`/`remap_write` (one cell-sized chunk), `idx_lookup`/`idx_insert`
+(the mapping index), `dedup_digest` and `dedup_verify`. Histograms are log-linear with at most
+6% bucket width. Counters cover splits, unmapped reads, overwrites, physical cell allocation,
+`-ENOSPC` and dedup outcomes.
+
+Stats can be switched off to measure their cost: `make build stats=0` compiles every probe out,
+`insmod lsv.ko stats_enabled=0` (or `echo 0 > /sys/kernel/debug/lsv/enabled`) turns them into
+patched-out branches.
+
+Per-request tracepoints (`lsv_bio_submit`, `lsv_bio_remap`, `lsv_bio_complete`, `lsv_dedup`)
+cost nothing until enabled:
+
+```bash
+echo 1 > /sys/kernel/tracing/events/lsv/enable
+bpftrace -e 'tracepoint:lsv:lsv_bio_complete { @[args->op] = hist(args->lat_ns); }'
+```
+
 ## Performance Evaluation
 
 For performance measurements, you can use `test/main.sh`.

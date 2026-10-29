@@ -8,6 +8,7 @@
 
 #include "core/dedup/dedup.h"
 #include "core/lmap/lmap.h"
+#include "core/stats/stats.h"
 
 /*
  * Module wide state of the mapping layer: the node caches every index
@@ -165,6 +166,7 @@ static s32 lsv_lmap_alloc_pba(struct lsv_lmap *lmap, u64 *pba)
 	allocated = atomic64_fetch_add(1, &lmap->next_pba);
 	if (allocated < 0 || (u64)allocated >= lmap->capacity_cells) {
 		atomic64_dec(&lmap->next_pba);
+		lsv_stats_inc(lmap->stats, LSV_CNT_ENOSPC);
 		return -ENOSPC;
 	}
 
@@ -201,6 +203,8 @@ struct lsv_pblk *lsv_pblk_alloc(struct lsv_lmap *lmap)
 		return ERR_PTR(rc);
 	}
 
+	lsv_stats_inc(lmap->stats, LSV_CNT_PBLK_ALLOC);
+
 	return pblk;
 }
 
@@ -220,6 +224,8 @@ void lsv_pblk_put(struct lsv_lmap *lmap, struct lsv_pblk *pblk)
 
 	xa_erase(&lmap->pblks, pblk->pba);
 	kfree_rcu(pblk, rcu);
+
+	lsv_stats_inc(lmap->stats, LSV_CNT_PBLK_FREE);
 }
 
 /* Points |lba| at |pblk|, consuming the reference the caller holds on it.  */
@@ -228,9 +234,13 @@ s32 lsv_lmap_bind(struct lsv_lmap *lmap, u64 lba, struct lsv_pblk *pblk)
 	struct lsv_lmap_cache *cache = &g_lmap_engine->map_cache;
 	struct lsv_pblk *old;
 	struct lsv_cell *cell;
+	u64 start;
 	s32 rc;
 
+	start = lsv_stats_now();
 	cell = lsv_ds_lookup(&lmap->index, lba);
+	lsv_stats_since(lmap->stats, LSV_LAT_IDX_LOOKUP, start);
+
 	if (cell) {
 		/*
 		 * An exchange rather than a load and a store: two writers of the
@@ -239,6 +249,7 @@ s32 lsv_lmap_bind(struct lsv_lmap *lmap, u64 lba, struct lsv_pblk *pblk)
 		old = unrcu_pointer(xchg(&cell->pblk, RCU_INITIALIZER(pblk)));
 		lsv_pblk_put(lmap, old);
 
+		lsv_stats_inc(lmap->stats, LSV_CNT_CELL_OVERWRITE);
 		return 0;
 	}
 
@@ -249,12 +260,16 @@ s32 lsv_lmap_bind(struct lsv_lmap *lmap, u64 lba, struct lsv_pblk *pblk)
 	cell->lba = lba;
 	RCU_INIT_POINTER(cell->pblk, pblk);
 
+	start = lsv_stats_now();
 	rc = lsv_ds_insert(&lmap->index, lba, cell, cache);
+	lsv_stats_since(lmap->stats, LSV_LAT_IDX_INSERT, start);
+
 	if (rc) {
 		kmem_cache_free(cache->cell_cachep, cell);
 		return rc;
 	}
 
+	lsv_stats_inc(lmap->stats, LSV_CNT_CELL_NEW);
 	return 0;
 }
 
@@ -263,11 +278,15 @@ bool lsv_lmap_lookup_pba(struct lsv_lmap *lmap, u64 lba, u64 *pba)
 {
 	struct lsv_cell *cell;
 	bool found = false;
+	u64 start;
 
 	/* The pblk may die under a concurrent overwrite; RCU keeps it readable. */
 	rcu_read_lock();
 
+	start = lsv_stats_now();
 	cell = lsv_ds_lookup(&lmap->index, lba);
+	lsv_stats_since(lmap->stats, LSV_LAT_IDX_LOOKUP, start);
+
 	if (cell) {
 		*pba = READ_ONCE(rcu_dereference(cell->pblk)->pba);
 		found = true;

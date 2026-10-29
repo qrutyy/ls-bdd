@@ -41,7 +41,21 @@ lsv-ds := utils/ds_control.o utils/xxh3.o \
 
 lsv-objs += main.o ctl/configfs.o core/dev.o \
 	core/lmap/lmap.o core/bio/bio.o core/bio/io.o core/dedup/dedup.o core/dedup/digest.o \
-	$(lsv-ds)
+	core/stats/trace.o $(lsv-ds)
+
+# Per-device stats in debugfs; stats=0 compiles every probe out, to measure
+# what they cost.
+stats ?= 1
+ifneq ($(stats), 0)
+ccflags-y += -DLSV_STATS
+lsv-objs += core/stats/stats.o
+ifneq ($(CONFIG_KUNIT),)
+lsv-objs += core/stats/kunit_lsv_stats.o
+endif
+endif
+
+# define_trace.h re-includes the event header by its own directory.
+CFLAGS_core/stats/trace.o := -I$(src)/core/stats
 
 # Add dynamical include path for the ds-control headers.
 ccflags-y += -I$(src) -I$(src)/$(DIR)

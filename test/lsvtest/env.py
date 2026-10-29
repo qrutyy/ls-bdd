@@ -78,5 +78,6 @@ def fingerprint(repo: Path, devices: Sequence[str] = ()) -> dict:
         "python": platform.python_version(),
         "git": _git(repo),
         "module_srcversion": _read("/sys/module/lsv/srcversion"),
+        "module_stats": _read("/sys/kernel/debug/lsv/enabled"),
         "block": {dev: _block_queue(dev) for dev in devices},
     }

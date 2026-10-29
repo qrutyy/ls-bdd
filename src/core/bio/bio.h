@@ -13,6 +13,7 @@ struct lsv_bio_req {
 	struct bio *clone;
 	struct lsv_dev *dev;
 	enum req_op op;
+	u64 start; /* local_clock() at ->submit_bio, 0 when nobody measures */
 };
 
 extern const struct block_device_operations lsv_bio_ops;
