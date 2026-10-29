@@ -9,12 +9,14 @@ on:
       - '**/*.sh'
       - '.github/workflows/lint.yml' 
   push:
-    paths: 
+    branches:
+      - main
+    paths:
       - '**/*.c'
       - '**/*.h'
       - '**/*.py'
       - '**/*.sh'
-      - '.github/workflows/linters.yml' # Или имя этого файла
+      - '.github/workflows/lint.yml'
   workflow_dispatch: 
 
 jobs:

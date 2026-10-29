@@ -3,9 +3,6 @@ name: pre-commit
 on:
   workflow_dispatch:
   pull_request:
-    branches:
-      - master
-      - main
     paths:
       - '.pre-commit-config.yaml'
       - '.pre-commit-hooks.yaml'
@@ -15,6 +12,8 @@ on:
       - '**.mk'
       - '**.make'
   push:
+    branches:
+      - main
     paths:
       - '.pre-commit-config.yaml'
       - '.pre-commit-hooks.yaml'
