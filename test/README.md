@@ -6,7 +6,93 @@ The test framework is designed to benchmark, verify, and analyze the performance
 * The performance measurement system does not support mixed workflows.
 * Sadly, the code itself kinda lacks documentation. Feel free to contact me for details if youre stuck with something.
 
-## Automated Testing Tools
+## lsv-bench
+
+`lsvtest` is the Python harness of the driver: device control through the
+`lsbdd` module parameters, declarative experiments and their statistical
+report. It is backported to this version of the driver, the one the ISP RAS
+2026 paper was measured on. The results of the paper were obtained with the
+shell pipeline below, which is kept unchanged; `experiments/isp2026.toml`
+is the same experiment written in the experiment language.
+
+```bash
+cd test
+python3 -m venv venv && . venv/bin/activate && pip install -r ../requirements.txt
+make -C ../src type=lf                                 # or type=sy
+
+sudo python3 -m lsvtest run experiments/smoke.toml     # results/smoke-<time>/
+python3 -m lsvtest report results/smoke-<time>         # .../report/{summary.csv,*.png}
+```
+
+`run --dry-run` prints every device and fio command without touching the machine,
+`run --resume DIR` continues an interrupted experiment, `run --ko PATH` points at
+the module (default `../src/lsbdd.ko`). `load`, `create lsvbd<N>`, `list`,
+`destroy` and `unload` drive the module by hand.
+
+### Experiments
+
+An experiment is a TOML file (see `experiments/`). `[matrix]` lists the values of
+the device (`ds`: `bt`, `ht`, `sl`, `rb`) and workload (`rw`, `bs`, `numjobs`,
+`iodepth`) parameters, and every combination becomes a point. A key may instead
+be given as a scalar in `[device]` or `[fio]`. `rw` takes a read share for mixed
+workloads: `randrw:70`. When `numjobs` and `iodepth` should vary together,
+`concurrency = [[1, 4], [8, 32]]` gives the pairs instead of a cross product.
+
+`[fio]` sets `ioengine` and `runtime`; `extra` passes any other fio option, and
+its string values may refer to `{numjobs}`, `{iodepth}` and `{last_cpu}` of the
+point, e.g. `cpus_allowed = "0-{last_cpu}"`.
+
+`[run]` sets the methodology:
+
+| Key            | Default | Meaning                                                            |
+| -------------- | ------- | ------------------------------------------------------------------ |
+| `repeats`      | 3       | runs per point; repeats are the outer loop, so drift spreads evenly |
+| `baseline`     | false   | also run every workload on the bare backing device                  |
+| `precondition` | auto    | write the region once before the run: `auto` (if it reads), `always`, `never` |
+| `region`       | 0.25    | share of the device the workload touches                            |
+
+`[tags]` are copied into every row, e.g. the lf/sy build of the module, so that
+results of several builds can be reported together.
+
+Limitations of this driver version, checked when the experiment is loaded:
+
+* the lf/sy mode is a build option (`make -C ../src type=...`), not a point of
+  the matrix: run once per build and tell the runs apart by `[tags]`;
+* there are no cells, segments or deduplication, so `cell_size`,
+  `segment_size` and `dedup` are refused;
+* in the lock-free build only `sl` and `ht` are complete (see `src/README.md`).
+
+Every run gets a fresh device. The head of the log is global to the module and
+only reset when it is loaded, so the runner reloads `lsbdd` before every run.
+lsbdd has no garbage collection and fails writes past the end of the backing
+device, so runs that write are bounded by `io_size` (the free space after
+preconditioning) and `runtime` caps them; read-only runs are time based. The
+baseline does the same IO as its lsbdd twin.
+
+### Results
+
+```
+results/<name>-<time>/
+  experiment.toml    the spec as it was run
+  meta.json          kernel, CPU, governors, block queue settings, git commit, fio version
+  runs.csv           one row per run and IO direction
+  failures.jsonl     runs fio failed on
+  fio/<run_id>.json  raw fio output
+  report/            summary.csv and plots
+```
+
+`runs.csv` holds the point parameters, the tags and fio's own metrics: IOPS,
+bandwidth, CPU usage and mean/max/p50/p90/p99/p99.9/p99.99 of submission,
+completion and total latency (in microseconds). `summary.csv` gives, per point,
+the median over repeats with a bootstrap 95% confidence interval and the
+coefficient of variation of IOPS.
+
+### Unit tests
+
+`pytest` in `test/` checks the harness itself against a fake `/sys` and canned
+fio output; it needs neither root nor the module.
+
+## Legacy shell pipeline (used for the paper)
 
 The primary interface is `main.sh`, which orchestrates the entire test system workflow.
 

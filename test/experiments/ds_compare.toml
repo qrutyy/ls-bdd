@@ -1,0 +1,35 @@
+# Mapping indexes against each other and against the bare backing device,
+# over the access patterns and the concurrency that matter for an LS device.
+# The lf/sy mode is chosen at build time (make -C ../src type=...), hence
+# the tag: run once per build and pass both result directories to `report`.
+# Only sl and ht are complete in the lock-free build (the lock-free B+ and
+# RB trees are work in progress, see src/README.md); for a sy build all of
+# bt, ht, sl and rb can be listed.
+#
+# 540 runs of up to 30 s each, about 5 hours with preconditioning.
+name = "ds_compare"
+
+[device]
+backing = "brd"
+backing_size_gib = 8
+
+[matrix]
+ds = ["ht", "sl"]
+rw = ["randwrite", "randread", "randrw:70"]
+bs = ["4k", "16k"]
+numjobs = [1, 4, 8]
+iodepth = [1, 32]
+
+[fio]
+ioengine = "io_uring"
+runtime = 30
+extra = { cpus_allowed_policy = "shared" }
+
+[run]
+repeats = 5
+baseline = true
+precondition = "auto"
+region = 0.25
+
+[tags]
+mode = "lf"

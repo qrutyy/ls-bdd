@@ -111,3 +111,8 @@ test/FlameGraph
 test/logs/*
 
 .clang-format
+
+# lsvtest
+test/results/
+__pycache__/
+.pytest_cache/
