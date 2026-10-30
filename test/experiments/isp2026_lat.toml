@@ -1,0 +1,45 @@
+# The latency part of the ISP RAS 2026 paper (figs. 6-7): 99th percentile
+# of the total latency without contention (numjobs 1, iodepth 1) and in the
+# optimal configuration (numjobs 8, iodepth 32), without a warm-up, as in
+# table 1 of the paper. See isp2026.toml for the IOPS part and for how this
+# description relates to the shell system the paper used.
+#
+# Build the lock-free module first: make -C ../src type=lf
+#
+# 24 points x 25 repeats = 600 runs of 180 s, about 30 hours.
+name = "isp2026_lat"
+
+[device]
+# The NVMe drive of the paper's platform: its contents are lost.
+backing = "/dev/nvme1n1"
+
+[matrix]
+ds = ["sl", "ht"]
+rw = ["rw:0", "rw:65", "rw:100", "randrw:0", "randrw:65", "randrw:100"]
+bs = ["8k"]
+# [numjobs, iodepth]
+concurrency = [[1, 1], [8, 32]]
+
+[fio]
+ioengine = "io_uring"
+runtime = 180
+
+[fio.extra]
+registerfiles = 1
+fixedbufs = 1
+hipri = 0
+prio = 0
+norandommap = 0
+cpus_allowed_policy = "shared"
+cpus_allowed = "0-{last_cpu}"
+offset = "16k"
+
+[run]
+repeats = 25
+baseline = false
+precondition = "auto"
+region = 0.1
+
+[tags]
+mode = "lf"
+paper = "ISP RAS 2026"

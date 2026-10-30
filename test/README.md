@@ -13,7 +13,9 @@ The test framework is designed to benchmark, verify, and analyze the performance
 report. It is backported to this version of the driver, the one the ISP RAS
 2026 paper was measured on. The results of the paper were obtained with the
 shell pipeline below, which is kept unchanged; `experiments/isp2026.toml`
-is the same experiment written in the experiment language.
+(IOPS) and `experiments/isp2026_lat.toml` (latency) are the same experiment,
+with the parameters of table 1 of the paper, written in the experiment
+language.
 
 ```bash
 cd test

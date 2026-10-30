@@ -1,52 +1,54 @@
 # The experiment of the ISP RAS 2026 paper (lock-free skip list against
-# lock-free hash table), written in the experiment language.
+# lock-free hash table), written in the experiment language: the IOPS part,
+# figs. 3-5 of the paper. The latency part is isp2026_lat.toml.
 #
 # This is an equivalent description: the results in the paper were obtained
-# with the shell system of this version (test/main.sh, test/plots.sh,
-# configurable_params.sh, test/Makefile), not with lsvtest. The values below
-# are taken from that code:
-#   - ds, rw types and mixes, bs, runs     configurable_params.sh
-#   - numjobs/iodepth pairs                plots.sh (iodepth = 4 * numjobs)
-#                                          and PL_GENERAL_CONC_CFG
-#   - fio options                          fio_perf_mix in test/Makefile
-#   - region                               preconditioning over BD_SIZE / 10
+# with the shell system of this version (test/main.sh, test/plots.sh), run
+# with the parameters of table 1 of the paper, which are the ones below:
+#   - bs 8k; read/write mixes 0/100, 65/35, 100/0
+#   - 25 runs of 180 s, after a 60 s warm-up (fio ramp_time)
+#   - numjobs 1..32 with iodepth = 4 * numjobs (figs. 3-4)
 #
 # Known differences from the shell system:
 #   - writing runs are bounded by bytes as well as by runtime (see
 #     runner.plan_io), so they cannot run past the end of the backing device;
 #   - preconditioning is one sequential pass with 128k blocks, where the shell
-#     system ran 10 jobs of 8k blocks over the same region;
-#   - latency points (numjobs 1) run with cpus_allowed=0 in both, but the shell
-#     system measured them in a separate fio target (fio_lat_mix).
+#     system ran 10 jobs of 8k blocks over the same region.
 #
 # Build the lock-free module first: make -C ../src type=lf
 #
-# 48 points x 21 repeats = 1008 runs of 45 s (30 s ramp + 15 s), about
-# 13 hours with preconditioning.
+# 72 points x 25 repeats = 1800 runs of 240 s, about 120 hours.
 name = "isp2026"
 
 [device]
-# The tagged configuration used null_blk of 400 GiB; the paper reports an
-# NVMe drive, for which set backing = "/dev/<nvme>" (its contents are lost).
-backing = "null_blk"
-backing_size_gib = 400
+# The NVMe drive of the paper's platform: its contents are lost.
+backing = "/dev/nvme1n1"
 
 [matrix]
 ds = ["sl", "ht"]
-# rw/randrw with rwmixread 0 (write) and 100 (read), as fio_perf_mix ran them
-rw = ["rw:0", "rw:100", "randrw:0", "randrw:100"]
+# rw/randrw with the read share of table 1: 0/100, 65/35, 100/0
+rw = ["rw:0", "rw:65", "rw:100", "randrw:0", "randrw:65", "randrw:100"]
 bs = ["8k"]
-# [numjobs, iodepth]: the scalability sweep, then the two latency points
-concurrency = [[1, 4], [2, 8], [4, 16], [8, 32], [1, 1], [1, 32]]
+# [numjobs, iodepth]
+concurrency = [[1, 4], [2, 8], [4, 16], [8, 32], [16, 64], [32, 128]]
 
 [fio]
 ioengine = "io_uring"
-runtime = 15
-extra = { ramp_time = 30, registerfiles = 1, fixedbufs = 1, hipri = 0, prio = 0, norandommap = 0, cpus_allowed_policy = "shared", cpus_allowed = "0-{last_cpu}", offset = "16k" }
+runtime = 180
+
+[fio.extra]
+ramp_time = 60
+registerfiles = 1
+fixedbufs = 1
+hipri = 0
+prio = 0
+norandommap = 0
+cpus_allowed_policy = "shared"
+cpus_allowed = "0-{last_cpu}"
+offset = "16k"
 
 [run]
-# PL_RUNS = 20, and plots.sh loops over 1..PL_RUNS+1
-repeats = 21
+repeats = 25
 baseline = false
 precondition = "auto"
 region = 0.1
