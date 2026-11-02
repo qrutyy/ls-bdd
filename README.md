@@ -1,80 +1,41 @@
 # LS-BDD
 
-**LS-BDD** is a testing framework for block devices that implement log-structured (LS) storage.
-The log-structured approach is designed to accelerate certain read workflows by transforming random requests into sequential ones.
-Although the log-structured concept is well known, the details of its implementation remain insufficiently studied.
-This framework explores the efficiency and behavior of various data structures used in LS-based systems.
+**LS-BDD** is a generic software-defined-storage block device driver made for research.
+Although many concepts ins SDS are well known -- its further research can be usefull. In particulary bc of narrow targeted development.
 
-The framework provides a modifiable block device driver in which the LS underlying data structures can be added or modified.
+It implements such approaches as:
+
+- log-structured storage;
+- deduplication;
+- garbage collection (linear/segmented).
+
 The current version of the driver includes several already implemented data structures in both **lock-free** and **synchronous** versions: **B+-tree**, **RB-tree**, **Skiplist**, and **Hashtable**.
+The driver is based on bio request management.
 
-The driver is based on BIO request management and supports BIO splitting (i.e., different block sizes for operations, such as 4 KB writes and 16 KB reads).
-A multithreaded lock-free implementation is currently under development.
+For related works, see [docs](https://github.com/qrutyy/ls-bdd/blob/main/docs):
 
-For more information, see:
-
-* [ru-presentation 2025](https://github.com/qrutyy/ls-bdd/blob/main/docs/4-semester/%28ru-presentation-conf%29%20Research%20on%20the%20implementation%20of%20log-structured%20block%20devicesd%20in%20Linux%20kernel.pdf)
-* [eng-presentation (LS implementation)](https://github.com/qrutyy/ls-bdd/blob/main/docs/3-semester/%28eng-presentation%29%20Implementation%20of%20log-structured%20block%20device%20in%20Linux%20kernel.pdf)
-
-***Compatible with Linux Kernel 7.2.9***
-
-## Block Device Driver
-
-It is highly recommended to test the driver in a virtual machine to prevent data corruption.
-
-### Adding Your Data Structure
-
-Below are the steps for adding a new data structure as the underlying mechanism for storing the LBA–PBA mapping in LS:
-
-1. Place your implementation in the **`utils/<mode>`** directory, where **`<mode>`** denotes the parallelism model of your data structure (*sync* or *lock-free*).
-   **Note:** The implementation must comply with the standard described in [this file](https://github.com/qrutyy/ls-bdd/blob/main/src/README.md).
-
-2. Append the **`lsv-objs`** list in **`Kbuild`** with the path to the `.o` file of your data structure.
-
-3. Update the **`ds_control`** system (both the header and source files) with calls to your data structure’s API.
-
-4. Assign a name to your data structure and add this identifier to the **`available_ds`** array in `main.h`.
-
-5. Initialize the module by passing your identifier via the **`ds_name`** option.
+**_Compatible with Linux Kernel 7.2.9_**
 
 ### Initialization
 
 ```bash
-make init DS="ds_name" TY="io_type" BD="bd_name" [NAME="lsv0"] [CS=4096] [DEDUP=0]
+make init
 ```
 
-* **`ds_name`** – one of the available data structures used for mapping (`bt`, `ht`, `sl`, `rb`, or your custom one)
-* **`io_type`** – block device mode (`lf` – lock-free, `sy` – synchronous)
-* **`bd_name`** – backing block device (e.g., `ram0`, `vdb`, `sdc`)
-* **`NAME`** – name of the created device, it appears as `/dev/NAME`
-* **`CS`** – mapping cell size in bytes, **`DEDUP`** – inline deduplication
-
-Devices are configured through configfs, `make init` is a shortcut for:
+Devices are configured through configfs:
 
 ```bash
-insmod src/lsv.ko
 mkdir /sys/kernel/config/lsv/lsv0
 echo /dev/ram0 > /sys/kernel/config/lsv/lsv0/backing_path
 echo ht        > /sys/kernel/config/lsv/lsv0/index_ds
 echo 4096      > /sys/kernel/config/lsv/lsv0/cell_size
+echo "linear"  > /sys/kernel/config/lsv/lsv0/space_layout
+echo 8192      > /sys/kernel/config/lsv/lsv0/segment_size
+echo 1         > /sys/kernel/config/lsv/lsv0/dedup
 echo 1         > /sys/kernel/config/lsv/lsv0/create_new
 ```
 
 `make destroy NAME=lsv0` removes one device, `make exit` removes all of them and unloads the module.
-
-### Sending Requests
-
-#### Writing
-
-```bash
-dd if=/dev/urandom of=/dev/lsv0 oflag=direct bs=2K count=10
-```
-
-#### Reading
-
-```bash
-dd of=test2.txt if=/dev/lsv0 iflag=direct bs=4K count=10
-```
 
 ### Testing
 
