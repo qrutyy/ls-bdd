@@ -21,10 +21,9 @@ static ulong ht_test_seed;
 module_param(ht_test_seed, ulong, 0444);
 MODULE_PARM_DESC(ht_test_seed, "seed of the lsv_ht KUnit stress cases, 0 for a random one");
 
-/* A cell of the test ops; |fallback| is one that did not come from the pool. */
+/* A cell of the test ops. */
 struct lsv_ht_test_cell {
 	struct lsv_lf_list_node node;
-	bool fallback;
 	/* given back by the table, and in the quarantine */
 	bool freed;
 	struct list_head qlink;
@@ -38,11 +37,6 @@ static struct lsv_ht_test_cell *ht_test_cell_of(struct lsv_lf_list_node *node)
 	return container_of(node, struct lsv_ht_test_cell, node);
 }
 
-/*
- * |for_recovery| is node_copy()'s call: it reaches cells ordinary inserts
- * never get, so that a full table does not also block the recovery that has to
- * run to drain it, and past those, the fallback when the test turns it on.
- */
 /* A cell given back earlier, wiped as a new one; NULL when there is none. */
 static struct lsv_ht_test_cell *ht_test_cell_reuse(struct lsv_ht_test_ctx *ctx)
 {
@@ -62,7 +56,6 @@ static struct lsv_ht_test_cell *ht_test_cell_reuse(struct lsv_ht_test_ctx *ctx)
 		return NULL;
 
 	memset(&cell->node, 0, sizeof(cell->node));
-	cell->fallback = false;
 	WRITE_ONCE(cell->freed, false);
 	atomic_inc(&ctx->reused);
 	return cell;
@@ -75,23 +68,14 @@ static struct lsv_ht_test_cell *ht_test_cell_get(struct lsv_ht_test_ctx *ctx)
 	return cell ? cell : kzalloc(sizeof(*cell), GFP_KERNEL);
 }
 
-static struct lsv_lf_list_node *ht_test_node_new(struct lsv_ht_test_ctx *ctx, bool for_recovery)
+/* A cell of the pool of |nodes_max|; NULL once the pool is dry. */
+static struct lsv_lf_list_node *ht_test_node_new(struct lsv_ht_test_ctx *ctx)
 {
-	int limit = ctx->nodes_max + (for_recovery ? ctx->recovery_max : 0);
 	struct lsv_ht_test_cell *cell;
 
-	if (atomic_inc_return(&ctx->nodes_live) > limit) {
+	if (atomic_inc_return(&ctx->nodes_live) > ctx->nodes_max) {
 		atomic_dec(&ctx->nodes_live);
-		if (!for_recovery || !ctx->copy_fallback)
-			return NULL;
-
-		cell = ht_test_cell_get(ctx);
-		if (!cell)
-			return NULL;
-		cell->fallback = true;
-		atomic_inc(&ctx->fallback_live);
-		atomic_inc(&ctx->fallback_cnt);
-		return &cell->node;
+		return NULL;
 	}
 
 	cell = ht_test_cell_get(ctx);
@@ -112,7 +96,7 @@ static bool ht_test_cell_is_freed(struct lsv_ht_test_ctx *ctx, struct lsv_lf_lis
 	return true;
 }
 
-/* g_lsv_ht_cell_check: every cell a walk of the table steps on. */
+/* g_lsv_ht_kunit_cell_check: every cell a walk of the table steps on. */
 static void ht_test_cell_check(struct lsv_lf_list_node *node)
 {
 	struct lsv_ht_test_ctx *ctx = READ_ONCE(g_lsv_ht_test_ctx);
@@ -129,10 +113,7 @@ static void ht_test_cell_put(struct lsv_ht_test_ctx *ctx, struct lsv_lf_list_nod
 {
 	struct lsv_ht_test_cell *cell = ht_test_cell_of(node);
 
-	if (cell->fallback)
-		atomic_dec(&ctx->fallback_live);
-	else
-		atomic_dec(&ctx->nodes_live);
+	atomic_dec(&ctx->nodes_live);
 
 	if (node == READ_ONCE(ctx->held_cell))
 		WRITE_ONCE(ctx->held_cell_freed, true);
@@ -158,7 +139,7 @@ struct lsv_lf_list_node *lsv_ht_test_node_alloc(u64 key, void *priv)
 		return NULL;
 	}
 
-	node = ht_test_node_new(ctx, false);
+	node = ht_test_node_new(ctx);
 	if (!node)
 		return NULL;
 
@@ -182,42 +163,15 @@ struct lsv_lf_list_node *lsv_ht_test_node_alloc(u64 key, void *priv)
 	node->value = value;
 
 	/*
-	 * Parks the caller in the middle of an insertion, with its anchor
-	 * wherever the traversal left it and its cell already in hand, so that
-	 * whatever the others do to the pool meanwhile cannot fail it.
+	 * Parks the caller in the middle of an insertion, between its two
+	 * operations and with its cell already in hand, so that whatever the
+	 * others do to the pool meanwhile cannot fail it: an allocator that
+	 * sleeps here.
 	 */
 	if (atomic_xchg(&ctx->park_in_alloc, 0)) {
 		complete(&ctx->parked);
 		wait_for_completion(&ctx->release);
 	}
-
-	return node;
-}
-
-static struct lsv_lf_list_node *ht_test_node_copy(struct lsv_lf_list_node *src, void *priv)
-{
-	struct lsv_ht_test_ctx *ctx = priv;
-	struct lsv_lf_list_node *node;
-
-	if (lsv_ht_key_is_reserved(src->key)) {
-		atomic_inc(&ctx->sentinel_calls);
-		return NULL;
-	}
-	if (ht_test_cell_is_freed(ctx, src))
-		return NULL;
-
-	/* the cells a recovery may not have: see ht_recovery_waits_for_cells */
-	if (atomic_read(&ctx->copy_blocked) &&
-	    (!ctx->copy_block_max || src->key <= ctx->copy_block_max))
-		return NULL;
-
-	node = ht_test_node_new(ctx, true);
-	if (!node)
-		return NULL;
-
-	node->key = src->key;
-	node->value = src->value;
-	atomic_inc(&((struct lsv_ht_test_value *)node->value)->cell_cnt);
 
 	return node;
 }
@@ -273,7 +227,6 @@ static void ht_test_value_put_new(struct lsv_lf_list_node *node, void *priv)
 
 static const struct lsv_lf_list_ops g_lsv_ht_test_ops = {
 	.node_alloc	= lsv_ht_test_node_alloc,
-	.node_copy	= ht_test_node_copy,
 	.node_dealloc	= lsv_ht_test_node_dealloc,
 	.value_get	= ht_test_value_get,
 	.value_is_dead	= ht_test_value_is_dead,
@@ -283,7 +236,6 @@ static const struct lsv_lf_list_ops g_lsv_ht_test_ops = {
 /* The same cells and values, but the table is not told about references. */
 const struct lsv_lf_list_ops g_lsv_ht_test_ops_norefs = {
 	.node_alloc	= lsv_ht_test_node_alloc,
-	.node_copy	= ht_test_node_copy,
 	.node_dealloc	= lsv_ht_test_node_dealloc,
 };
 
@@ -407,8 +359,7 @@ struct lsv_ht_test_value *lsv_ht_test_insert_eventually(struct lsv_ht_test_ctx *
 /*
  * Records |value|, which an insertion has just published, as the one its key
  * stands for, and returns how many other values of the key are live as well.
- * A key stands for one value at a time, however many cells recoveries made
- * for it. A value that has lost its last reference can never be pinned again
+ * A key stands for one value at a time. A value that has lost its last reference can never be pinned again
  * and leaves the chain; one that still has any was never dropped, so it is
  * still in the table beside the new one.
  */
@@ -457,10 +408,9 @@ u64 lsv_ht_test_seed_get(struct kunit *test)
 }
 
 int lsv_ht_test_create_table_ops(struct lsv_ht_test_ctx *ctx, u64 size, int cells,
-				 int recovery_cells, const struct lsv_lf_list_ops *ops)
+				 const struct lsv_lf_list_ops *ops)
 {
 	ctx->nodes_max = cells;
-	ctx->recovery_max = recovery_cells;
 	ctx->norefs = !ops->value_get;
 	ctx->ht = lsv_ht_alloc_and_init(size, ctx, ops);
 	if (IS_ERR(ctx->ht)) {
@@ -472,10 +422,9 @@ int lsv_ht_test_create_table_ops(struct lsv_ht_test_ctx *ctx, u64 size, int cell
 	return 0;
 }
 
-int lsv_ht_test_create_table(struct lsv_ht_test_ctx *ctx, u64 size, int cells,
-			     int recovery_cells)
+int lsv_ht_test_create_table(struct lsv_ht_test_ctx *ctx, u64 size, int cells)
 {
-	return lsv_ht_test_create_table_ops(ctx, size, cells, recovery_cells, &g_lsv_ht_test_ops);
+	return lsv_ht_test_create_table_ops(ctx, size, cells, &g_lsv_ht_test_ops);
 }
 
 /*
@@ -490,9 +439,6 @@ bool lsv_ht_test_join(struct lsv_ht_test_ctx *ctx)
 
 	complete_all(&ctx->release);
 	complete_all(&ctx->link_release);
-	complete_all(&ctx->record_release);
-	complete_all(&ctx->release2);
-	complete_all(&ctx->begin_release);
 	complete_all(&ctx->hold_release);
 
 	while (atomic_read(&ctx->jobs_running) && time_before(jiffies, deadline))
@@ -519,12 +465,6 @@ int lsv_ht_test_init(struct kunit *test)
 	init_completion(&ctx->release);
 	init_completion(&ctx->link_parked);
 	init_completion(&ctx->link_release);
-	init_completion(&ctx->record_parked);
-	init_completion(&ctx->record_release);
-	init_completion(&ctx->parked2);
-	init_completion(&ctx->release2);
-	init_completion(&ctx->begin_parked);
-	init_completion(&ctx->begin_release);
 	init_completion(&ctx->hold_parked);
 	init_completion(&ctx->hold_release);
 	spin_lock_init(&ctx->quarantine_lock);
@@ -532,7 +472,7 @@ int lsv_ht_test_init(struct kunit *test)
 	INIT_LIST_HEAD(&ctx->reusable);
 	test->priv = ctx;
 	WRITE_ONCE(g_lsv_ht_test_ctx, ctx);
-	WRITE_ONCE(g_lsv_ht_cell_check, ht_test_cell_check);
+	WRITE_ONCE(g_lsv_ht_kunit_cell_check, ht_test_cell_check);
 
 	for (i = 0; i < LSV_HT_TEST_WQ_CNT; i++) {
 		ctx->wq[i] = lsv_wq_create(0, cpu_online_mask, "kunit-ht%u", i);
@@ -580,9 +520,10 @@ void lsv_ht_test_exit(struct kunit *test)
 	 * same way as a job.
 	 */
 	deadline = jiffies + msecs_to_jiffies(LSV_HT_TEST_WAIT_MS);
-	while (ctx->ht && ht_reclaim_requests_pending(ctx->ht) && time_before(jiffies, deadline))
+	while (ctx->ht && ht_kunit_reclaim_requests_pending(ctx->ht) &&
+	       time_before(jiffies, deadline))
 		usleep_range(1000, 2000);
-	KUNIT_EXPECT_FALSE_MSG(test, ctx->ht && ht_reclaim_requests_pending(ctx->ht),
+	KUNIT_EXPECT_FALSE_MSG(test, ctx->ht && ht_kunit_reclaim_requests_pending(ctx->ht),
 			       "a reclaim request is stuck: waiting for it without a bound");
 
 	KUNIT_EXPECT_EQ(test, atomic_read(&ctx->released_held), 0);
@@ -591,10 +532,9 @@ void lsv_ht_test_exit(struct kunit *test)
 
 	for (i = 0; i < LSV_HT_TEST_WQ_CNT; i++)
 		lsv_wq_destroy(ctx->wq[i]);
-	WRITE_ONCE(g_lsv_ht_cell_check, NULL);
+	WRITE_ONCE(g_lsv_ht_kunit_cell_check, NULL);
 	WRITE_ONCE(g_lsv_ht_test_ctx, NULL);
 	KUNIT_EXPECT_EQ(test, atomic_read(&ctx->nodes_live), 0);
-	KUNIT_EXPECT_EQ(test, atomic_read(&ctx->fallback_live), 0);
 	KUNIT_EXPECT_EQ(test, atomic_read(&ctx->sentinel_calls), 0);
 
 	/* no walk and no op ever came back to a cell the table had given back */
@@ -607,8 +547,8 @@ void lsv_ht_test_exit(struct kunit *test)
 	list_for_each_entry_safe(value, tmp, &ctx->values, link) {
 		/*
 		 * Every cell that ever pointed at this value was announced and
-		 * given back: one node_alloc() or node_copy() for each
-		 * node_dealloc(), and nothing in between.
+		 * given back: one node_alloc() for each node_dealloc(), and
+		 * nothing in between.
 		 */
 		KUNIT_EXPECT_EQ(test, atomic_read(&value->cell_cnt), 0);
 		kfree(value);
