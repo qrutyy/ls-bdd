@@ -476,6 +476,8 @@ static void LSV_KTEST(ht_capacity_under_contention)(struct kunit *test)
 
 #define LSV_HT_TEST_STRESS_KEYS		64
 #define LSV_HT_TEST_STRESS_ITERS	2000
+/* cells of the pool per job, an eighth of what a job may retire */
+#define LSV_HT_TEST_POOL_PER_JOB	256
 
 /*
  * Pin a random key, then drop the pin; the last put removes the key, as the
@@ -538,15 +540,14 @@ static void ht_test_concurrent_participants(struct kunit *test, bool reuse)
 	ctx->reuse = reuse;
 	/*
 	 * Cells wait in retire buffers while other participants run, and two
-	 * workers share every CPU here: one preempted in the middle of an
-	 * operation holds back every cell retired after it began, for as long
-	 * as the other one runs. The pool carries every cell the run may
-	 * retire, at most one per turn, so that a failure counted below is a
-	 * spurious one of the table and not a dry pool.
+	 * workers share every CPU here. An operation is never preempted, so a
+	 * participant holds back the cells retired by the others only for as
+	 * long as one of its operations lasts: a pool of a few hundred cells per
+	 * job carries the run, a small part of what it retires.
 	 */
 	KUNIT_ASSERT_EQ(test, lsv_ht_test_create_table(ctx, 4 * LSV_HT_TEST_STRESS_KEYS,
 						       4 * LSV_HT_TEST_STRESS_KEYS +
-						       LSV_HT_TEST_STRESS_ITERS * nr_jobs), 0);
+						       LSV_HT_TEST_POOL_PER_JOB * nr_jobs), 0);
 
 	jobs = kunit_kcalloc(test, nr_jobs, sizeof(*jobs), GFP_KERNEL);
 	KUNIT_ASSERT_NOT_NULL(test, jobs);
@@ -897,6 +898,122 @@ static void LSV_KTEST(ht_parked_after_retire_spares_older)(struct kunit *test)
 	KUNIT_EXPECT_TRUE(test, ht_test_wait_cells_freed(ctx, later, ARRAY_SIZE(later), 1));
 }
 
+/*
+ * The key an insertion looks for may come in while it makes its cell, between
+ * its two operations. The second one finds it there: the insertion pins the
+ * value that came in, and gives back the cell and the entry it took for its
+ * own, the value it made going with them.
+ */
+static void LSV_KTEST(ht_key_arrives_while_cell_is_made)(struct kunit *test)
+{
+	struct lsv_ht_test_job *late = lsv_ht_test_job_new(test);
+	struct lsv_ht_test_ctx *ctx = test->priv;
+	struct lsv_ht_test_value *made = NULL;
+	struct lsv_ht_test_value *value;
+	struct lsv_ht_test_value *v;
+	bool is_new;
+
+	KUNIT_ASSERT_GE(test, ctx->worker_cnt, 2U);
+	KUNIT_ASSERT_EQ(test, lsv_ht_test_create_table(ctx, 64, 64), 0);
+
+	/* Arrange: an insertion of key 9 parks in node_alloc(), on worker 1 */
+	init_completion(&ctx->parked);
+	init_completion(&ctx->release);
+	atomic_set(&ctx->park_in_alloc, 1);
+	late->key = 9;
+	lsv_ht_test_job_start(ctx, late, 0, 1, lsv_ht_test_insert_fn);
+	KUNIT_ASSERT_TRUE(test, wait_for_completion_timeout(&ctx->parked,
+							    msecs_to_jiffies(LSV_HT_TEST_WAIT_MS)));
+
+	/* the key comes in meanwhile */
+	value = lsv_ht_test_insert(ctx, 9, &is_new);
+	KUNIT_ASSERT_NOT_NULL(test, value);
+	KUNIT_ASSERT_TRUE(test, is_new);
+
+	/* Act */
+	complete(&ctx->release);
+	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(late));
+
+	/* Assert: it pinned the value that came in... */
+	KUNIT_EXPECT_PTR_EQ(test, late->value, (void *)value);
+	KUNIT_EXPECT_FALSE(test, late->result);
+	KUNIT_EXPECT_EQ(test, refcount_read(&value->ref), 2U);
+	KUNIT_EXPECT_EQ(test, lsv_ht_entry_cnt(ctx->ht), 1ULL);
+	KUNIT_EXPECT_EQ(test, atomic_read(&ctx->nodes_live), 1);
+
+	/* ...and what it made is gone: no reference, no cell */
+	spin_lock(&ctx->values_lock);
+	list_for_each_entry(v, &ctx->values, link) {
+		if (v->key == 9 && v != value)
+			made = v;
+	}
+	spin_unlock(&ctx->values_lock);
+	KUNIT_ASSERT_NOT_NULL(test, made);
+	KUNIT_EXPECT_EQ(test, refcount_read(&made->ref), 0U);
+	KUNIT_EXPECT_EQ(test, atomic_read(&made->cell_cnt), 0);
+}
+
+static void ht_test_op_probe_stub(struct lsv_lf_list_node *cell)
+{
+	struct kunit *test = kunit_get_current_test();
+	struct lsv_ht_test_ctx *ctx;
+
+	if (!test)
+		return;
+	ctx = test->priv;
+	WRITE_ONCE(ctx->op_preemptible, preemptible());
+}
+
+static struct lsv_lf_list_node *ht_test_alloc_probe(u64 key, void *priv)
+{
+	struct lsv_ht_test_ctx *ctx = priv;
+
+	WRITE_ONCE(ctx->alloc_preemptible, preemptible());
+	return lsv_ht_test_node_alloc(key, priv);
+}
+
+static const struct lsv_lf_list_ops g_lsv_ht_test_ops_probe = {
+	.node_alloc	= ht_test_alloc_probe,
+	.node_dealloc	= lsv_ht_test_node_dealloc,
+};
+
+/*
+ * An operation runs with preemption off, so that its participant cannot be
+ * taken off its CPU with its timestamp in the bound of every scan; the cell of
+ * an insertion is made between two operations, where node_alloc() may sleep.
+ */
+static void LSV_KTEST(ht_ops_run_unpreemptible)(struct kunit *test)
+{
+	struct lsv_ht_test_job *job = lsv_ht_test_job_new(test);
+	struct lsv_ht_test_ctx *ctx = test->priv;
+	u64 keys[2];
+	bool is_new;
+
+	if (!IS_ENABLED(CONFIG_PREEMPT_COUNT))
+		kunit_skip(test, "preemptible() needs CONFIG_PREEMPT_COUNT");
+
+	KUNIT_ASSERT_EQ(test,
+			lsv_ht_test_create_table_ops(ctx, 64, 64, &g_lsv_ht_test_ops_probe), 0);
+	ht_test_bucket_keys(ctx, keys, ARRAY_SIZE(keys));
+	KUNIT_ASSERT_NOT_NULL(test, lsv_ht_test_insert(ctx, keys[0], &is_new));
+
+	/* Arrange */
+	ctx->op_preemptible = -1;
+	ctx->alloc_preemptible = -1;
+	kunit_activate_static_stub(test, ht_kunit_cell_reached, ht_test_op_probe_stub);
+
+	/* Act: an insertion steps onto the cell of its bucket, and makes its own */
+	job->key = keys[1];
+	job->stub_visible = true;
+	lsv_ht_test_run(ctx, job, lsv_ht_test_insert_fn);
+	kunit_deactivate_static_stub(test, ht_kunit_cell_reached);
+
+	/* Assert */
+	KUNIT_ASSERT_NOT_NULL(test, job->value);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(ctx->op_preemptible), 0);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(ctx->alloc_preemptible), 1);
+}
+
 /* Inserts and releases keys of its own until the pool turns it away. */
 static void ht_test_drain_pool_fn(struct lsv_ht_test_job *job)
 {
@@ -1099,6 +1216,8 @@ static struct kunit_case __cases[] = {
 	LSV_KUNIT_CASE(ht_parked_lookup_holds_retired),
 	LSV_KUNIT_CASE(ht_parked_alloc_spares_retired),
 	LSV_KUNIT_CASE(ht_parked_after_retire_spares_older),
+	LSV_KUNIT_CASE(ht_key_arrives_while_cell_is_made),
+	LSV_KUNIT_CASE(ht_ops_run_unpreemptible),
 	LSV_KUNIT_CASE(ht_idle_buffer_comes_back),
 	LSV_KUNIT_CASE(ht_free_waits_for_queued_request),
 	LSV_KUNIT_CASE(ht_free_on_worker_with_queued_request),

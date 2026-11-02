@@ -121,6 +121,10 @@ struct lsv_ht_test_ctx {
 	struct list_head reusable;
 	atomic_t reused;
 
+	/* preemptible() as seen inside an operation, and by node_alloc(); -1 unseen */
+	int op_preemptible;
+	int alloc_preemptible;
+
 	/* an insertion parked right before it links its cell */
 	atomic_t link_armed;
 	struct completion link_parked;
