@@ -134,7 +134,7 @@ static void ht_test_concurrent_recovery(struct kunit *test, int cells, int recov
 	KUNIT_ASSERT_NOT_NULL(test, jobs);
 
 	atomic_set(&ctx->stalls_left, LSV_HT_TEST_STALLS);
-	kunit_activate_static_stub(test, ht_anchor_dropped, ht_test_stall_stub);
+	kunit_activate_static_stub(test, ht_kunit_anchor_dropped, ht_test_stall_stub);
 
 	for (i = 0; i < nr_jobs; i++) {
 		/* the stub only stalls the jobs it is visible to */
@@ -150,7 +150,7 @@ static void ht_test_concurrent_recovery(struct kunit *test, int cells, int recov
 		wrong += jobs[i].wrong;
 	}
 
-	kunit_deactivate_static_stub(test, ht_anchor_dropped);
+	kunit_deactivate_static_stub(test, ht_kunit_anchor_dropped);
 
 	kunit_info(test, "participants=%u failed_ops=%ld recoveries=%llu freed_cells=%d stalls=%d fallback_cells=%d\n",
 		   nr_jobs, failed, lsv_ht_recovery_cnt(ctx->ht),

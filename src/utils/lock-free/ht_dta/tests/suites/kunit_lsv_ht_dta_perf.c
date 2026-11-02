@@ -610,10 +610,10 @@ static void htb_stalled(struct kunit *test, const char *name, long max_cells)
 	htb_fill(ctx);
 	ctx->op = LSV_HTB_OP_CHURN;
 
-	kunit_activate_static_stub(test, ht_anchor_dropped, htb_stall_stub);
+	kunit_activate_static_stub(test, ht_kunit_anchor_dropped, htb_stall_stub);
 	memset(&res, 0, sizeof(res));
 	htb_run(ctx, threads, LSV_HTB_STALL_RUN_MS, true, &res);
-	kunit_deactivate_static_stub(test, ht_anchor_dropped);
+	kunit_deactivate_static_stub(test, ht_kunit_anchor_dropped);
 
 	htb_report(test, name, threads - 1, LSV_HTB_STALL_RUN_MS, &res);
 	kunit_info(test, "HTB %-10s cells_from_fallback=%ld table_bytes=%zu\n", name,
