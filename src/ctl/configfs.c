@@ -22,6 +22,7 @@
  *	echo /dev/nvme0n1 > /sys/kernel/config/lsv/lsv0/backing_path
  *	echo ht		  > /sys/kernel/config/lsv/lsv0/index_ds
  *	echo 4096	  > /sys/kernel/config/lsv/lsv0/cell_size
+ *	echo segmented	  > /sys/kernel/config/lsv/lsv0/space_layout
  *	echo 2097152	  > /sys/kernel/config/lsv/lsv0/segment_size
  *	echo 1		  > /sys/kernel/config/lsv/lsv0/dedup
  *	echo 1		  > /sys/kernel/config/lsv/lsv0/create_new
@@ -30,6 +31,11 @@
  * is instantiated by writing to create_new, once every attribute is set.
  * Attributes are immutable after that; rmdir tears the description down.
  */
+
+static const char * const lsv_space_layout_names[] = {
+	[LSV_SPACE_LINEAR]	= "linear",
+	[LSV_SPACE_SEGMENTED]	= "segmented",
+};
 
 static inline struct lsv_cfg_dev *to_lsv_cfg_dev(struct config_item *item)
 {
@@ -120,6 +126,80 @@ static ssize_t lsv_cfg_dev_index_ds_store(struct config_item *item, const char *
 }
 CONFIGFS_ATTR(lsv_cfg_dev_, index_ds);
 
+static ssize_t lsv_cfg_dev_space_layout_show(struct config_item *item, char *page)
+{
+	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
+	ssize_t len;
+
+	mutex_lock(&cfg->lock);
+	len = sysfs_emit(page, "%s\n", lsv_space_layout_names[cfg->space_layout]);
+	mutex_unlock(&cfg->lock);
+
+	return len;
+}
+
+static ssize_t lsv_cfg_dev_space_layout_store(struct config_item *item, const char *page, size_t count)
+{
+	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
+	ssize_t rc = count;
+	int layout;
+
+	layout = sysfs_match_string(lsv_space_layout_names, page);
+	if (layout < 0) {
+		pr_warn("lsv: unknown space layout '%.*s'\n", (int)count, page);
+		return -EINVAL;
+	}
+
+	mutex_lock(&cfg->lock);
+
+	if (cfg->created)
+		rc = -EBUSY;
+	else
+		cfg->space_layout = layout;
+
+	mutex_unlock(&cfg->lock);
+	return rc;
+}
+CONFIGFS_ATTR(lsv_cfg_dev_, space_layout);
+
+static ssize_t lsv_cfg_dev_cell_size_show(struct config_item *item, char *page)
+{
+	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
+	ssize_t len;
+
+	mutex_lock(&cfg->lock);
+	len = snprintf(page, PAGE_SIZE, "%u\n", cfg->cell_size);
+	mutex_unlock(&cfg->lock);
+
+	return len;
+}
+
+static ssize_t lsv_cfg_dev_cell_size_store(struct config_item *item, const char *page, size_t count)
+{
+	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
+	ssize_t rc = count;
+	u32 value;
+
+	if (kstrtou32(page, 0, &value))
+		return -EINVAL;
+
+	if (value < LSV_CELL_SIZE_MIN || value > LSV_CELL_SIZE_MAX ||
+	    !is_power_of_2(value) || (value & (SECTOR_SIZE - 1)))
+		return -EINVAL;
+
+	mutex_lock(&cfg->lock);
+
+	if (cfg->created)
+		rc = -EBUSY;
+	else
+		cfg->cell_size = value;
+
+	mutex_unlock(&cfg->lock);
+	return rc;
+}
+CONFIGFS_ATTR(lsv_cfg_dev_, cell_size);
+
+
 static ssize_t lsv_cfg_dev_segment_size_show(struct config_item *item, char *page)
 {
 	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
@@ -152,42 +232,6 @@ static ssize_t lsv_cfg_dev_segment_size_store(struct config_item *item, const ch
 	return rc;
 }
 CONFIGFS_ATTR(lsv_cfg_dev_, segment_size);
-
-static ssize_t lsv_cfg_dev_cell_size_show(struct config_item *item, char *page)
-{
-	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
-	ssize_t len;
-
-	mutex_lock(&cfg->lock);
-	len = snprintf(page, PAGE_SIZE, "%u\n", cfg->cell_size);
-	mutex_unlock(&cfg->lock);
-
-	return len;
-}
-
-static ssize_t lsv_cfg_dev_cell_size_store(struct config_item *item, const char *page, size_t count)
-{
-	struct lsv_cfg_dev *cfg = to_lsv_cfg_dev(item);
-	ssize_t rc = count;
-	u32 value;
-
-	if (kstrtou32(page, 0, &value))
-		return -EINVAL;
-
-	if (value < LSV_CELL_SIZE_MIN || value > LSV_CELL_SIZE_MAX || !is_power_of_2(value) || (value & (SECTOR_SIZE - 1)))
-		return -EINVAL;
-
-	mutex_lock(&cfg->lock);
-
-	if (cfg->created)
-		rc = -EBUSY;
-	else
-		cfg->cell_size = value;
-
-	mutex_unlock(&cfg->lock);
-	return rc;
-}
-CONFIGFS_ATTR(lsv_cfg_dev_, cell_size);
 
 static ssize_t lsv_cfg_dev_dedup_show(struct config_item *item, char *page)
 {
@@ -274,6 +318,7 @@ static ssize_t lsv_cfg_dev_create_new_store(struct config_item *item, const char
 	params.back_path = cfg->backing_path;
 	params.index_ds = cfg->index_ds;
 	params.cell_size = cfg->cell_size;
+	params.space_layout = cfg->space_layout;
 	params.segment_size = cfg->segment_size;
 	params.dedup = cfg->dedup;
 
@@ -293,6 +338,7 @@ CONFIGFS_ATTR(lsv_cfg_dev_, create_new);
 static struct configfs_attribute *lsv_cfg_dev_attrs[] = {
 	&lsv_cfg_dev_attr_backing_path,
 	&lsv_cfg_dev_attr_index_ds,
+	&lsv_cfg_dev_attr_space_layout,
 	&lsv_cfg_dev_attr_cell_size,
 	&lsv_cfg_dev_attr_segment_size,
 	&lsv_cfg_dev_attr_dedup,

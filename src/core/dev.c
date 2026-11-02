@@ -96,6 +96,34 @@ static void lsv_dev_del_disk(struct lsv_dev *dev)
 	dev->front.disk = NULL;
 }
 
+static s32 lsv_dev_lmap_init(struct lsv_dev *dev, const struct lsv_dev_params *params)
+{
+	struct lsv_lmap_params *lp = &dev->lmap.params;
+
+	if (strscpy(lp->index_ds, params->index_ds, sizeof(lp->index_ds)) < 0)
+		return -ENAMETOOLONG;
+
+	lp->cell_size = params->cell_size;
+	lp->space_layout = params->space_layout;
+	lp->segment_size = params->segment_size;
+	lp->back_cap_sectors = get_capacity(dev->back.bd->bd_disk);
+
+	return lsv_lmap_init(&dev->lmap);
+}
+
+static s32 lsv_dev_dedup_init(struct lsv_dev *dev)
+{
+	dev->dedup = lsv_dedup_create(&dev->lmap, dev->back.bd);
+	if (IS_ERR(dev->dedup)) {
+		s32 rc = PTR_ERR(dev->dedup);
+
+		dev->dedup = NULL;
+		return rc;
+	}
+
+	return 0;
+}
+
 s32 lsv_dev_create(const struct lsv_dev_params *params, struct lsv_dev **out)
 {
 	struct lsv_dev *dev;
@@ -114,18 +142,14 @@ s32 lsv_dev_create(const struct lsv_dev_params *params, struct lsv_dev **out)
 	if (rc)
 		goto free_dev;
 
-	rc = lsv_lmap_init(&dev->lmap, params->index_ds, params->cell_size, params->segment_size,
-			   get_capacity(dev->back.bd->bd_disk));
+	rc = lsv_dev_lmap_init(dev, params);
 	if (rc)
 		goto close_back;
 
 	if (params->dedup) {
-		dev->dedup = lsv_dedup_create(&dev->lmap, dev->back.bd);
-		if (IS_ERR(dev->dedup)) {
-			rc = PTR_ERR(dev->dedup);
-			dev->dedup = NULL;
+		rc = lsv_dev_dedup_init(dev);
+		if (rc)
 			goto deinit_lmap;
-		}
 	}
 
 	rc = lsv_dev_add_disk(dev);

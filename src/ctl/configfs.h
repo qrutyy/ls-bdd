@@ -8,6 +8,8 @@
 #include <linux/mutex.h>
 #include <linux/types.h>
 
+#include "core/lmap/lmap.h"
+
 #define LSV_CTL_MAX_BD_NAME_LENGTH 15
 #define LSV_CTL_MAX_MINORS_AM 20
 #define LSV_CTL_MAX_DS_NAME_LEN 2
@@ -21,6 +23,7 @@ struct lsv_cfg_dev {
 	char backing_path[PATH_MAX];
 	char index_ds[LSV_CTL_MAX_DS_NAME_LEN + 1];
 	u32 cell_size;
+	enum lsv_space_layout space_layout;
 	u64 segment_size;
 	bool dedup;
 
