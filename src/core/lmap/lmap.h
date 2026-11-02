@@ -38,14 +38,20 @@ struct lsv_cell {
 	struct lsv_pblk __rcu *pblk;
 };
 
-sttruct lsv_lmap_params {
-	char index_ds[LSV_CTL_MAX_DS_NAME_LEN + 1];
+/* How physical cells are laid out on the backing device. */
+enum lsv_space_layout {
+	LSV_SPACE_LINEAR,
+	LSV_SPACE_SEGMENTED,
+};
+
+/* What the device hands lmap to build it from, as configured. */
+struct lsv_lmap_params {
+	char index_ds[LSV_DS_NAME_LEN + 1];
 	u32 cell_size;
-	char space_layout;
+	enum lsv_space_layout space_layout;
 	u64 segment_size;
 
 	sector_t back_cap_sectors;
-
 };
 
 struct lsv_lmap_pos {
@@ -73,13 +79,11 @@ struct lsv_lmap {
 
 	struct bio_set bio_set;
 
-	struct lsv_lmap_params;
+	struct lsv_lmap_params params;
 };
 
 s32 lsv_lmap_engine_init(void);
 void lsv_lmap_engine_deinit(void);
-
-void lsv_lmap_prep_params(struct lsv_lmap *lmap, const struct lsv_dev_params *params);
 
 s32 lsv_lmap_init(struct lsv_lmap *lmap);
 void lsv_lmap_deinit(struct lsv_lmap *lmap);

@@ -34,6 +34,7 @@ struct lsv_dev_params {
 	const char *back_path;
 	const char *index_ds;
 	u32 cell_size;
+	enum lsv_space_layout space_layout;
 	u64 segment_size;
 	bool dedup;
 };

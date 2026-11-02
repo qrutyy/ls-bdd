@@ -87,8 +87,8 @@ void lsv_lmap_engine_deinit(void)
 
 static s32 lsv_lmap_setup_geometry(struct lsv_lmap *lmap)
 {
-	u32 cell_size = lmap->cell_size;
-	sector_t backing_sectors = lmap->back_cap_sectors;
+	u32 cell_size = lmap->params.cell_size;
+	sector_t backing_sectors = lmap->params.back_cap_sectors;
 
 	// TODO: add segment based geometry;
 
@@ -114,28 +114,18 @@ static s32 lsv_lmap_setup_geometry(struct lsv_lmap *lmap)
 	return 0;
 }
 
-void lsv_lmap_prep_params(struct lsv_lmap *lmap, const struct lsv_dev_params *params)
-{
-	struct lsv_map_params *map_params = kzalloc(sizeof(struct lsv_map_params), GFP_KERNEL);
-
-	map_params->ds = params->index_ds;
-	map_params->cell_size = params->cell_size;
-	map_params->segment_size = params->segment_size;
-	map_params->back_cap_sectors = get_capacity(dev->back.bd->bd_disk);
-}
-
 s32 lsv_lmap_init(struct lsv_lmap *lmap)
 {
 	s32 rc;
 
-	if (strscpy(lmap->ds_type, lmap->index_ds, sizeof(lmap->ds_type)) < 0)
+	if (strscpy(lmap->ds_type, lmap->params.index_ds, sizeof(lmap->ds_type)) < 0)
 		return -ENAMETOOLONG;
 
 	rc = lsv_lmap_setup_geometry(lmap);
 	if (rc)
 		return rc;
 
-	lmap->segment_size = lmap->segment_size;
+	lmap->segment_size = lmap->params.segment_size;
 	xa_init(&lmap->pblks);
 
 	rc = bioset_init(&lmap->bio_set, BIO_POOL_SIZE, 0, BIOSET_NEED_BVECS);
