@@ -13,7 +13,8 @@ GIB = 1 << 30
 
 
 class FakeSystem(runner.System):
-    def __init__(self, fail_on=None):
+    def __init__(self, fail_on=None, kstats=True):
+        self.kstats = kstats
         self.log = []
         self.fail_on = fail_on
         self.result = json.loads((DATA / "fio_randrw.json").read_text())
@@ -34,6 +35,14 @@ class FakeSystem(runner.System):
 
     def settle(self):
         pass
+
+    def reset_stats(self, name):
+        self.log.append(("reset", name))
+
+    def read_stats(self, name):
+        if not self.kstats:
+            return None
+        return {"bio_read": 100, "lat_idx_lookup_mean_ns": 250}, "idx_lookup 240 100\n"
 
     def fio(self, args):
         name = next(a for a in args if a.startswith("--name="))
@@ -97,6 +106,9 @@ def test_every_lsv_run_gets_a_fresh_device(tmp_path):
     # reads need mapped cells: every run is preconditioned first
     fio_names = [e[1] for e in system.log if e[0] == "fio"]
     assert fio_names == ["precondition", "lsvbench"] * 6
+    # stats are reset between preconditioning and the measured job
+    lsv_run = system.log[system.log.index(("create", "ht", 4096)) :][:5]
+    assert [e[0] for e in lsv_run] == ["create", "fio", "reset", "fio", "destroy"]
     assert system.log[-1] == ("teardown",)
 
 
@@ -156,3 +168,18 @@ def test_plan_mixed_budget_counts_only_writes():
 def test_plan_without_budget():
     with pytest.raises(spec.SpecError, match="write budget"):
         runner.plan_io(point("randrw", 99, numjobs=64), 64 << 20, 1.0, "always")
+
+
+def test_kernel_stats_recorded_for_lsv_runs_only(tmp_path):
+    runner.Runner(experiment(), tmp_path, FakeSystem(), tmp_path).run()
+    with (tmp_path / "kstats.csv").open() as f:
+        got = list(csv.DictReader(f))
+    assert len(got) == 4 * 2
+    assert not [r for r in got if r["run_id"].startswith("raw")]
+    assert {r["key"] for r in got} == {"bio_read", "lat_idx_lookup_mean_ns"}
+    assert len(list((tmp_path / "hist").glob("*.txt"))) == 4
+
+
+def test_no_kernel_stats(tmp_path):
+    runner.Runner(experiment(), tmp_path, FakeSystem(kstats=False), tmp_path).run()
+    assert not (tmp_path / "kstats.csv").exists()

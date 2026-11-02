@@ -26,6 +26,7 @@ from typing import Callable, Optional
 MODULE_NAME = "lsv"
 CONFIGFS_ROOT = Path("/sys/kernel/config")
 DEV_ROOT = Path("/dev")
+DEBUGFS_ROOT = Path("/sys/kernel/debug")
 
 # Attributes in the order they are written; create_new always goes last.
 DEVICE_ATTRS = ("backing_path", "index_ds", "cell_size", "segment_size", "dedup")
@@ -157,6 +158,34 @@ def unload_module(configfs_root: Path = CONFIGFS_ROOT) -> None:
         (Path(configfs_root) / MODULE_NAME / name).rmdir()
     if module_loaded():
         run(["rmmod", MODULE_NAME])
+
+
+def parse_stats(text: str) -> dict[str, int]:
+    """The "name value" lines of debugfs lsv/<dev>/stats."""
+    stats = {}
+    for line in text.splitlines():
+        name, _, value = line.partition(" ")
+        if name and value:
+            stats[name] = int(value)
+    return stats
+
+
+def stats_dir(name: str, debugfs_root: Path = DEBUGFS_ROOT) -> Path:
+    return Path(debugfs_root) / MODULE_NAME / name
+
+
+def read_stats(name: str, debugfs_root: Path = DEBUGFS_ROOT) -> Optional[dict]:
+    """None when the module was built without stats or debugfs is not mounted."""
+    path = stats_dir(name, debugfs_root) / "stats"
+    if not path.exists():
+        return None
+    return parse_stats(path.read_text())
+
+
+def reset_stats(name: str, debugfs_root: Path = DEBUGFS_ROOT) -> None:
+    path = stats_dir(name, debugfs_root) / "reset"
+    if path.exists():
+        write_attr(path, 1)
 
 
 def drop_caches() -> None:

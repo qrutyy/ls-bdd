@@ -110,9 +110,14 @@ s32 lsv_dev_create(const struct lsv_dev_params *params, struct lsv_dev **out)
 		goto free_dev;
 	}
 
-	rc = lsv_dev_open_back(dev, params->back_path);
+	rc = lsv_stats_init(&dev->stats);
 	if (rc)
 		goto free_dev;
+	dev->lmap.stats = &dev->stats;
+
+	rc = lsv_dev_open_back(dev, params->back_path);
+	if (rc)
+		goto free_stats;
 
 	rc = lsv_lmap_init(&dev->lmap, params->index_ds, params->cell_size, params->segment_size,
 			   get_capacity(dev->back.bd->bd_disk));
@@ -132,6 +137,8 @@ s32 lsv_dev_create(const struct lsv_dev_params *params, struct lsv_dev **out)
 	if (rc)
 		goto destroy_dedup;
 
+	dev->dbg = lsv_stats_debugfs_add(dev);
+
 	mutex_lock(&g_mng->lock);
 	list_add_tail(&dev->node, &g_mng->dev_list);
 	mutex_unlock(&g_mng->lock);
@@ -149,6 +156,8 @@ deinit_lmap:
 	lsv_lmap_deinit(&dev->lmap);
 close_back:
 	lsv_dev_close_back(dev);
+free_stats:
+	lsv_stats_free(&dev->stats);
 free_dev:
 	kfree(dev);
 	return rc;
@@ -163,11 +172,14 @@ void lsv_dev_destroy(struct lsv_dev *dev)
 	list_del(&dev->node);
 	mutex_unlock(&g_mng->lock);
 
+	/* Its files read the device: gone, and waited for, before anything is torn down. */
+	lsv_stats_debugfs_remove(dev->dbg);
 	lsv_dev_del_disk(dev);
 	/* Before lmap: pending verifies still hold pblks and bios of this device. */
 	lsv_dedup_destroy(dev->dedup);
 	lsv_lmap_deinit(&dev->lmap);
 	lsv_dev_close_back(dev);
+	lsv_stats_free(&dev->stats);
 
 	kfree(dev);
 }

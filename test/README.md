@@ -56,10 +56,20 @@ results/<name>-<time>/
   experiment.toml    the spec as it was run
   meta.json          kernel, CPU, governors, block queue settings, git commit, fio version
   runs.csv           one row per run and IO direction
+  kstats.csv         the driver's own stats per run (run_id, key, value)
+  hist/<run_id>.txt  the driver's raw latency histograms
   failures.jsonl     runs fio failed on
   fio/<run_id>.json  raw fio output
   report/            summary.csv and plots
 ```
+
+For lsv runs the driver's debugfs stats are reset after preconditioning and read
+after the job, so `kstats.csv` covers exactly the measured workload. `report` then
+adds `kstats_summary.csv` (median over repeats of every driver stat, columns
+prefixed `k_`) and `stages_{mean,p99}.png`: per workload and index, the latency
+of every driver stage. A module built with `stats=0` simply records none.
+`python3 -m lsvtest load --no-stats` loads it with the probes off, and
+`python3 -m lsvtest stats lsv0` prints a device's stats.
 
 `runs.csv` holds the point parameters, the tags and fio's own metrics: IOPS,
 bandwidth, CPU usage and mean/max/p50/p90/p99/p99.9/p99.99 of submission,

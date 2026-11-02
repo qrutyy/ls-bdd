@@ -14,46 +14,7 @@
 #include "hashtable.h"
 #endif
 
-static bool lsv_ds_is_bt(char *ds)
-{
-	return !strncmp(ds, "bt", 2);
-}
-
-static bool lsv_ds_is_sl(char *ds)
-{
-	return !strncmp(ds, "sl", 2);
-}
-
-static bool lsv_ds_is_ht(char *ds)
-{
-	return !strncmp(ds, "ht", 2);
-}
-
-static bool lsv_ds_is_rb(char *ds)
-{
-	return !strncmp(ds, "rb", 2);
-}
-
-static int ds_init_type(struct lsv_ds *ds, char *sel_ds)
-{
-	if (lsv_ds_is_bt(sel_ds)) {
-		ds->type = BTREE_TYPE;
-		return 0;
-	} else if (lsv_ds_is_sl(sel_ds)) {
-		ds->type = SKIPLIST_TYPE;
-		return 0;
-	} else if (lsv_ds_is_ht(sel_ds)) {
-		ds->type = HASHTABLE_TYPE;
-		return 0;
-	} else if (lsv_ds_is_rb(sel_ds)) {
-		ds->type = RBTREE_TYPE;
-		return 0;
-	}
-
-	return -EINVAL;
-}
-
-static int lsv_btree_init(struct lsv_ds *ds)
+static s32 lsv_btree_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng, u64 max_entries)
 {
 	struct btree *btree_map = NULL;
 	struct btree_head *root = NULL;
@@ -72,7 +33,6 @@ static int lsv_btree_init(struct lsv_ds *ds)
 		return rc;
 
 	btree_map->head = root;
-	ds->type = BTREE_TYPE;
 	ds->structure.map_btree = btree_map;
 
 	return rc;
@@ -83,7 +43,7 @@ mem_err:
 	return -ENOMEM;
 }
 
-static int lsv_skiplist_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng)
+static s32 lsv_skiplist_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng, u64 max_entries)
 {
 	struct skiplist *skiplist = NULL;
 
@@ -99,7 +59,6 @@ static int lsv_skiplist_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng)
 	if (!skiplist)
 		return -ENOMEM;
 
-	ds->type = SKIPLIST_TYPE;
 	ds->structure.map_list = skiplist;
 
 	return 0;
@@ -149,7 +108,7 @@ static const struct lsv_lf_list_ops lsv_ht_ds_ops = {
 	.node_dealloc = lsv_ht_node_dealloc,
 };
 
-static int lsv_hashtable_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng, u64 max_entries)
+static s32 lsv_hashtable_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng, u64 max_entries)
 {
 	struct lsv_ht *ht;
 
@@ -164,7 +123,6 @@ static int lsv_hashtable_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng
 	if (IS_ERR(ht))
 		return PTR_ERR(ht);
 
-	ds->type = HASHTABLE_TYPE;
 	ds->structure.map_lsv_ht = ht;
 
 	return 0;
@@ -172,7 +130,7 @@ static int lsv_hashtable_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng
 #endif
 
 #ifdef SY_MODE
-static int lsv_hashtable_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng, u64 max_entries)
+static s32 lsv_hashtable_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng, u64 max_entries)
 {
 	struct hashtable *hash_table = NULL;
 
@@ -186,7 +144,6 @@ static int lsv_hashtable_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng
 	if (!hash_table)
 		return -ENOMEM;
 
-	ds->type = HASHTABLE_TYPE;
 	ds->structure.map_hash = hash_table;
 	ds->structure.map_hash->max_bck_num = 0;
 
@@ -194,7 +151,7 @@ static int lsv_hashtable_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng
 }
 #endif
 
-static int lsv_rbtree_init(struct lsv_ds *ds)
+static s32 lsv_rbtree_init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng, u64 max_entries)
 {
 	struct rbtree *rbtree_map;
 
@@ -202,41 +159,12 @@ static int lsv_rbtree_init(struct lsv_ds *ds)
 	if (!rbtree_map)
 		return -ENOMEM;
 
-	ds->type = RBTREE_TYPE;
 	ds->structure.map_rbtree = rbtree_map;
 
 	return 0;
 }
 
-s32 lsv_ds_init(struct lsv_ds *ds, char *sel_ds, struct lsv_cache_mng *cache_mng, u64 max_entries)
-{
-	s32 rc;
-
-	BUG_ON(!ds || !cache_mng);
-
-	rc = ds_init_type(ds, sel_ds);
-	if (rc)
-		return rc;
-
-	switch (ds->type) {
-	case BTREE_TYPE:
-		rc = lsv_btree_init(ds);
-		break;
-	case SKIPLIST_TYPE:
-		rc = lsv_skiplist_init(ds, cache_mng);
-		break;
-	case HASHTABLE_TYPE:
-		rc = lsv_hashtable_init(ds, cache_mng, max_entries);
-		break;
-	case RBTREE_TYPE:
-		rc = lsv_rbtree_init(ds);
-		break;
-	}
-
-	return rc;
-}
-
-static void lsv_btree_free(struct lsv_ds *ds)
+static void lsv_btree_free(struct lsv_ds *ds, struct lsv_lmap_cache *map_cache)
 {
 	btree_destroy(ds->structure.map_btree->head);
 	ds->structure.map_btree = NULL;
@@ -284,30 +212,10 @@ static void lsv_hashtable_free(struct lsv_ds *ds, struct lsv_lmap_cache *map_cac
 }
 #endif
 
-static void lsv_rbtree_free(struct lsv_ds *ds)
+static void lsv_rbtree_free(struct lsv_ds *ds, struct lsv_lmap_cache *map_cache)
 {
 	rbtree_free(ds->structure.map_rbtree);
 	ds->structure.map_rbtree = NULL;
-}
-
-void lsv_ds_free(struct lsv_ds *ds, struct lsv_lmap_cache *map_cache)
-{
-	BUG_ON(!ds || !map_cache);
-
-	switch (ds->type) {
-	case BTREE_TYPE:
-		lsv_btree_free(ds);
-		break;
-	case SKIPLIST_TYPE:
-		lsv_skiplist_free(ds, map_cache);
-		break;
-	case HASHTABLE_TYPE:
-		lsv_hashtable_free(ds, map_cache);
-		break;
-	case RBTREE_TYPE:
-		lsv_rbtree_free(ds);
-		break;
-	}
 }
 
 static void *lsv_btree_lookup(struct lsv_ds *ds, sector_t key)
@@ -361,58 +269,43 @@ static void *lsv_rbtree_lookup(struct lsv_ds *ds, sector_t key)
 	return rb_node->value;
 }
 
-void *lsv_ds_lookup(struct lsv_ds *ds, sector_t key)
+static void lsv_btree_remove(struct lsv_ds *ds, sector_t key, struct kmem_cache *cell_cachep)
 {
-	BUG_ON(!ds);
+	u64 *kp = &key;
 
-	switch (ds->type) {
-	case BTREE_TYPE:
-		return lsv_btree_lookup(ds, key);
-	case SKIPLIST_TYPE:
-		return lsv_skiplist_lookup(ds, key);
-	case HASHTABLE_TYPE:
-		return lsv_ht_lookup(ds, key);
-	case RBTREE_TYPE:
-		return lsv_rbtree_lookup(ds, key);
-	}
-
-	return NULL;
+	btree_remove(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
 }
 
-void lsv_ds_remove(struct lsv_ds *ds, sector_t key, struct kmem_cache *lsv_value_cache)
+static void lsv_skiplist_remove(struct lsv_ds *ds, sector_t key, struct kmem_cache *cell_cachep)
 {
-	BUG_ON(!ds || !lsv_value_cache);
+	skiplist_remove(ds->structure.map_list, key, cell_cachep);
+}
 
-	u64 *kp = NULL;
-
-	kp = &key;
-	switch (ds->type) {
-	case BTREE_TYPE:
-		btree_remove(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
-		break;
-	case SKIPLIST_TYPE:
-		skiplist_remove(ds->structure.map_list, key, lsv_value_cache);
-		break;
-	case HASHTABLE_TYPE:
 #ifdef LF_MODE
-		/*
-		 * The value is left to the caller, as the old hashtable left it
-		 * until the table was freed: a concurrent lookup may still hand
-		 * it out. TODO: free it once the table counts value references.
-		 */
-		lsv_ht_remove(ds->structure.map_lsv_ht, key);
+/*
+ * The value is left to the caller, as the old hashtable left it until the
+ * table was freed: a concurrent lookup may still hand it out. TODO: free it
+ * once the table counts value references.
+ */
+static void lsv_hashtable_remove(struct lsv_ds *ds, sector_t key, struct kmem_cache *cell_cachep)
+{
+	lsv_ht_remove(ds->structure.map_lsv_ht, key);
+}
 #endif
+
 #ifdef SY_MODE
-		hashtable_remove(ds->structure.map_hash, key, lsv_value_cache);
+static void lsv_hashtable_remove(struct lsv_ds *ds, sector_t key, struct kmem_cache *cell_cachep)
+{
+	hashtable_remove(ds->structure.map_hash, key, cell_cachep);
+}
 #endif
-		break;
-	case RBTREE_TYPE:
-		rbtree_remove(ds->structure.map_rbtree, key);
-		break;
-	}
+
+static void lsv_rbtree_remove(struct lsv_ds *ds, sector_t key, struct kmem_cache *cell_cachep)
+{
+	rbtree_remove(ds->structure.map_rbtree, key);
 }
 
-static s32 lsv_btree_insert(struct lsv_ds *ds, sector_t key, void *value)
+static s32 lsv_btree_insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_lmap_cache *map_cache)
 {
 	u64 *kp = &key;
 
@@ -472,29 +365,11 @@ static s32 lsv_hashtable_insert(struct lsv_ds *ds, sector_t key, void *value, st
 }
 #endif
 
-static s32 lsv_rbtree_insert(struct lsv_ds *ds, sector_t key, void *value)
+static s32 lsv_rbtree_insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_lmap_cache *map_cache)
 {
 	rbtree_add(ds->structure.map_rbtree, key, value);
 
 	return 0;
-}
-
-s32 lsv_ds_insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_lmap_cache *map_cache)
-{
-	BUG_ON(!ds || !map_cache);
-
-	switch (ds->type) {
-	case BTREE_TYPE:
-		return lsv_btree_insert(ds, key, value);
-	case SKIPLIST_TYPE:
-		return lsv_skiplist_insert(ds, key, value, map_cache);
-	case HASHTABLE_TYPE:
-		return lsv_hashtable_insert(ds, key, value, map_cache);
-	case RBTREE_TYPE:
-		return lsv_rbtree_insert(ds, key, value);
-	}
-
-	return -EINVAL;
 }
 
 static sector_t lsv_btree_last(struct lsv_ds *ds, sector_t key)
@@ -504,21 +379,21 @@ static sector_t lsv_btree_last(struct lsv_ds *ds, sector_t key)
 	return btree_last_no_rep(ds->structure.map_btree->head, &btree_geo64, (unsigned long *)kp);
 }
 
-static sector_t lsv_skiplist_last(struct lsv_ds *ds)
+static sector_t lsv_skiplist_last(struct lsv_ds *ds, sector_t key)
 {
 	return skiplist_last(ds->structure.map_list);
 }
 
 #ifdef LF_MODE
 /* The DtA table keeps no order across buckets and no last element. */
-static sector_t lsv_hashtable_last(struct lsv_ds *ds)
+static sector_t lsv_hashtable_last(struct lsv_ds *ds, sector_t key)
 {
 	return 0;
 }
 #endif
 
 #ifdef SY_MODE
-static sector_t lsv_hashtable_last(struct lsv_ds *ds)
+static sector_t lsv_hashtable_last(struct lsv_ds *ds, sector_t key)
 {
 	struct hash_el *hm_node = NULL;
 
@@ -530,7 +405,7 @@ static sector_t lsv_hashtable_last(struct lsv_ds *ds)
 }
 #endif
 
-static sector_t lsv_rbtree_last(struct lsv_ds *ds)
+static sector_t lsv_rbtree_last(struct lsv_ds *ds, sector_t key)
 {
 	struct rbtree_node *rb_node = NULL;
 
@@ -539,24 +414,6 @@ static sector_t lsv_rbtree_last(struct lsv_ds *ds)
 		return 0;
 
 	return rb_node->key;
-}
-
-sector_t lsv_ds_last(struct lsv_ds *ds, sector_t key)
-{
-	BUG_ON(!ds);
-
-	switch (ds->type) {
-	case BTREE_TYPE:
-		return lsv_btree_last(ds, key);
-	case SKIPLIST_TYPE:
-		return lsv_skiplist_last(ds);
-	case HASHTABLE_TYPE:
-		return lsv_hashtable_last(ds);
-	case RBTREE_TYPE:
-		return lsv_rbtree_last(ds);
-	}
-
-	return 0;
 }
 
 static void *lsv_btree_prev(struct lsv_ds *ds, sector_t key, sector_t *prev_key)
@@ -609,24 +466,6 @@ static void *lsv_rbtree_prev(struct lsv_ds *ds, sector_t key, sector_t *prev_key
 	return rb_node->value;
 }
 
-void *lsv_ds_prev(struct lsv_ds *ds, sector_t key, sector_t *prev_key)
-{
-	BUG_ON(!ds || !prev_key);
-
-	switch (ds->type) {
-	case BTREE_TYPE:
-		return lsv_btree_prev(ds, key, prev_key);
-	case SKIPLIST_TYPE:
-		return lsv_skiplist_prev(ds, key, prev_key);
-	case HASHTABLE_TYPE:
-		return lsv_hashtable_prev(ds, key, prev_key);
-	case RBTREE_TYPE:
-		return lsv_rbtree_prev(ds, key, prev_key);
-	}
-
-	return NULL;
-}
-
 static bool lsv_btree_empty(struct lsv_ds *ds)
 {
 	return ds->structure.map_btree->head->height == 0;
@@ -652,28 +491,162 @@ static bool lsv_rbtree_empty(struct lsv_ds *ds)
 	return ds->structure.map_rbtree->node_num == 0;
 }
 
-bool lsv_ds_empty_check(struct lsv_ds *ds)
+static const struct lsv_ds_ops lsv_bt_ops = {
+	.name = "bt",
+	.caps = LSV_DS_ORDERED | LSV_DS_REMOVE_ABSENT_OK,
+	.init = lsv_btree_init,
+	.free = lsv_btree_free,
+	.lookup = lsv_btree_lookup,
+	.insert = lsv_btree_insert,
+	.remove = lsv_btree_remove,
+	.last = lsv_btree_last,
+	.prev = lsv_btree_prev,
+	.empty = lsv_btree_empty,
+};
+
+static const struct lsv_ds_ops lsv_sl_ops = {
+	.name = "sl",
+#ifdef LF_MODE
+	.caps = LSV_DS_FREE_OWNS_VALUES | LSV_DS_REMOVE_OWNS_VALUE | LSV_DS_ORDERED | LSV_DS_REMOVE_ABSENT_OK,
+#else
+	.caps = LSV_DS_ORDERED | LSV_DS_REMOVE_ABSENT_OK,
+#endif
+	.init = lsv_skiplist_init,
+	.free = lsv_skiplist_free,
+	.lookup = lsv_skiplist_lookup,
+	.insert = lsv_skiplist_insert,
+	.remove = lsv_skiplist_remove,
+	.last = lsv_skiplist_last,
+	.prev = lsv_skiplist_prev,
+	.empty = lsv_skiplist_empty,
+};
+
+static const struct lsv_ds_ops lsv_ht_ops = {
+	.name = "ht",
+#ifdef LF_MODE
+	.caps = LSV_DS_FREE_OWNS_VALUES | LSV_DS_REMOVE_ABSENT_OK,
+#else
+	/* hashtable_remove() dereferences what it did not find */
+	.caps = 0,
+#endif
+	.init = lsv_hashtable_init,
+	.free = lsv_hashtable_free,
+	.lookup = lsv_ht_lookup,
+	.insert = lsv_hashtable_insert,
+	.remove = lsv_hashtable_remove,
+	.last = lsv_hashtable_last,
+	.prev = lsv_hashtable_prev,
+	.empty = lsv_hashtable_empty,
+};
+
+static const struct lsv_ds_ops lsv_rb_ops = {
+	.name = "rb",
+	/* rbtree frees values with kfree(), which takes slab objects too */
+	.caps = LSV_DS_FREE_OWNS_VALUES | LSV_DS_REMOVE_OWNS_VALUE | LSV_DS_ORDERED | LSV_DS_REMOVE_ABSENT_OK,
+	.init = lsv_rbtree_init,
+	.free = lsv_rbtree_free,
+	.lookup = lsv_rbtree_lookup,
+	.insert = lsv_rbtree_insert,
+	.remove = lsv_rbtree_remove,
+	.last = lsv_rbtree_last,
+	.prev = lsv_rbtree_prev,
+	.empty = lsv_rbtree_empty,
+};
+
+/*
+ * Every index the driver knows. A new one is added here, and nowhere else in
+ * the core: configfs, lmap, dedup and the KUnit suites go through this table.
+ */
+static const struct lsv_ds_ops *const lsv_ds_registry[] = {
+	&lsv_bt_ops,
+	&lsv_sl_ops,
+	&lsv_ht_ops,
+	&lsv_rb_ops,
+};
+
+const struct lsv_ds_ops *lsv_ds_ops_at(u32 idx)
 {
-	BUG_ON(!ds);
-
-	switch (ds->type) {
-	case BTREE_TYPE:
-		return lsv_btree_empty(ds);
-	case SKIPLIST_TYPE:
-		return lsv_skiplist_empty(ds);
-	case HASHTABLE_TYPE:
-		return lsv_hashtable_empty(ds);
-	case RBTREE_TYPE:
-		return lsv_rbtree_empty(ds);
-	}
-
-	return true;
+	return idx < ARRAY_SIZE(lsv_ds_registry) ? lsv_ds_registry[idx] : NULL;
 }
 
-bool lsv_ds_check_available(char *sel_ds)
+const struct lsv_ds_ops *lsv_ds_find(const char *name)
 {
-	if (!sel_ds)
-		return false;
+	u32 i;
 
-	return lsv_ds_is_bt(sel_ds) || lsv_ds_is_sl(sel_ds) || lsv_ds_is_ht(sel_ds) || lsv_ds_is_rb(sel_ds);
+	if (!name)
+		return NULL;
+
+	for (i = 0; i < ARRAY_SIZE(lsv_ds_registry); i++)
+		if (!strcmp(lsv_ds_registry[i]->name, name))
+			return lsv_ds_registry[i];
+
+	return NULL;
+}
+
+bool lsv_ds_check_available(const char *sel_ds)
+{
+	return lsv_ds_find(sel_ds);
+}
+
+s32 lsv_ds_init(struct lsv_ds *ds, const char *sel_ds, struct lsv_cache_mng *cache_mng, u64 max_entries)
+{
+	const struct lsv_ds_ops *ops;
+	s32 rc;
+
+	BUG_ON(!ds || !cache_mng);
+
+	ops = lsv_ds_find(sel_ds);
+	if (!ops)
+		return -EINVAL;
+
+	rc = ops->init(ds, cache_mng, max_entries);
+	if (rc)
+		return rc;
+
+	ds->ops = ops;
+
+	return 0;
+}
+
+void lsv_ds_free(struct lsv_ds *ds, struct lsv_lmap_cache *map_cache)
+{
+	BUG_ON(!ds || !map_cache);
+
+	ds->ops->free(ds, map_cache);
+}
+
+void *lsv_ds_lookup(struct lsv_ds *ds, sector_t key)
+{
+	return ds->ops->lookup(ds, key);
+}
+
+s32 lsv_ds_insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_lmap_cache *map_cache)
+{
+	BUG_ON(!map_cache);
+
+	return ds->ops->insert(ds, key, value, map_cache);
+}
+
+void lsv_ds_remove(struct lsv_ds *ds, sector_t key, struct kmem_cache *cell_cachep)
+{
+	BUG_ON(!cell_cachep);
+
+	ds->ops->remove(ds, key, cell_cachep);
+}
+
+sector_t lsv_ds_last(struct lsv_ds *ds, sector_t key)
+{
+	return ds->ops->last(ds, key);
+}
+
+void *lsv_ds_prev(struct lsv_ds *ds, sector_t key, sector_t *prev_key)
+{
+	BUG_ON(!prev_key);
+
+	return ds->ops->prev(ds, key, prev_key);
+}
+
+bool lsv_ds_empty_check(struct lsv_ds *ds)
+{
+	return ds->ops->empty(ds);
 }

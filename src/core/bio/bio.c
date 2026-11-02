@@ -9,6 +9,8 @@
 #include "core/bio/bio.h"
 #include "core/dedup/dedup.h"
 #include "core/lmap/lmap.h"
+#include "core/stats/lsv_trace.h"
+#include "core/stats/stats.h"
 
 #define LSV_BIO_SUBMIT 0
 #define LSV_BIO_DONE 1
@@ -33,7 +35,21 @@ void lsv_bio_cache_free(void)
 static void lsv_bio_end_io(struct bio *clone)
 {
 	struct lsv_bio_req *req = clone->bi_private;
+	struct lsv_dev *dev = req->dev;
 	struct bio *orig = req->orig;
+	u64 lat = 0;
+
+	if (req->start) {
+		lat = local_clock() - req->start;
+		if (lsv_stats_enabled())
+			lsv_stats_record(&dev->stats, LSV_LAT_BIO, lat);
+	}
+
+	if (clone->bi_status)
+		lsv_stats_inc(&dev->stats, LSV_CNT_BIO_ERROR);
+
+	trace_lsv_bio_complete(disk_devt(dev->front.disk), req->op, orig->bi_iter.bi_sector,
+			       bio_sectors(orig), blk_status_to_errno(clone->bi_status), lat);
 
 	orig->bi_status = clone->bi_status;
 	bio_endio(orig);
@@ -93,6 +109,7 @@ static s32 lsv_bio_setup_write(struct lsv_dev *dev, struct bio *bio, u64 lba, u3
 
 	if (offset || sectors != lmap->cell_sectors) {
 		/* TODO: read-modify-write for partial cell writes. */
+		lsv_stats_inc(&dev->stats, LSV_CNT_PARTIAL_WRITE);
 		pr_warn_once("lsv: partial cell write is not implemented yet\n");
 		return -EOPNOTSUPP;
 	}
@@ -121,6 +138,7 @@ static s32 lsv_bio_setup_write(struct lsv_dev *dev, struct bio *bio, u64 lba, u3
 	}
 
 	bio->bi_iter.bi_sector = lsv_lmap_data_sector(lmap, pba);
+	trace_lsv_bio_remap(disk_devt(dev->front.disk), REQ_OP_WRITE, lba, offset, sectors, pba, true);
 
 	return LSV_BIO_SUBMIT;
 }
@@ -134,23 +152,37 @@ static s32 lsv_bio_setup_read(struct lsv_dev *dev, struct bio *bio, u64 lba, u32
 	u64 pba;
 
 	if (!lsv_lmap_lookup_pba(&dev->lmap, lba, &pba)) {
+		lsv_stats_inc(&dev->stats, LSV_CNT_READ_UNMAPPED);
+		trace_lsv_bio_remap(disk_devt(dev->front.disk), REQ_OP_READ, lba, offset, bio_sectors(bio), 0,
+				    false);
 		zero_fill_bio(bio);
 		bio_endio(bio);
 		return LSV_BIO_DONE;
 	}
 
 	bio->bi_iter.bi_sector = lsv_lmap_data_sector(&dev->lmap, pba) + offset;
+	trace_lsv_bio_remap(disk_devt(dev->front.disk), REQ_OP_READ, lba, offset, bio_sectors(bio), pba, true);
 
 	return LSV_BIO_SUBMIT;
 }
 
 static s32 lsv_bio_setup_bio(struct lsv_bio_req *req, struct bio *bio, u64 lba, u32 offset, u32 sectors)
 {
-	if (req->op == REQ_OP_READ)
-		return lsv_bio_setup_read(req->dev, bio, lba, offset);
+	struct lsv_stats *stats = &req->dev->stats;
+	u64 start = lsv_stats_now();
+	s32 rc;
 
-	if (req->op == REQ_OP_WRITE)
-		return lsv_bio_setup_write(req->dev, bio, lba, offset, sectors);
+	if (req->op == REQ_OP_READ) {
+		rc = lsv_bio_setup_read(req->dev, bio, lba, offset);
+		lsv_stats_since(stats, LSV_LAT_REMAP_READ, start);
+		return rc;
+	}
+
+	if (req->op == REQ_OP_WRITE) {
+		rc = lsv_bio_setup_write(req->dev, bio, lba, offset, sectors);
+		lsv_stats_since(stats, LSV_LAT_REMAP_WRITE, start);
+		return rc;
+	}
 
 	return -EOPNOTSUPP;
 }
@@ -188,6 +220,7 @@ static void lsv_bio_process(struct lsv_bio_req *req)
 				goto err;
 			}
 			bio_chain(bio, clone);
+			lsv_stats_inc(&req->dev->stats, LSV_CNT_SPLIT);
 		}
 
 		rc = lsv_bio_setup_bio(req, bio, pos.lba, pos.offset, chunk);
@@ -208,23 +241,49 @@ err:
 	bio_io_error(clone);
 }
 
+static void lsv_bio_count(struct lsv_dev *dev, struct bio *bio)
+{
+	switch (bio_op(bio)) {
+	case REQ_OP_READ:
+		lsv_stats_inc(&dev->stats, LSV_CNT_BIO_READ);
+		break;
+	case REQ_OP_WRITE:
+		lsv_stats_inc(&dev->stats, LSV_CNT_BIO_WRITE);
+		break;
+	default:
+		lsv_stats_inc(&dev->stats, LSV_CNT_BIO_OTHER);
+	}
+}
+
 static void lsv_submit_bio(struct bio *bio)
 {
 	struct lsv_dev *dev = bio->bi_bdev->bd_disk->private_data;
 	struct lsv_bio_req *req;
+	u64 start;
 
 	if (unlikely(!dev)) {
 		bio_io_error(bio);
 		return;
 	}
 
+	/* The completion event reports latency too, so it clocks the request when on. */
+	start = trace_lsv_bio_complete_enabled() ? local_clock() : lsv_stats_now();
+
+	lsv_bio_count(dev, bio);
+	trace_lsv_bio_submit(disk_devt(dev->front.disk), bio_op(bio), bio->bi_iter.bi_sector, bio_sectors(bio));
+
 	req = lsv_bio_req_alloc(dev, bio);
 	if (unlikely(!req)) {
+		lsv_stats_inc(&dev->stats, LSV_CNT_BIO_ERROR);
 		bio_io_error(bio);
 		return;
 	}
+	req->start = start;
 
+	/* |req| may be completed and freed by the time this returns, |dev| may not. */
 	lsv_bio_process(req);
+
+	lsv_stats_since(&dev->stats, LSV_LAT_SUBMIT, start);
 }
 
 const struct block_device_operations lsv_bio_ops = {

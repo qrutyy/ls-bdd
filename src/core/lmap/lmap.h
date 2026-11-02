@@ -19,6 +19,7 @@
 #define LSV_DS_NAME_LEN 8
 
 struct lsv_de;
+struct lsv_stats;
 
 /*
  * |ref| counts exactly those cells (plus a writer that holds one in flight).
@@ -55,6 +56,8 @@ struct lsv_lmap {
 	struct xarray pblks;
 
 	struct bio_set bio_set;
+
+	struct lsv_stats *stats; /* the owning device's */
 };
 
 s32 lsv_lmap_engine_init(void);

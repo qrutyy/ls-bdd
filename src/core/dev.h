@@ -7,6 +7,7 @@
 #include <linux/list.h>
 
 #include "core/lmap/lmap.h"
+#include "core/stats/stats.h"
 
 #define LSV_BLKDEV_NAME_PREFIX "lsv"
 #define LSV_MAX_MINORS 64
@@ -44,6 +45,9 @@ struct lsv_dev {
 
 	struct lsv_lmap lmap;
 	struct lsv_dedup *dedup; /* NULL when dedup is off */
+
+	struct lsv_stats stats;
+	struct dentry *dbg; /* its debugfs directory */
 
 	struct list_head node; /* node in the module wide device list */
 };

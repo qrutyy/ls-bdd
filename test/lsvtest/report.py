@@ -8,6 +8,7 @@ The coefficient of variation flags points that need more repeats.
 """
 
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -33,6 +34,20 @@ DS_COLORS = {
     RAW: "dimgray",
 }
 
+# Driver stages in the order a request meets them, see src/core/stats/stats.h.
+STAGES = [
+    "bio",
+    "submit",
+    "remap_read",
+    "remap_write",
+    "idx_lookup",
+    "idx_insert",
+    "dedup_digest",
+    "dedup_verify",
+]
+
+KSTAT_PREFIX = "k_"
+
 BOOTSTRAP_RESAMPLES = 2000
 CONFIDENCE = 0.95
 
@@ -47,6 +62,35 @@ def load_runs(dirs: list[Path]) -> pd.DataFrame:
     df = pd.concat(frames, ignore_index=True)
     df["bw_mib"] = df["bw_bytes"] / (1 << 20)
     return df
+
+
+def load_kstats(dirs: list[Path]) -> Optional[pd.DataFrame]:
+    """
+    The driver's stats, one k_<key> column per key, joined with the point of
+    each run. None when no run recorded any (stats=0 build, baseline only).
+    """
+    frames = []
+    for d in dirs:
+        path = Path(d) / "kstats.csv"
+        if path.exists():
+            frames.append(pd.read_csv(path))
+    if not frames:
+        return None
+    wide = pd.concat(frames).pivot_table(
+        index="run_id", columns="key", values="value", aggfunc="first"
+    )
+    wide.columns = [f"{KSTAT_PREFIX}{c}" for c in wide.columns]
+    runs = load_runs(dirs)
+    keys = [c for c in group_columns(runs) if c != "direction"]
+    points = runs[["run_id"] + keys].drop_duplicates("run_id")
+    return points.merge(wide.reset_index(), on="run_id")
+
+
+def summarize_kstats(kdf: pd.DataFrame) -> pd.DataFrame:
+    """Median over repeats of every driver stat, per point."""
+    values = [c for c in kdf.columns if c.startswith(KSTAT_PREFIX)]
+    keys = [c for c in kdf.columns if c not in values and c != "run_id"]
+    return kdf.groupby(keys, dropna=False)[values].median().reset_index()
 
 
 def bootstrap_ci(values, seed: int = 0) -> tuple[float, float]:
@@ -172,6 +216,70 @@ def plot(summary: pd.DataFrame, metric: str, out: Path) -> Path:
     return path
 
 
+def plot_stages(
+    ksummary: pd.DataFrame, out: Path, stat: str = "mean"
+) -> Optional[Path]:
+    """
+    Where the time goes inside the driver: per workload, the median over
+    repeats of every stage's mean (or percentile) latency, by index.
+    Stages nest (bio contains submit, which contains the remaps, which
+    contain the index operations), so the bars are not to be summed.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    df = ksummary.copy()
+    df["workload"] = df.apply(
+        lambda r: r["rw"]
+        + (f":{int(r['rwmixread'])}" if pd.notna(r.get("rwmixread")) else ""),
+        axis=1,
+    )
+    stages = [
+        s
+        for s in STAGES
+        if f"k_lat_{s}_{stat}_ns" in df and df[f"k_lat_{s}_count"].fillna(0).sum() > 0
+    ]
+    if not stages:
+        return None
+    workloads = sorted(df["workload"].unique())
+    ds_order = sorted(df["ds"].unique())
+
+    fig, axes = plt.subplots(
+        len(workloads),
+        1,
+        figsize=(max(6, 1.4 * len(stages)), 3.5 * len(workloads)),
+        squeeze=False,
+        constrained_layout=True,
+    )
+    width = 0.8 / len(ds_order)
+    for ax, workload in zip(axes.flat, workloads):
+        part = df[df["workload"] == workload]
+        for i, ds in enumerate(ds_order):
+            sel = part[part["ds"] == ds]
+            values = [sel[f"k_lat_{s}_{stat}_ns"].median() for s in stages]
+            ax.bar(
+                np.arange(len(stages)) + (i - (len(ds_order) - 1) / 2) * width,
+                values,
+                width,
+                label=ds,
+                color=DS_COLORS.get(ds),
+            )
+        ax.set_xticks(np.arange(len(stages)), stages)
+        ax.set_yscale("log")
+        ax.set_ylabel(f"{stat} latency, ns")
+        ax.set_title(workload)
+        ax.grid(axis="y", alpha=0.3, which="both")
+    axes.flat[0].legend(title="index")
+
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"stages_{stat}.png"
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path
+
+
 def report(dirs: list[Path], out: Path, metrics=("iops", "lat_p99_us")) -> Path:
     df = load_runs(dirs)
     summary = summarize(df)
@@ -179,4 +287,11 @@ def report(dirs: list[Path], out: Path, metrics=("iops", "lat_p99_us")) -> Path:
     summary.to_csv(out / "summary.csv", index=False)
     for metric in metrics:
         plot(summary, metric, out)
+
+    kdf = load_kstats(dirs)
+    if kdf is not None:
+        ksummary = summarize_kstats(kdf)
+        ksummary.to_csv(out / "kstats_summary.csv", index=False)
+        for stat in ("mean", "p99"):
+            plot_stages(ksummary, out, stat)
     return out

@@ -97,3 +97,32 @@ def test_open_backing_existing_and_unknown():
     assert ctl.open_backing("/dev/nvme0n1").path == "/dev/nvme0n1"
     with pytest.raises(ctl.LsvError, match="unknown backing"):
         ctl.open_backing("tmpfs")
+
+
+STATS = """enabled 1
+cell_size 4096
+pba_next 1024
+bio_write 1024
+lat_idx_insert_count 1024
+lat_idx_insert_p99_ns 2304
+"""
+
+
+def test_parse_stats():
+    stats = ctl.parse_stats(STATS + "\n")
+    assert stats["bio_write"] == 1024
+    assert stats["lat_idx_insert_p99_ns"] == 2304
+    assert len(stats) == 6
+
+
+def test_read_and_reset_stats(tmp_path):
+    assert ctl.read_stats("lsv0", tmp_path) is None
+    ctl.reset_stats("lsv0", tmp_path)  # no stats, nothing to reset
+
+    d = ctl.stats_dir("lsv0", tmp_path)
+    d.mkdir(parents=True)
+    (d / "stats").write_text(STATS)
+    (d / "reset").touch()
+    assert ctl.read_stats("lsv0", tmp_path)["pba_next"] == 1024
+    ctl.reset_stats("lsv0", tmp_path)
+    assert (d / "reset").read_text() == "1\n"

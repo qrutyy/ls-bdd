@@ -3,55 +3,60 @@
 This document defines the minimal interface and conventions required for integrating new data structures into the LS-BDD framework.
 
 
-## Prerequisites
+## Registration
 
-1. **Memory management:**
-   It is recommended to use **`kmem_cache`** for node allocation.
-   Create a cache (e.g., `node_cache`) in your `ds_init` function and assign it to the appropriate field in `cache_mng->?_cache`.
+An index is a `struct lsv_ds_ops` (see `utils/ds_control.h`) appended to
+`lsv_ds_registry[]` in `utils/ds_control.c`. Nothing else in the core refers to a
+particular index: `lsv_ds_init()` finds it by name, and every other `lsv_ds_*`
+call goes through `ds->ops`.
 
-2. **Header definitions:**
-   Extend the following structures in `ds_control.h`:
+The index keeps its own state in the `structure` union of `struct lsv_ds`; extend
+the union with a pointer to your type. Node caches, if any, are created lazily in
+`init` into `struct lsv_cache_mng`, and are shared by every device.
 
-   * `lsbdd_ds_type`
-   * `lsbdd_ds`
-   * `lsbdd_cache_mng`
+## Interface
 
+| Operation | Contract |
+| --------- | -------- |
+| `s32 init(struct lsv_ds *ds, struct lsv_cache_mng *cache_mng, u64 max_entries)` | Allocates an empty index. `max_entries` bounds indexes that need a size up front. |
+| `void free(struct lsv_ds *ds, struct lsv_lmap_cache *map_cache)` | Frees the index; values still mapped are freed too with `LSV_DS_FREE_OWNS_VALUES`. |
+| `void *lookup(struct lsv_ds *ds, sector_t key)` | The value of `key`, NULL if it is not mapped. |
+| `s32 insert(struct lsv_ds *ds, sector_t key, void *value, struct lsv_lmap_cache *map_cache)` | Maps a key that is not mapped yet; 0 on success. |
+| `void remove(struct lsv_ds *ds, sector_t key, struct kmem_cache *cell_cachep)` | Unmaps `key`; frees its value with `LSV_DS_REMOVE_OWNS_VALUE`. |
+| `sector_t last(struct lsv_ds *ds, sector_t key)` | The largest key, with `LSV_DS_ORDERED`. |
+| `void *prev(struct lsv_ds *ds, sector_t key, sector_t *prev_key)` | The predecessor of `key`, with `LSV_DS_ORDERED`. |
+| `bool empty(struct lsv_ds *ds)` | Whether no key is mapped. |
 
+Keys are never the reserved 0 and `U64_MAX` (`lsv_ds_key_is_reserved()`): the
+mapping layer stores logical cell `n` under key `n + 1`. Inserting a key that is
+already mapped is outside the contract.
 
-## Interface Definition
+### Capabilities
 
-Notation:
-| Symbol           | Description                                       |
-| ---------------- | ------------------------------------------------- |
-| **id**           | Unique identifier (prefix) of your data structure |
-| **ds_type**      | Type definition of the data structure itself      |
-| **ds_node_type** | Type definition of the data structure node        |
+`caps` declares how an index differs from the others, and the KUnit contract
+checks each index against its own declaration:
 
-The value type used for redirection is defined as:
+| Flag | Meaning |
+| ---- | ------- |
+| `LSV_DS_FREE_OWNS_VALUES` | `free` releases the values still mapped |
+| `LSV_DS_REMOVE_OWNS_VALUE` | `remove` releases the removed value |
+| `LSV_DS_ORDERED` | `last` and `prev` follow key order |
+| `LSV_DS_REMOVE_ABSENT_OK` | removing a key that is not mapped is a no-op |
 
-```c
-struct lsbdd_value_redir {
-    sector_t redirected_sector;
-    u32 block_size;
-};
-```
+## Tests
 
-### Required API
+The `lsv_ds` suite (`utils/tests/kunit_lsv_ds.c`) is parameterised over the registry:
 
-| Function                                                                                                                            | Description                                                                                                 |
-| ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `struct ds_type *id_init(struct kmem_cache *node_cache)`                                                                            | Allocates and initializes the data structure. Returns a pointer to the structure.                           |
-| `void id_free(struct ds_type *ds, struct kmem_cache *node_cache, struct kmem_cache *lsbdd_value_cache)`                             | Deallocates the data structure and its contents.                                                            |
-| `struct ds_node_type *id_lookup(struct ds_type *ds, sector_t key)`                                                                  | Looks up a node by key.                                                                                     |
-| `void id_remove(struct ds_type *ds, sector_t key, struct kmem_cache *lsbdd_value_cache)`                                            | Removes the node with the specified key and frees its value.                                                |
-| `s32 id_insert(struct ds_type *ds, sector_t key, void *value, struct kmem_cache *node_cache, struct kmem_cache *lsbdd_value_cache)` | Inserts a new key–value pair. Returns 0 on success or an error code otherwise.                              |
-| `void *id_prev(struct ds_type *ds, sector_t key, sector_t *prev_key)`                                                               | Retrieves the node preceding the given key and stores its key in `prev_key`. Returns a pointer to the node. |
-| `struct ds_node_type *id_last(struct ds_type *ds)`                                                                                  | Returns the last node in the data structure.                                                                |
-| `bool id_empty_check(struct ds_type *ds)`                                                                                            | Returns true if the data structure is empty, otherwise false.                                                      |
+* `ds_registry` checks the registry itself; per index, `ds_starts_empty`,
+  `ds_insert_lookup` (keys spread over 40 bits), `ds_lookup_absent`,
+  `ds_wide_keys` (up to 2^47) and `ds_remove` check the contract.
+* `ds_bench`, a slow case, reports single-thread ns/op of insert, lookup hit and
+  lookup miss over 65536 sequential and spread keys, as `lsv_ds_bench ds=<name> ...`
+  lines in the KUnit log.
 
-**Examples:**
-See [`lock-free/skiplist.c`](../src/lock-free/skiplist.c) or [`lock-free/hashtable.c`](../src/lock-free/hashtable.c) for reference implementations.
-
+A new index needs no test code: registering it is enough. In lock-free builds
+every index operation of the suites runs on an `lsv_wq` worker, which the DtA
+hashtable requires of its callers.
 
 ## Atomics and Primitives
 
@@ -107,5 +112,5 @@ See [`lock-free/skiplist.c`](../src/lock-free/skiplist.c) or [`lock-free/hashtab
 
 ## Notes
 
-Some data structures are still **work-in-progress (WIP)** as they are being adapted to use `kmem_cache`-based memory management.
-All existing implementations—except for `lock-free/rb-tree` and `lock-free/btree`—are algorithmically correct and fully functional.
+The lock-free `rb` and `bt` are the kernel's rbtree and btree without
+synchronisation: correct single-threaded, not under concurrent writers.
