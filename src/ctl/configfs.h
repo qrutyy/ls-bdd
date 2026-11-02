@@ -15,13 +15,13 @@
 struct lsv_dev;
 
 enum lsv_space_layout {
-        LSV_SPACE_LINEAR,
-        LSV_SPACE_SEGMENTED,
+	LSV_SPACE_LINEAR,
+	LSV_SPACE_SEGMENTED,
 };
 
 static const char * const lsv_space_layout_names[] = {
-        [LSV_SPACE_LINEAR]      = "linear",
-        [LSV_SPACE_SEGMENTED]   = "segmented",
+	[LSV_SPACE_LINEAR]      = "linear",
+	[LSV_SPACE_SEGMENTED]   = "segmented",
 };
 
 struct lsv_cfg_dev {
