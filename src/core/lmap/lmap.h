@@ -38,6 +38,23 @@ struct lsv_cell {
 	struct lsv_pblk __rcu *pblk;
 };
 
+sttruct lsv_lmap_params {
+	char index_ds[LSV_CTL_MAX_DS_NAME_LEN + 1];
+	u32 cell_size;
+	char space_layout;
+	u64 segment_size;
+
+	sector_t back_cap_sectors;
+
+};
+
+struct lsv_lmap_pos {
+	u64 lba; /* logical cell number */
+	u32 offset; /* sector inside that cell */
+	u32 sectors; /* sectors left until the end of the cell */
+};
+
+
 struct lsv_lmap {
 	struct lsv_ds index;
 	char ds_type[LSV_DS_NAME_LEN];
@@ -55,13 +72,16 @@ struct lsv_lmap {
 	struct xarray pblks;
 
 	struct bio_set bio_set;
+
+	struct lsv_lmap_params;
 };
 
 s32 lsv_lmap_engine_init(void);
 void lsv_lmap_engine_deinit(void);
 
-s32 lsv_lmap_init(struct lsv_lmap *lmap, const char *ds_type, u32 cell_size, u64 segment_size,
-		  sector_t backing_sectors);
+void lsv_lmap_prep_params(struct lsv_lmap *lmap, const struct lsv_dev_params *params);
+
+s32 lsv_lmap_init(struct lsv_lmap *lmap);
 void lsv_lmap_deinit(struct lsv_lmap *lmap);
 
 struct lsv_pblk *lsv_pblk_alloc(struct lsv_lmap *lmap);
@@ -71,12 +91,6 @@ s32 lsv_lmap_bind(struct lsv_lmap *lmap, u64 lba, struct lsv_pblk *pblk);
 bool lsv_lmap_lookup_pba(struct lsv_lmap *lmap, u64 lba, u64 *pba);
 
 /* Where a sector lands inside the cell grid. */
-struct lsv_lmap_pos {
-	u64 lba; /* logical cell number */
-	u32 offset; /* sector inside that cell */
-	u32 sectors; /* sectors left until the end of the cell */
-};
-
 static inline void lsv_lmap_locate(const struct lsv_lmap *lmap, sector_t sector, struct lsv_lmap_pos *pos)
 {
 	pos->lba = sector >> lmap->cell_sect_shift;
