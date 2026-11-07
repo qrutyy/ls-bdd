@@ -112,7 +112,7 @@ static bool ht_test_cell_is_freed(struct lsv_ht_test_ctx *ctx, struct lsv_lf_lis
 	return true;
 }
 
-/* g_lsv_ht_cell_check: every cell a walk of the table steps on. */
+/* g_lsv_ht_kunit_cell_check: every cell a walk of the table steps on. */
 static void ht_test_cell_check(struct lsv_lf_list_node *node)
 {
 	struct lsv_ht_test_ctx *ctx = READ_ONCE(g_lsv_ht_test_ctx);
@@ -532,7 +532,7 @@ int lsv_ht_test_init(struct kunit *test)
 	INIT_LIST_HEAD(&ctx->reusable);
 	test->priv = ctx;
 	WRITE_ONCE(g_lsv_ht_test_ctx, ctx);
-	WRITE_ONCE(g_lsv_ht_cell_check, ht_test_cell_check);
+	WRITE_ONCE(g_lsv_ht_kunit_cell_check, ht_test_cell_check);
 
 	for (i = 0; i < LSV_HT_TEST_WQ_CNT; i++) {
 		ctx->wq[i] = lsv_wq_create(0, cpu_online_mask, "kunit-ht%u", i);
@@ -580,9 +580,10 @@ void lsv_ht_test_exit(struct kunit *test)
 	 * same way as a job.
 	 */
 	deadline = jiffies + msecs_to_jiffies(LSV_HT_TEST_WAIT_MS);
-	while (ctx->ht && ht_reclaim_requests_pending(ctx->ht) && time_before(jiffies, deadline))
+	while (ctx->ht && ht_kunit_reclaim_requests_pending(ctx->ht) &&
+	       time_before(jiffies, deadline))
 		usleep_range(1000, 2000);
-	KUNIT_EXPECT_FALSE_MSG(test, ctx->ht && ht_reclaim_requests_pending(ctx->ht),
+	KUNIT_EXPECT_FALSE_MSG(test, ctx->ht && ht_kunit_reclaim_requests_pending(ctx->ht),
 			       "a reclaim request is stuck: waiting for it without a bound");
 
 	KUNIT_EXPECT_EQ(test, atomic_read(&ctx->released_held), 0);
@@ -591,7 +592,7 @@ void lsv_ht_test_exit(struct kunit *test)
 
 	for (i = 0; i < LSV_HT_TEST_WQ_CNT; i++)
 		lsv_wq_destroy(ctx->wq[i]);
-	WRITE_ONCE(g_lsv_ht_cell_check, NULL);
+	WRITE_ONCE(g_lsv_ht_kunit_cell_check, NULL);
 	WRITE_ONCE(g_lsv_ht_test_ctx, NULL);
 	KUNIT_EXPECT_EQ(test, atomic_read(&ctx->nodes_live), 0);
 	KUNIT_EXPECT_EQ(test, atomic_read(&ctx->fallback_live), 0);

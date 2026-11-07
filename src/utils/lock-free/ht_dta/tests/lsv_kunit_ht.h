@@ -10,8 +10,8 @@
 #include <linux/refcount.h>
 
 #include "utils/wq.h"
-#include "utils/lock-free/ht-dta/ht_dta.h"
-#include "utils/lock-free/ht-dta/dta.h"
+#include "utils/lock-free/ht_dta/ht_dta.h"
+#include "utils/lock-free/ht_dta/dta.h"
 
 #define LSV_HT_TEST_WAIT_MS 60000
 #define LSV_HT_TEST_WQ_CNT 2

@@ -17,15 +17,15 @@ static_assert(sizeof(struct lsv_lf_list_node) == 48);
 static_assert(sizeof(struct lsv_lf_list) == sizeof(struct lsv_lf_list_node));
 
 /* A traversal holds a mid-list anchor; KUnit stalls a participant here. */
-VISIBLE_IF_KUNIT void ht_anchor_dropped(struct lsv_lf_list_node *anchor)
+VISIBLE_IF_KUNIT void ht_kunit_anchor_dropped(struct lsv_lf_list_node *anchor)
 {
-	KUNIT_STATIC_STUB_REDIRECT(ht_anchor_dropped, anchor);
+	KUNIT_STATIC_STUB_REDIRECT(ht_kunit_anchor_dropped, anchor);
 }
 
 /* An insertion is about to link its cell; KUnit stalls it here. */
-VISIBLE_IF_KUNIT void ht_cell_linking(struct lsv_lf_list_node *cell)
+VISIBLE_IF_KUNIT void ht_kunit_cell_linking(struct lsv_lf_list_node *cell)
 {
-	KUNIT_STATIC_STUB_REDIRECT(ht_cell_linking, cell);
+	KUNIT_STATIC_STUB_REDIRECT(ht_kunit_cell_linking, cell);
 }
 
 /*
@@ -91,14 +91,14 @@ retry:
 					dta_help_recovery(dta, tid);
 					goto retry;
 				}
-				ht_anchor_dropped(t);
+				ht_kunit_anchor_dropped(t);
 			}
 		}
 
 		t = lsv_ht_strip_all(t_next);
 		if (t == tail)
 			break;
-		ht_cell_reached(t);
+		ht_kunit_cell_reached(t);
 		t_next = READ_ONCE(t->next);
 	}
 
@@ -265,7 +265,7 @@ static void *lf_list_insert_or_inc(struct lsv_lf_list *list, u64 key, bool *is_n
 		 * traversal passed. Until it is stamped, it counts as new.
 		 */
 		new_node->insert_ts = U64_MAX;
-		ht_cell_linking(new_node);
+		ht_kunit_cell_linking(new_node);
 		if (lsv_ht_lcas(&left->next, right, new_node) == right) {
 			WRITE_ONCE(new_node->insert_ts, dta_calc_max_ts(dta) + 1);
 			*is_new = true;
@@ -306,7 +306,7 @@ static struct lsv_lf_list_node *lf_list_insert(struct lsv_lf_list *list,
 
 		new_node->next = right;
 		new_node->insert_ts = U64_MAX;
-		ht_cell_linking(new_node);
+		ht_kunit_cell_linking(new_node);
 		if (lsv_ht_lcas(&left->next, right, new_node) == right) {
 			WRITE_ONCE(new_node->insert_ts, dta_calc_max_ts(dta) + 1);
 			return new_node;

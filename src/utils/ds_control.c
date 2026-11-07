@@ -8,7 +8,7 @@
 #include "rbtree.h"
 
 #ifdef LF_MODE
-#include "lock-free/ht-dta/ht_dta.h"
+#include "lock-free/ht_dta/ht_dta.h"
 #endif
 #ifdef SY_MODE
 #include "hashtable.h"

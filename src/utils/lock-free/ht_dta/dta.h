@@ -177,9 +177,9 @@ struct lsv_dta_state {
 
 #if IS_ENABLED(CONFIG_KUNIT)
 	/* passes given up on a range frozen for another participant */
-	atomic64_t recovery_aborts;
+	atomic64_t kunit_recovery_aborts;
 	/* cells the walks of recoveries have stepped on */
-	atomic64_t recovery_walked;
+	atomic64_t kunit_recovery_walked;
 #endif
 
 	/* the table this state reclaims for: its buckets and its entry count */
@@ -208,6 +208,6 @@ void dta_free(struct lsv_dta_state *dta, bool own_request);
 int ht_tid(const struct lsv_ht *ht);
 u32 ht_op_end(struct lsv_ht *ht, int tid, bool no_cell);
 /* both: a walk has stepped onto |cell| */
-void ht_cell_reached(struct lsv_lf_list_node *cell);
+void ht_kunit_cell_reached(struct lsv_lf_list_node *cell);
 
 #endif /* _LSV_DTA_H */

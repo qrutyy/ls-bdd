@@ -10,11 +10,11 @@ ccflags-y := 	-Wall							\
 
 obj-m := lsv.o
 
-lsv-ht-dta := utils/wq.o utils/lock-free/ht-dta/dta.o utils/lock-free/ht-dta/ht_dta.o
-lsv-ht-dta-tests := utils/lock-free/ht-dta/tests/lsv_kunit_ht.o \
-	utils/lock-free/ht-dta/tests/suites/kunit_lsv_dta_reg.o \
-	utils/lock-free/ht-dta/tests/suites/kunit_lsv_dta_stress.o \
-	utils/lock-free/ht-dta/tests/suites/kunit_lsv_ht_dta_perf.o
+lsv-ht-dta := utils/wq.o utils/lock-free/ht_dta/dta.o utils/lock-free/ht_dta/ht_dta.o
+lsv-ht-dta-tests := utils/lock-free/ht_dta/tests/lsv_kunit_ht.o \
+	utils/lock-free/ht_dta/tests/suites/kunit_lsv_dta_reg.o \
+	utils/lock-free/ht_dta/tests/suites/kunit_lsv_dta_stress.o \
+	utils/lock-free/ht_dta/tests/suites/kunit_lsv_ht_dta_perf.o
 
 ifeq ($(type), lf)
 DIR := utils/lock-free

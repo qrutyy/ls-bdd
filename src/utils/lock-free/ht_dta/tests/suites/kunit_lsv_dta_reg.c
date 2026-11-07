@@ -1,4 +1,5 @@
 
+#include "linux/cpumask.h"
 #include <kunit/static_stub.h>
 #include <kunit/test.h>
 #include <linux/atomic.h>
@@ -13,7 +14,7 @@
 
 #include "utils/wq.h"
 #include "utils/kunit.h"
-#include "utils/lock-free/ht-dta/ht_dta.h"
+#include "utils/lock-free/ht_dta/ht_dta.h"
 
 #include "../include_static/__static_kunit_lsv_ht.h"
 
@@ -104,7 +105,7 @@ static void LSV_KTEST(ht_capacity)(struct kunit *test)
 
 	KUNIT_ASSERT_EQ(test, lsv_ht_test_create_table(ctx, 8, 64, 0), 0);
 
-	for (key = 1; key <= 8; key++)
+	for (key = 1; key <= num_online_cpus(); key++)
 		KUNIT_ASSERT_NOT_NULL(test, lsv_ht_test_insert(ctx, key, &is_new));
 	KUNIT_EXPECT_TRUE(test, lsv_ht_is_full(ctx->ht));
 
@@ -112,7 +113,7 @@ static void LSV_KTEST(ht_capacity)(struct kunit *test)
 	KUNIT_EXPECT_NULL(test, lsv_ht_test_insert(ctx, 9, &is_new));
 	KUNIT_EXPECT_NOT_NULL(test, lsv_ht_test_insert(ctx, 8, &is_new));
 	KUNIT_EXPECT_FALSE(test, is_new);
-	KUNIT_EXPECT_EQ(test, lsv_ht_entry_cnt(ctx->ht), 8ULL);
+	KUNIT_EXPECT_EQ(test, lsv_ht_entry_cnt(ctx->ht), num_online_cpus());
 
 	/* Removing a key frees its slot. */
 	KUNIT_EXPECT_TRUE(test, ht_test_release_key(ctx, 1));
@@ -262,7 +263,7 @@ static void LSV_KTEST(ht_lost_insertion_drops_its_value)(struct kunit *test)
 	init_completion(&ctx->link_parked);
 	init_completion(&ctx->link_release);
 	atomic_set(&ctx->link_armed, 1);
-	kunit_activate_static_stub(test, ht_cell_linking, ht_test_cell_linking_stub);
+	kunit_activate_static_stub(test, ht_kunit_cell_linking, ht_test_cell_linking_stub);
 	loser->key = 7;
 	loser->stub_visible = true;
 	lsv_ht_test_job_start(ctx, loser, 1, 0, lsv_ht_test_insert_fn);
@@ -277,7 +278,7 @@ static void LSV_KTEST(ht_lost_insertion_drops_its_value)(struct kunit *test)
 	/* Act: the parked insertion resumes and loses its link */
 	complete(&ctx->link_release);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(loser));
-	kunit_deactivate_static_stub(test, ht_cell_linking);
+	kunit_deactivate_static_stub(test, ht_kunit_cell_linking);
 
 	/* Assert: it pinned the value that won... */
 	KUNIT_EXPECT_PTR_EQ(test, loser->value, (void *)value);
@@ -620,7 +621,7 @@ static void ht_test_concurrent_participants(struct kunit *test, bool reuse)
 	/* spurious failures are allowed, but must stay rare */
 	KUNIT_EXPECT_LT_MSG(test, failed, (long)(nr_jobs * LSV_HT_TEST_STRESS_ITERS / 10),
 			    "seed=%llu", seed);
-	KUNIT_EXPECT_GT(test, nr_jobs, 8U);
+	KUNIT_EXPECT_GT(test, nr_jobs, num_online_cpus());
 	/* every pin was put, and no value lost its last cell while pinned */
 	KUNIT_EXPECT_EQ_MSG(test, lsv_ht_test_values_held(ctx), 0U, "seed=%llu", seed);
 	KUNIT_EXPECT_EQ_MSG(test, atomic_read(&ctx->released_held), 0, "seed=%llu", seed);
@@ -779,13 +780,13 @@ static void LSV_KTEST(ht_anchor_ends_with_the_op)(struct kunit *test)
 	tid = lsv_worker_id(lsv_ht_test_worker(ctx, 0, 0));
 
 	KUNIT_EXPECT_NOT_NULL(test, lsv_ht_test_find(ctx, keys[LSV_HT_TEST_BUCKET_KEYS - 1]));
-	KUNIT_EXPECT_FALSE(test, ht_participant_holds_anchor(ctx->ht, tid));
+	KUNIT_EXPECT_FALSE(test, ht_kunit_participant_holds_anchor(ctx->ht, tid));
 
 	KUNIT_EXPECT_TRUE(test, ht_test_release_key(ctx, keys[LSV_HT_TEST_BUCKET_KEYS - 1]));
-	KUNIT_EXPECT_FALSE(test, ht_participant_holds_anchor(ctx->ht, tid));
+	KUNIT_EXPECT_FALSE(test, ht_kunit_participant_holds_anchor(ctx->ht, tid));
 
 	KUNIT_EXPECT_NOT_NULL(test, lsv_ht_test_insert(ctx, keys[0], &is_new));
-	KUNIT_EXPECT_FALSE(test, ht_participant_holds_anchor(ctx->ht, tid));
+	KUNIT_EXPECT_FALSE(test, ht_kunit_participant_holds_anchor(ctx->ht, tid));
 }
 
 /*
@@ -826,7 +827,7 @@ static void ht_test_stalled_recovery(struct kunit *test, u64 size, int cells,
 	init_completion(&ctx->parked);
 	init_completion(&ctx->release);
 	atomic_set(&ctx->park_armed, 1);
-	kunit_activate_static_stub(test, ht_anchor_dropped, ht_test_anchor_dropped_stub);
+	kunit_activate_static_stub(test, ht_kunit_anchor_dropped, ht_test_anchor_dropped_stub);
 	stalled->key = keys[LSV_HT_TEST_BUCKET_KEYS - 1];
 	stalled->stub_visible = true;
 	lsv_ht_test_job_start(ctx, stalled, 0, 1, lsv_ht_test_find_fn);
@@ -845,7 +846,7 @@ static void ht_test_stalled_recovery(struct kunit *test, u64 size, int cells,
 
 	complete(&ctx->release);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(stalled));
-	kunit_deactivate_static_stub(test, ht_anchor_dropped);
+	kunit_deactivate_static_stub(test, ht_kunit_anchor_dropped);
 
 	KUNIT_EXPECT_PTR_EQ(test, stalled->value, (void *)value);
 	for (n = 0; n < LSV_HT_TEST_BUCKET_KEYS; n++) {
@@ -948,7 +949,7 @@ static void ht_test_park_lookup(struct lsv_ht_test_ctx *ctx, struct lsv_ht_test_
 	init_completion(&ctx->release);
 	ctx->park_key = park_key;
 	atomic_set(&ctx->park_armed, 1);
-	kunit_activate_static_stub(ctx->test, ht_cell_reached, ht_test_cell_reached_stub);
+	kunit_activate_static_stub(ctx->test, ht_kunit_cell_reached, ht_test_cell_reached_stub);
 	job->key = key;
 	job->stub_visible = true;
 	lsv_ht_test_job_start(ctx, job, 0, 1, lsv_ht_test_find_fn);
@@ -989,7 +990,7 @@ static void ht_test_reclaim_under_parked(struct lsv_ht_test_ctx *ctx,
 
 	complete(&ctx->release);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(stalled));
-	kunit_deactivate_static_stub(test, ht_cell_reached);
+	kunit_deactivate_static_stub(test, ht_kunit_cell_reached);
 	KUNIT_EXPECT_NOT_NULL(test, stalled->value);
 }
 
@@ -1076,7 +1077,7 @@ static void LSV_KTEST(ht_recovery_ignores_cells_linked_behind)(struct kunit *tes
 	init_completion(&ctx->link_parked);
 	init_completion(&ctx->link_release);
 	atomic_set(&ctx->link_armed, 1);
-	kunit_activate_static_stub(test, ht_cell_linking, ht_test_cell_linking_stub);
+	kunit_activate_static_stub(test, ht_kunit_cell_linking, ht_test_cell_linking_stub);
 	inserter->key = all[LSV_HT_TEST_LATE_IDX];
 	inserter->stub_visible = true;
 	lsv_ht_test_job_start(ctx, inserter, 1, 0, lsv_ht_test_insert_fn);
@@ -1092,7 +1093,7 @@ static void LSV_KTEST(ht_recovery_ignores_cells_linked_behind)(struct kunit *tes
 			    keys[LSV_HT_TEST_BUCKET_KEYS - 1]);
 	complete(&ctx->link_release);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(inserter));
-	kunit_deactivate_static_stub(test, ht_cell_linking);
+	kunit_deactivate_static_stub(test, ht_kunit_cell_linking);
 	KUNIT_ASSERT_TRUE(test, inserter->result);
 
 	/* Assert */
@@ -1165,7 +1166,8 @@ static void LSV_KTEST(ht_reclaim_reads_one_record_state)(struct kunit *test)
 	init_completion(&ctx->record_release);
 	ctx->record_tid = lsv_worker_id(lsv_ht_test_worker(ctx, 0, 1));
 	atomic_set(&ctx->record_armed, 1);
-	kunit_activate_static_stub(test, ht_record_flags_read, ht_test_record_flags_read_stub);
+	kunit_activate_static_stub(test, ht_kunit_record_flags_read,
+				   ht_test_record_flags_read_stub);
 	reclaimer->key = keys[0];
 	reclaimer->stub_visible = true;
 	lsv_ht_test_job_start(ctx, reclaimer, 0, 0, lsv_ht_test_find_fn);
@@ -1180,14 +1182,14 @@ static void LSV_KTEST(ht_reclaim_reads_one_record_state)(struct kunit *test)
 
 	complete(&ctx->record_release);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(reclaimer));
-	kunit_deactivate_static_stub(test, ht_record_flags_read);
+	kunit_deactivate_static_stub(test, ht_kunit_record_flags_read);
 
 	/* Assert: the cell the lookup stands on survived the reclamation */
 	KUNIT_EXPECT_FALSE(test, READ_ONCE(ctx->held_cell_freed));
 
 	complete(&ctx->release);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(stalled));
-	kunit_deactivate_static_stub(test, ht_cell_reached);
+	kunit_deactivate_static_stub(test, ht_kunit_cell_reached);
 	KUNIT_EXPECT_NOT_NULL(test, stalled->value);
 }
 
@@ -1209,13 +1211,13 @@ static void ht_test_begin_computed_stub(unsigned int tid)
 
 static bool ht_test_watched_suspected(struct lsv_ht_test_ctx *ctx)
 {
-	return ht_participant_is_suspected(ctx->ht, ctx->watch_tid);
+	return ht_kunit_participant_is_suspected(ctx->ht, ctx->watch_tid);
 }
 
 static bool ht_test_watched_gave_up(struct lsv_ht_test_ctx *ctx)
 {
-	return ht_participant_is_suspected(ctx->ht, ctx->watch_tid) &&
-	       ht_recovery_aborts(ctx->ht);
+	return ht_kunit_participant_is_suspected(ctx->ht, ctx->watch_tid) &&
+	       ht_kunit_recovery_aborts(ctx->ht);
 }
 
 static bool ht_test_two_recovered(struct lsv_ht_test_ctx *ctx)
@@ -1265,8 +1267,8 @@ static void LSV_KTEST(ht_stale_begin_second_suspect)(struct kunit *test)
 	value = lsv_ht_test_find(ctx, keys[LSV_HT_TEST_BUCKET_KEYS - 1]);
 	KUNIT_ASSERT_NOT_NULL(test, value);
 
-	kunit_activate_static_stub(test, ht_begin_computed, ht_test_begin_computed_stub);
-	kunit_activate_static_stub(test, ht_cell_reached, ht_test_cell_reached_stub);
+	kunit_activate_static_stub(test, ht_kunit_begin_computed, ht_test_begin_computed_stub);
+	kunit_activate_static_stub(test, ht_kunit_cell_reached, ht_test_cell_reached_stub);
 
 	/* Arrange: the older lookup computes its timestamp and stalls before publishing it */
 	ctx->begin_tid = lsv_worker_id(lsv_ht_test_worker(ctx, 0, 1));
@@ -1308,7 +1310,7 @@ static void LSV_KTEST(ht_stale_begin_second_suspect)(struct kunit *test)
 	/* Act: it is the oldest now, is suspected in turn, and its recovery gives up */
 	ctx->watch_tid = ctx->begin_tid;
 	ht_test_churn_until(ctx, ht_test_watched_gave_up);
-	KUNIT_EXPECT_TRUE(test, ht_participant_is_suspected(ctx->ht, younger_tid));
+	KUNIT_EXPECT_TRUE(test, ht_kunit_participant_is_suspected(ctx->ht, younger_tid));
 	KUNIT_EXPECT_EQ(test, lsv_ht_recovery_cnt(ctx->ht), 0ULL);
 
 	/* node_copy() is served again, and neither lookup has resumed */
@@ -1317,16 +1319,16 @@ static void LSV_KTEST(ht_stale_begin_second_suspect)(struct kunit *test)
 
 	/* Assert: both recovered while stalled, the one that gave up included */
 	kunit_info(test, "recoveries=%llu passes given up=%llu\n",
-		   lsv_ht_recovery_cnt(ctx->ht), ht_recovery_aborts(ctx->ht));
+		   lsv_ht_recovery_cnt(ctx->ht), ht_kunit_recovery_aborts(ctx->ht));
 	KUNIT_EXPECT_GE(test, lsv_ht_recovery_cnt(ctx->ht), 2ULL);
-	KUNIT_EXPECT_GT(test, ht_recovery_aborts(ctx->ht), 0ULL);
+	KUNIT_EXPECT_GT(test, ht_kunit_recovery_aborts(ctx->ht), 0ULL);
 
 	complete(&ctx->release2);
 	complete(&ctx->release);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(older));
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(younger));
-	kunit_deactivate_static_stub(test, ht_cell_reached);
-	kunit_deactivate_static_stub(test, ht_begin_computed);
+	kunit_deactivate_static_stub(test, ht_kunit_cell_reached);
+	kunit_deactivate_static_stub(test, ht_kunit_begin_computed);
 
 	/* both lookups end on the value they wanted, and every key keeps its own */
 	KUNIT_EXPECT_PTR_EQ(test, older->value, (void *)value);
@@ -1383,7 +1385,7 @@ static void LSV_KTEST(ht_recovery_waits_for_cells)(struct kunit *test)
 	init_completion(&ctx->parked);
 	init_completion(&ctx->release);
 	atomic_set(&ctx->park_armed, 1);
-	kunit_activate_static_stub(test, ht_anchor_dropped, ht_test_anchor_dropped_stub);
+	kunit_activate_static_stub(test, ht_kunit_anchor_dropped, ht_test_anchor_dropped_stub);
 	stalled->key = keys[LSV_HT_TEST_BUCKET_KEYS - 1];
 	stalled->stub_visible = true;
 	lsv_ht_test_job_start(ctx, stalled, 0, 1, lsv_ht_test_find_fn);
@@ -1398,7 +1400,7 @@ static void LSV_KTEST(ht_recovery_waits_for_cells)(struct kunit *test)
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(churn));
 
 	/* suspected, and no recovery over: the range it froze is still frozen */
-	KUNIT_EXPECT_TRUE(test, ht_participant_is_suspected(ctx->ht, tid));
+	KUNIT_EXPECT_TRUE(test, ht_kunit_participant_is_suspected(ctx->ht, tid));
 	KUNIT_EXPECT_EQ(test, lsv_ht_recovery_cnt(ctx->ht), 0ULL);
 
 	/* hand node_copy() the cells it was missing */
@@ -1411,7 +1413,7 @@ static void LSV_KTEST(ht_recovery_waits_for_cells)(struct kunit *test)
 
 	complete(&ctx->release);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(stalled));
-	kunit_deactivate_static_stub(test, ht_anchor_dropped);
+	kunit_deactivate_static_stub(test, ht_kunit_anchor_dropped);
 
 	/* the lookup that waited it out still ends on the value it wanted */
 	KUNIT_EXPECT_PTR_EQ(test, stalled->value, (void *)value);
@@ -1660,7 +1662,7 @@ static void ht_test_request_behind(struct lsv_ht_test_ctx *ctx, struct lsv_ht_te
 	KUNIT_ASSERT_TRUE(test, wait_for_completion_timeout(&ctx->hold_parked,
 							    msecs_to_jiffies(LSV_HT_TEST_WAIT_MS)));
 	KUNIT_ASSERT_NULL(test, lsv_ht_test_insert(ctx, 300, &is_new));
-	KUNIT_ASSERT_TRUE(test, ht_reclaim_requests_pending(ctx->ht));
+	KUNIT_ASSERT_TRUE(test, ht_kunit_reclaim_requests_pending(ctx->ht));
 
 	/* the table goes with the entries still in it */
 	WRITE_ONCE(ctx->tearing_down, true);
@@ -1813,7 +1815,7 @@ static void ht_test_stalled_wide_range(struct kunit *test, int cells, int recove
 	init_completion(&ctx->parked);
 	init_completion(&ctx->release);
 	atomic_set(&ctx->park_armed, 1);
-	kunit_activate_static_stub(test, ht_anchor_dropped, ht_test_anchor_dropped_stub);
+	kunit_activate_static_stub(test, ht_kunit_anchor_dropped, ht_test_anchor_dropped_stub);
 	stalled->key = keys[LSV_HT_TEST_WIDE_KEYS - 1];
 	stalled->stub_visible = true;
 	lsv_ht_test_job_start(ctx, stalled, 0, 1, lsv_ht_test_find_fn);
@@ -1840,7 +1842,7 @@ static void ht_test_stalled_wide_range(struct kunit *test, int cells, int recove
 
 	complete(&ctx->release);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(stalled));
-	kunit_deactivate_static_stub(test, ht_anchor_dropped);
+	kunit_deactivate_static_stub(test, ht_kunit_anchor_dropped);
 
 	/* the restarted lookup still ends on the value it was looking for */
 	KUNIT_EXPECT_PTR_EQ(test, stalled->value, (void *)value);
@@ -1930,7 +1932,7 @@ static void ht_test_recovery_walks(struct kunit *test, unsigned int fill)
 	init_completion(&ctx->parked);
 	init_completion(&ctx->release);
 	atomic_set(&ctx->park_armed, 1);
-	kunit_activate_static_stub(test, ht_anchor_dropped, ht_test_anchor_dropped_stub);
+	kunit_activate_static_stub(test, ht_kunit_anchor_dropped, ht_test_anchor_dropped_stub);
 	stalled->key = keys[total - 1];
 	stalled->stub_visible = true;
 	lsv_ht_test_job_start(ctx, stalled, 0, 1, lsv_ht_test_find_fn);
@@ -1944,11 +1946,11 @@ static void ht_test_recovery_walks(struct kunit *test, unsigned int fill)
 	lsv_ht_test_job_start(ctx, waiter, 0, 0, ht_test_wait_recovery_fn);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(waiter));
 	KUNIT_ASSERT_GT(test, lsv_ht_recovery_cnt(ctx->ht), 0ULL);
-	walked = ht_recovery_walked(ctx->ht);
+	walked = ht_kunit_recovery_walked(ctx->ht);
 
 	complete(&ctx->release);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(stalled));
-	kunit_deactivate_static_stub(test, ht_anchor_dropped);
+	kunit_deactivate_static_stub(test, ht_kunit_anchor_dropped);
 	KUNIT_EXPECT_NOT_NULL(test, stalled->value);
 
 	/* Assert: the anchor, the cells inserted behind it and the older ones after them */
