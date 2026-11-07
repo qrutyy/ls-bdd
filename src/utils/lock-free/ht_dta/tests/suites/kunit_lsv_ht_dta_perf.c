@@ -15,7 +15,7 @@
 #include "utils/kunit.h"
 #include "linux/hash.h"
 #include "utils/wq.h"
-#include "utils/lock-free/ht-dta/ht_dta.h"
+#include "utils/lock-free/ht_dta/ht_dta.h"
 
 #include "../lsv_kunit_ht.h"
 #include "../include_static/__static_kunit_lsv_ht.h"

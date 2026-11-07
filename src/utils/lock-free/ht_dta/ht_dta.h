@@ -161,6 +161,15 @@ struct lsv_ht {
 	u64 max_entry_cnt;
 };
 
+/*
+ * The cell linked after |cell|, deleted and frozen tags stripped. For walking a
+ * table no operation runs on any more, such as right before lsv_ht_free().
+ */
+static inline struct lsv_lf_list_node *lsv_ht_cell_next(const struct lsv_lf_list_node *cell)
+{
+	return (struct lsv_lf_list_node *)((uintptr_t)READ_ONCE(cell->next) & ~0x3UL);
+}
+
 static inline u64 lsv_ht_entry_cnt(const struct lsv_ht *ht)
 {
 	return atomic64_read(&ht->entry_cnt);

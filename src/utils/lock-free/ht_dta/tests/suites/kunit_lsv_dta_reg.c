@@ -14,7 +14,7 @@
 
 #include "utils/wq.h"
 #include "utils/kunit.h"
-#include "utils/lock-free/ht-dta/ht_dta.h"
+#include "utils/lock-free/ht_dta/ht_dta.h"
 
 #include "../include_static/__static_kunit_lsv_ht.h"
 
