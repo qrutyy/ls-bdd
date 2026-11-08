@@ -8,7 +8,8 @@
 #include "rbtree.h"
 
 #ifdef LF_MODE
-#include "lock-free/ht-dta/ht_dta.h"
+/* the header of the hash table Kbuild picked: ht=... */
+#include LSV_HT_IMPL_H
 #endif
 #ifdef SY_MODE
 #include "hashtable.h"

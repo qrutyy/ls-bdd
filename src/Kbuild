@@ -10,20 +10,36 @@ ccflags-y := 	-Wall							\
 
 obj-m := lsv.o
 
-lsv-ht-dta := utils/wq.o utils/lock-free/ht-dta/dta.o utils/lock-free/ht-dta/ht_dta.o
-lsv-ht-dta-tests := utils/lock-free/ht-dta/tests/lsv_kunit_ht.o \
-	utils/lock-free/ht-dta/tests/suites/kunit_lsv_dta_reg.o \
-	utils/lock-free/ht-dta/tests/suites/kunit_lsv_dta_stress.o \
-	utils/lock-free/ht-dta/tests/suites/kunit_lsv_ht_dta_perf.o
+# Lock-free hash table implementation: make ht=<name> (default dta)
+ht ?= dta
+HT_DIR := utils/lock-free/ht_$(ht)
+
+ifeq ($(ht), dta)
+lsv-ht-impl := $(HT_DIR)/dta.o $(HT_DIR)/ht_dta.o
+lsv-ht-impl-tests := $(HT_DIR)/tests/suites/kunit_lsv_dta_reg.o
+else
+$(error Invalid ht specified. Use "make ht=dta")
+endif
+
+lsv-ht := utils/wq.o $(lsv-ht-impl)
+# The suites every implementation runs, compiled against the one picked
+# through its tests/ht_impl_test.h, and the cases of its own mechanism.
+lsv-ht-tests := utils/lock-free/ht_tests/lsv_kunit_ht.o \
+	utils/lock-free/ht_tests/suites/kunit_lsv_ht_reg.o \
+	utils/lock-free/ht_tests/suites/kunit_lsv_ht_stress.o \
+	utils/lock-free/ht_tests/suites/kunit_lsv_ht_perf.o \
+	$(HT_DIR)/tests/ht_impl_test.o \
+	$(lsv-ht-impl-tests)
 
 ifeq ($(type), lf)
 DIR := utils/lock-free
 ccflags-y += -DLF_MODE
-lsv-objs := $(DIR)/lf_list.o $(lsv-ht-dta)
+ccflags-y += -DLSV_HT_IMPL_H='"$(HT_DIR)/ht_$(ht).h"' -I$(src)/$(HT_DIR)/tests
+lsv-objs := $(DIR)/lf_list.o $(lsv-ht)
 
-# KUnit suites of the DtA hash table, in lsv.ko whenever the kernel has KUnit
+# KUnit suites of the hash table, in lsv.ko whenever the kernel has KUnit
 ifneq ($(CONFIG_KUNIT),)
-lsv-objs += $(lsv-ht-dta-tests)
+lsv-objs += $(lsv-ht-tests)
 endif
 
 else ifeq ($(type), sy)
