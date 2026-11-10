@@ -15,10 +15,8 @@
 #include "utils/kunit.h"
 #include "linux/hash.h"
 #include "utils/wq.h"
-#include "utils/lock-free/ht-dta/ht_dta.h"
 
 #include "../lsv_kunit_ht.h"
-#include "../include_static/__static_kunit_lsv_ht.h"
 
 /*
  * Benchmarks of the concurrent index over its whole lifecycle, not a
@@ -91,7 +89,9 @@ struct lsv_htb_ctx {
 	struct lsv_ht *ht;
 	long max_cells;		/* LONG_MAX: unbounded */
 	atomic_long_t cells_live;
+#if LSV_HT_HAS_RECOVERY
 	atomic_long_t cells_fallback;
+#endif
 
 	enum lsv_htb_op op;
 	u64 hot_keys[LSV_HTB_HOT_KEYS];
@@ -113,11 +113,13 @@ static struct lsv_lf_list_node *htb_cell_new(struct lsv_htb_ctx *ctx, bool for_c
 
 	if (atomic_long_inc_return(&ctx->cells_live) > ctx->max_cells) {
 		/* node_copy() falls back beyond the pool, as the contract asks */
-		if (!for_copy) {
+		if (!LSV_HT_HAS_RECOVERY || !for_copy) {
 			atomic_long_dec(&ctx->cells_live);
 			return NULL;
 		}
+#if LSV_HT_HAS_RECOVERY
 		atomic_long_inc(&ctx->cells_fallback);
+#endif
 	}
 
 	cell = kmem_cache_zalloc(ctx->cells, GFP_KERNEL);
@@ -152,6 +154,7 @@ static struct lsv_lf_list_node *htb_node_alloc(u64 key, void *priv)
 	return node;
 }
 
+#if LSV_HT_HAS_RECOVERY
 static struct lsv_lf_list_node *htb_node_copy(struct lsv_lf_list_node *src, void *priv)
 {
 	struct lsv_htb_ctx *ctx = priv;
@@ -166,6 +169,7 @@ static struct lsv_lf_list_node *htb_node_copy(struct lsv_lf_list_node *src, void
 	atomic_inc(&((struct lsv_htb_value *)node->value)->cells);
 	return node;
 }
+#endif
 
 static void htb_node_dealloc(struct lsv_lf_list_node *node, void *priv)
 {
@@ -196,7 +200,9 @@ static void htb_value_put_new(struct lsv_lf_list_node *node, void *priv)
 
 static const struct lsv_lf_list_ops g_lsv_htb_ops = {
 	.node_alloc	= htb_node_alloc,
+#if LSV_HT_HAS_RECOVERY
 	.node_copy	= htb_node_copy,
+#endif
 	.node_dealloc	= htb_node_dealloc,
 	.value_get	= htb_value_get,
 	.value_is_dead	= htb_value_is_dead,
@@ -289,8 +295,11 @@ static bool htb_op_run(struct lsv_htb_job *job, u64 n)
 	return !is_new;
 }
 
-/* The stalled participant: one lookup in the hot bucket, stalled on an anchor. */
-static void htb_stall_stub(struct lsv_lf_list_node *anchor)
+/*
+ * The stalled participant: one lookup in the hot bucket, stalled where
+ * lsv_ht_test_stall_hook is called -- on an anchor, or on its first cell.
+ */
+static void htb_stall_stub(struct lsv_lf_list_node *cell)
 {
 	struct kunit *test = kunit_get_current_test();
 	struct lsv_htb_ctx *ctx;
@@ -299,7 +308,7 @@ static void htb_stall_stub(struct lsv_lf_list_node *anchor)
 		return;
 	ctx = test->priv;
 	if (atomic_xchg(&ctx->stall_armed, 0))
-		msleep(LSV_HTB_STALL_MS);
+		lsv_ht_test_op_msleep(LSV_HTB_STALL_MS);
 }
 
 static void htb_job_run(struct lsv_wq_ctx *wq_ctx)
@@ -351,7 +360,9 @@ static int htb_table_create(struct lsv_htb_ctx *ctx, u64 size, long max_cells)
 {
 	ctx->max_cells = max_cells;
 	atomic_long_set(&ctx->cells_live, 0);
+#if LSV_HT_HAS_RECOVERY
 	atomic_long_set(&ctx->cells_fallback, 0);
+#endif
 	ctx->ht = lsv_ht_alloc_and_init(size, ctx, &g_lsv_htb_ops);
 	if (IS_ERR(ctx->ht)) {
 		int rc = PTR_ERR(ctx->ht);
@@ -479,7 +490,9 @@ static void htb_run(struct lsv_htb_ctx *ctx, unsigned int threads, unsigned int 
 		jobs[i] = htb_job_queue(ctx, i, stall && i == threads - 1, seed);
 
 	KUNIT_ASSERT_TRUE(test, wait_for_completion_timeout(&ctx->all_ready, 10 * HZ));
+#if LSV_HT_HAS_RECOVERY
 	res->recoveries = lsv_ht_recovery_cnt(ctx->ht);
+#endif
 	res->cells_peak = atomic_long_read(&ctx->cells_live);
 	WRITE_ONCE(ctx->end_ns, ktime_get_ns() + (u64)run_ms * NSEC_PER_MSEC);
 	complete_all(&ctx->go);
@@ -506,7 +519,9 @@ static void htb_run(struct lsv_htb_ctx *ctx, unsigned int threads, unsigned int 
 		for (b = 0; b < LSV_HTB_HIST_SIZE; b++)
 			hist[b] += jobs[i]->hist[b];
 	}
+#if LSV_HT_HAS_RECOVERY
 	res->recoveries = lsv_ht_recovery_cnt(ctx->ht) - res->recoveries;
+#endif
 	res->p50 = htb_percentile(hist, res->ops, 5000);
 	res->p99 = htb_percentile(hist, res->ops, 9900);
 	res->p999 = htb_percentile(hist, res->ops, 9990);
@@ -595,9 +610,11 @@ static void LSV_KTEST(htb_hot_bucket)(struct kunit *test)
 }
 
 /*
- * One participant stalls inside a traversal for longer than the table waits
- * before it suspects it, while every other one churns. Reclamation is held
- * until the recovery, so the cells retired meanwhile pile up.
+ * One participant stalls inside a traversal for LSV_HTB_STALL_MS, longer than
+ * DtA waits before it suspects one, while every other one churns. Reclamation
+ * is held until the stall is over, or until the recovery in a table that has
+ * one, so the cells retired meanwhile pile up: unbounded, the peak is what the
+ * stall costs in memory, and with a bounded pool insertions fail once it is dry.
  */
 static void htb_stalled(struct kunit *test, const char *name, long max_cells)
 {
@@ -610,16 +627,19 @@ static void htb_stalled(struct kunit *test, const char *name, long max_cells)
 	htb_fill(ctx);
 	ctx->op = LSV_HTB_OP_CHURN;
 
-	kunit_activate_static_stub(test, ht_anchor_dropped, htb_stall_stub);
+	kunit_activate_static_stub(test, lsv_ht_test_stall_hook, htb_stall_stub);
 	memset(&res, 0, sizeof(res));
 	htb_run(ctx, threads, LSV_HTB_STALL_RUN_MS, true, &res);
-	kunit_deactivate_static_stub(test, ht_anchor_dropped);
+	kunit_deactivate_static_stub(test, lsv_ht_test_stall_hook);
 
 	htb_report(test, name, threads - 1, LSV_HTB_STALL_RUN_MS, &res);
-	kunit_info(test, "HTB %-10s cells_from_fallback=%ld table_bytes=%zu\n", name,
-		   atomic_long_read(&ctx->cells_fallback),
+	kunit_info(test, "HTB %-10s table_bytes=%zu\n", name,
 		   lsv_ht_mem_usage(ctx->ht, sizeof(struct lsv_htb_cell)));
+#if LSV_HT_HAS_RECOVERY
+	kunit_info(test, "HTB %-10s cells_from_fallback=%ld\n", name,
+		   atomic_long_read(&ctx->cells_fallback));
 	KUNIT_EXPECT_GT(test, res.recoveries, 0ULL);
+#endif
 
 	htb_stop(ctx);
 }
@@ -739,7 +759,7 @@ static struct kunit_case __cases[] = {
 };
 
 static struct kunit_suite __suite = {
-	.name		= "lsv_ht_dta_perf",
+	.name		= "lsv_ht_" LSV_HT_IMPL_NAME "_perf",
 	.init		= htb_init,
 	.exit		= htb_exit,
 	.test_cases	= __cases,

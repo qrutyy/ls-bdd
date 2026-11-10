@@ -4,29 +4,81 @@
 #include <kunit/test.h>
 #include <linux/atomic.h>
 #include <linux/completion.h>
+#include <linux/delay.h>
 #include <linux/list.h>
+#include <linux/preempt.h>
 #include <linux/prandom.h>
 #include <linux/spinlock.h>
 #include <linux/refcount.h>
 
 #include "utils/wq.h"
-#include "utils/lock-free/ht-dta/ht_dta.h"
-#include "utils/lock-free/ht-dta/dta.h"
+
+/*
+ * The fixture every lsv_ht implementation is tested with. The tests are
+ * compiled against the implementation Kbuild picked (ht=...), which describes
+ * itself in its tests/ht_impl_test.h: the headers of the table and of its
+ * KUnit hooks, and the LSV_HT_* switches below.
+ *
+ * LSV_HT_IMPL_NAME		"dta", ...: the suites are named after it
+ * LSV_HT_HAS_RECOVERY		the table recovers stalled participants, and
+ *				has node_copy(), lsv_ht_insert_node() and
+ *				lsv_ht_recovery_cnt() for it
+ * LSV_HT_OPS_NONPREEMPTIBLE	an operation runs with preemption off, hooks
+ *				inside it included
+ * lsv_ht_test_stall_hook	the hook a traversal calls where a participant
+ *				that stalls holds back the most
+ * LSV_HT_TEST_STRESS_RESERVE	cells beyond the pool a roomy stress run gives
+ *				node_copy(), and LSV_HT_TEST_TIGHT_RESERVE a
+ *				tight one: 0 without recovery
+ */
+#include "ht_impl_test.h"
+
+#ifndef LSV_HT_HAS_RECOVERY
+#define LSV_HT_HAS_RECOVERY 0
+#endif
+#ifndef LSV_HT_OPS_NONPREEMPTIBLE
+#define LSV_HT_OPS_NONPREEMPTIBLE 0
+#endif
 
 #define LSV_HT_TEST_WAIT_MS 60000
 #define LSV_HT_TEST_WQ_CNT 2
-/* Cells node_copy() may take on top of the pool, as a real consumer keeps. */
-#define LSV_HT_TEST_RECOVERY_RESERVE (4 * LSV_DTA_SPARE_LIMIT)
 
 /* Chains of the values each key stands for. */
 #define LSV_HT_TEST_KEY_BITS 6
-#define LSV_HT_TEST_RECOVERY_KEYS 24
+/* keys of the one bucket the stress cases share */
+#define LSV_HT_TEST_STALL_KEYS 24
 
 struct lsv_ht_test_ctx;
 struct lsv_ht_test_job;
 
+/*
+ * A stub of a hook inside an operation runs with preemption off when the whole
+ * operation does. A test that parks a participant there lets it sleep all the
+ * same: it stays in its operation, which is all the table can tell of a
+ * participant that waits for its CPU.
+ */
+static inline void lsv_ht_test_op_wait(struct completion *done)
+{
+	if (LSV_HT_OPS_NONPREEMPTIBLE)
+		preempt_enable();
+	wait_for_completion(done);
+	if (LSV_HT_OPS_NONPREEMPTIBLE)
+		preempt_disable();
+}
+
+static inline void lsv_ht_test_op_msleep(unsigned int ms)
+{
+	if (LSV_HT_OPS_NONPREEMPTIBLE)
+		preempt_enable();
+	msleep(ms);
+	if (LSV_HT_OPS_NONPREEMPTIBLE)
+		preempt_disable();
+}
+
 typedef void (*lsv_ht_test_job_fn_t)(struct lsv_ht_test_job *job);
+#if LSV_HT_HAS_RECOVERY
 typedef bool (*lsv_ht_test_until_fn_t)(struct lsv_ht_test_ctx *ctx);
+#endif
 
 struct lsv_ht_test_value {
 	refcount_t ref;
@@ -54,6 +106,8 @@ struct lsv_ht_test_ctx {
 	/* ops calls about a sentinel, which are the table's own: always 0 */
 	atomic_t sentinel_calls;
 	int nodes_max;
+#if LSV_HT_HAS_RECOVERY
+	/* cells node_copy() may take on top of the pool, as a real consumer keeps */
 	int recovery_max;
 	atomic_t copy_blocked;
 	/* when nonzero, node_copy() is refused only for keys up to this one */
@@ -66,6 +120,7 @@ struct lsv_ht_test_ctx {
 	bool copy_fallback;
 	atomic_t fallback_live;
 	atomic_t fallback_cnt;
+#endif
 
 	spinlock_t values_lock;	/* protects values, live_by_key */
 	struct list_head values;
@@ -105,30 +160,28 @@ struct lsv_ht_test_ctx {
 	struct list_head quarantine;
 	atomic_t touched_freed;
 	/*
-	 * Cells given back go to |reusable| instead, and node_alloc() and
-	 * node_copy() hand them out again with new contents: a walk that still
+	 * Cells given back go to |reusable| instead, and node_alloc() (and
+	 * node_copy()) hand them out again with new contents: a walk that still
 	 * holds an old address finds another key, value and next pointer there.
 	 */
 	bool reuse;
 	struct list_head reusable;
 	atomic_t reused;
 
+	/* preemptible() as seen inside an operation, and by node_alloc(); -1 unseen */
+	int op_preemptible;
+	int alloc_preemptible;
+
 	/* an insertion parked right before it links its cell */
 	atomic_t link_armed;
 	struct completion link_parked;
 	struct completion link_release;
 
-	/* a second traversal parked on a cell, see ht_test_cell_reached_stub() */
+	/* a second traversal parked on a cell, see lsv_ht_test_cell_reached_stub() */
 	atomic_t park2_armed;
 	u64 park2_key;
 	struct completion parked2;
 	struct completion release2;
-
-	/* an operation parked between computing its timestamp and publishing it */
-	atomic_t begin_armed;
-	unsigned int begin_tid;
-	struct completion begin_parked;
-	struct completion begin_release;
 
 	/* jobs queued and not finished, which .exit waits for */
 	atomic_t jobs_running;
@@ -136,6 +189,13 @@ struct lsv_ht_test_ctx {
 	/* a job that holds its worker, see ht_test_hold_fn() */
 	struct completion hold_parked;
 	struct completion hold_release;
+
+#if LSV_HT_HAS_RECOVERY
+	/* an operation parked between computing its timestamp and publishing it */
+	atomic_t begin_armed;
+	unsigned int begin_tid;
+	struct completion begin_parked;
+	struct completion begin_release;
 
 	/* what a churn waits for, see ht_test_churn_until_fn() */
 	lsv_ht_test_until_fn_t churn_until;
@@ -146,9 +206,10 @@ struct lsv_ht_test_ctx {
 	unsigned int record_tid;
 	struct completion record_parked;
 	struct completion record_release;
+#endif
 
-	/* concurrent-recovery scenario */
-	u64 bucket_keys[LSV_HT_TEST_RECOVERY_KEYS];
+	/* concurrent-stall scenario */
+	u64 bucket_keys[LSV_HT_TEST_STALL_KEYS];
 	atomic_t stalled_now;
 	atomic_t stalls_left;
 	atomic_long_t last_stall;
@@ -164,10 +225,12 @@ struct lsv_ht_test_job {
 	void *value;
 	long result;
 	long wrong;
-	unsigned int deadline_ms;
 	bool stub_visible;
+#if LSV_HT_HAS_RECOVERY
+	unsigned int deadline_ms;
 	/* lsv_ht_insert_node(): the caller's cell */
 	struct lsv_lf_list_node *node;
+#endif
 	/* keys of the randomized cases, seeded per job from the seed of the case */
 	struct rnd_state rnd;
 };
@@ -189,19 +252,38 @@ void lsv_ht_test_run(struct lsv_ht_test_ctx *ctx, struct lsv_ht_test_job *job,
 		     lsv_ht_test_job_fn_t fn);
 void lsv_ht_test_insert_fn(struct lsv_ht_test_job *job);
 void lsv_ht_test_find_fn(struct lsv_ht_test_job *job);
+void lsv_ht_test_remove_fn(struct lsv_ht_test_job *job);
 void *lsv_ht_test_insert(struct lsv_ht_test_ctx *ctx, u64 key, bool *is_new);
 void *lsv_ht_test_find(struct lsv_ht_test_ctx *ctx, u64 key);
+bool lsv_ht_test_remove(struct lsv_ht_test_ctx *ctx, u64 key);
+bool lsv_ht_test_release_key(struct lsv_ht_test_ctx *ctx, u64 key);
+void lsv_ht_test_bucket_keys(struct lsv_ht_test_ctx *ctx, u64 *keys, unsigned int cnt);
+void lsv_ht_test_cell_reached_stub(struct lsv_lf_list_node *cell);
+void lsv_ht_test_cell_linking_stub(struct lsv_lf_list_node *cell);
+void lsv_ht_test_park_lookup(struct lsv_ht_test_ctx *ctx, struct lsv_ht_test_job *job,
+			     u64 park_key, u64 key);
 struct lsv_ht_test_value *lsv_ht_test_insert_eventually(struct lsv_ht_test_ctx *ctx, u64 key);
 unsigned int lsv_ht_test_value_published(struct lsv_ht_test_ctx *ctx,
 					 struct lsv_ht_test_value *value);
 unsigned int lsv_ht_test_values_held(struct lsv_ht_test_ctx *ctx);
 u64 lsv_ht_test_seed_get(struct kunit *test);
 int lsv_ht_test_create_table_ops(struct lsv_ht_test_ctx *ctx, u64 size, int cells,
-				 int recovery_cells, const struct lsv_lf_list_ops *ops);
-int lsv_ht_test_create_table(struct lsv_ht_test_ctx *ctx, u64 size, int cells,
-			     int recovery_cells);
+				 const struct lsv_lf_list_ops *ops);
+int lsv_ht_test_create_table(struct lsv_ht_test_ctx *ctx, u64 size, int cells);
+int lsv_ht_test_create_table_reserve(struct lsv_ht_test_ctx *ctx, u64 size, int cells,
+				     int reserve);
 bool lsv_ht_test_join(struct lsv_ht_test_ctx *ctx);
 int lsv_ht_test_init(struct kunit *test);
 void lsv_ht_test_exit(struct kunit *test);
+
+/*
+ * Provided by the implementation, in its tests/ht_impl_test.c: parks |job| on
+ * worker 1 of wq 0 in the middle of an operation on |key|, where it holds back
+ * every cell retired from then on, and lets it go again. Whatever the parked
+ * operation needs from the pool it has in hand before it parks.
+ */
+void lsv_ht_test_stall_participant(struct lsv_ht_test_ctx *ctx, struct lsv_ht_test_job *job,
+				   u64 key);
+void lsv_ht_test_resume_participant(struct lsv_ht_test_ctx *ctx, struct lsv_ht_test_job *job);
 
 #endif /* _LSV_KUNIT_HT_H */

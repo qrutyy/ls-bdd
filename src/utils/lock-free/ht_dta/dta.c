@@ -64,9 +64,9 @@ u64 dta_calc_max_ts(const struct lsv_dta_state *dta)
  * stalls it here. The timestamp published afterwards may be below that of a
  * participant that began in between: nothing but the record CAS validates it.
  */
-VISIBLE_IF_KUNIT void ht_begin_computed(unsigned int tid)
+VISIBLE_IF_KUNIT void ht_kunit_begin_computed(unsigned int tid)
 {
-	KUNIT_STATIC_STUB_REDIRECT(ht_begin_computed, tid);
+	KUNIT_STATIC_STUB_REDIRECT(ht_kunit_begin_computed, tid);
 }
 
 void dta_begin_op(struct lsv_dta_state *dta, int tid, struct lsv_lf_list_node *anchor)
@@ -89,7 +89,7 @@ void dta_begin_op(struct lsv_dta_state *dta, int tid, struct lsv_lf_list_node *a
 		WRITE_ONCE(rec->low_timestamp, new_ts - 1);
 		/* no anchor survives from the last operation: see dta_end_op() */
 		new_af = lsv_dta_af_make(anchor, false, false);
-		ht_begin_computed(tid);
+		ht_kunit_begin_computed(tid);
 	} while (!dta_dwcas(rec, old_ts, old_af, new_ts, new_af));
 }
 
@@ -171,9 +171,9 @@ bool dta_set_anchor(struct lsv_dta_state *dta, int tid,
 }
 
 /* Reclamation has read the flags of a record, not yet its timestamp again; KUnit stalls it here. */
-VISIBLE_IF_KUNIT void ht_record_flags_read(unsigned int tid)
+VISIBLE_IF_KUNIT void ht_kunit_record_flags_read(unsigned int tid)
 {
-	KUNIT_STATIC_STUB_REDIRECT(ht_record_flags_read, tid);
+	KUNIT_STATIC_STUB_REDIRECT(ht_kunit_record_flags_read, tid);
 }
 
 #if IS_ENABLED(CONFIG_KUNIT)
@@ -183,7 +183,7 @@ VISIBLE_IF_KUNIT void ht_record_flags_read(unsigned int tid)
  * pointer and not a static stub, whose lookup would serialize the walks of a
  * stress test on the lock of the test.
  */
-void (*g_lsv_ht_cell_check)(struct lsv_lf_list_node *cell);
+void (*g_lsv_ht_kunit_cell_check)(struct lsv_lf_list_node *cell);
 #endif
 
 /*
@@ -191,15 +191,15 @@ void (*g_lsv_ht_cell_check)(struct lsv_lf_list_node *cell);
  * a traversal, or a recovery freezing, copying or splicing a range; KUnit
  * checks the cell here, and stalls a participant anywhere between two anchors.
  */
-void ht_cell_reached(struct lsv_lf_list_node *cell)
+void ht_kunit_cell_reached(struct lsv_lf_list_node *cell)
 {
 #if IS_ENABLED(CONFIG_KUNIT)
-	void (*check)(struct lsv_lf_list_node *cell) = READ_ONCE(g_lsv_ht_cell_check);
+	void (*check)(struct lsv_lf_list_node *cell) = READ_ONCE(g_lsv_ht_kunit_cell_check);
 
 	if (check)
 		check(cell);
 #endif
-	KUNIT_STATIC_STUB_REDIRECT(ht_cell_reached, cell);
+	KUNIT_STATIC_STUB_REDIRECT(ht_kunit_cell_reached, cell);
 }
 
 /* A walk of a recovery has stepped onto |cell|. */
@@ -208,7 +208,7 @@ static void dta_recovery_step(struct lsv_dta_state *dta, struct lsv_lf_list_node
 #if IS_ENABLED(CONFIG_KUNIT)
 	atomic64_inc(&dta->recovery_walked);
 #endif
-	ht_cell_reached(cell);
+	ht_kunit_cell_reached(cell);
 }
 
 /*
@@ -229,7 +229,7 @@ static void dta_read_rec(const struct lsv_dta_state *dta, unsigned int tid, u64 
 		*ts = READ_ONCE(rec->timestamp);
 		smp_rmb();
 		*af = READ_ONCE(rec->anchor_and_flags);
-		ht_record_flags_read(tid);
+		ht_kunit_record_flags_read(tid);
 		smp_rmb();
 	} while (READ_ONCE(rec->timestamp) != *ts);
 }
@@ -1243,7 +1243,7 @@ u32 ht_op_end(struct lsv_ht *ht, int tid, bool no_cell)
  * idle participant protects nothing, so the cell it names can be freed and
  * reused, and a recovery that catches the record afterwards walks into it.
  */
-bool ht_participant_holds_anchor(const struct lsv_ht *ht, unsigned int tid)
+bool ht_kunit_participant_holds_anchor(const struct lsv_ht *ht, unsigned int tid)
 {
 	u64 af = READ_ONCE(ht->dta->global[tid].anchor_and_flags);
 
@@ -1255,7 +1255,7 @@ bool ht_participant_holds_anchor(const struct lsv_ht *ht, unsigned int tid)
  * resumed its operation. A pass that ends short of the whole range leaves it
  * this way, for the next pass to carry on with.
  */
-bool ht_participant_is_suspected(const struct lsv_ht *ht, unsigned int tid)
+bool ht_kunit_participant_is_suspected(const struct lsv_ht *ht, unsigned int tid)
 {
 	u64 af = READ_ONCE(ht->dta->global[tid].anchor_and_flags);
 
@@ -1263,19 +1263,19 @@ bool ht_participant_is_suspected(const struct lsv_ht *ht, unsigned int tid)
 }
 
 /* Passes of recoveries that gave up on a range frozen for someone else. */
-u64 ht_recovery_aborts(const struct lsv_ht *ht)
+u64 ht_kunit_recovery_aborts(const struct lsv_ht *ht)
 {
 	return atomic64_read(&ht->dta->recovery_aborts);
 }
 
 /* Cells the walks of recoveries have stepped on, freezing, copying and splicing. */
-u64 ht_recovery_walked(const struct lsv_ht *ht)
+u64 ht_kunit_recovery_walked(const struct lsv_ht *ht)
 {
 	return atomic64_read(&ht->dta->recovery_walked);
 }
 
 /* Reclaim requests queued on the workers of participants and not run yet. */
-bool ht_reclaim_requests_pending(const struct lsv_ht *ht)
+bool ht_kunit_reclaim_requests_pending(const struct lsv_ht *ht)
 {
 	return atomic_read(&ht->dta->reclaim_pending);
 }
