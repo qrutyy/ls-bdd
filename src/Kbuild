@@ -11,14 +11,29 @@ ccflags-y := 	-Wall							\
 obj-m := lsv.o
 
 # Lock-free hash table implementation: make ht=<name> (default dta)
+#   dta   DtA: reclamation with recovery of stalled participants
+#   ebr   EBR, limbo lists of every participant its own
+#   ebr+  EBR, three limbo lists shared by the whole table
 ht ?= dta
 HT_DIR := utils/lock-free/ht_$(ht)
 
 ifeq ($(ht), dta)
+HT_HDR := $(HT_DIR)/ht_dta.h
 lsv-ht-impl := $(HT_DIR)/dta.o $(HT_DIR)/ht_dta.o
 lsv-ht-impl-tests := $(HT_DIR)/tests/suites/kunit_lsv_dta_reg.o
+else ifeq ($(ht), ebr)
+HT_HDR := $(HT_DIR)/ht_ebr.h
+lsv-ht-impl := $(HT_DIR)/ebr.o $(HT_DIR)/ht_ebr.o $(HT_DIR)/ebr_local.o
+lsv-ht-impl-tests := $(HT_DIR)/tests/suites/kunit_lsv_ebr_reg.o
+else ifeq ($(ht), ebr+)
+# the table and the epochs are the ones of ebr, only the limbo lists differ
+HT_HDR := utils/lock-free/ht_ebr/ht_ebr.h
+ccflags-y += -DLSV_HT_EBR_GLOBAL
+lsv-ht-impl := utils/lock-free/ht_ebr/ebr.o utils/lock-free/ht_ebr/ht_ebr.o \
+	$(HT_DIR)/ebr_global.o
+lsv-ht-impl-tests := utils/lock-free/ht_ebr/tests/suites/kunit_lsv_ebr_reg.o
 else
-$(error Invalid ht specified. Use "make ht=dta")
+$(error Invalid ht specified. Use "make ht=dta", "make ht=ebr" or "make ht=ebr+")
 endif
 
 lsv-ht := utils/wq.o $(lsv-ht-impl)
@@ -34,7 +49,7 @@ lsv-ht-tests := utils/lock-free/ht_tests/lsv_kunit_ht.o \
 ifeq ($(type), lf)
 DIR := utils/lock-free
 ccflags-y += -DLF_MODE
-ccflags-y += -DLSV_HT_IMPL_H='"$(HT_DIR)/ht_$(ht).h"' -I$(src)/$(HT_DIR)/tests
+ccflags-y += -DLSV_HT_IMPL_H='"$(HT_HDR)"' -I$(src)/$(HT_DIR)/tests
 lsv-objs := $(DIR)/lf_list.o $(lsv-ht)
 
 # KUnit suites of the hash table, in lsv.ko whenever the kernel has KUnit

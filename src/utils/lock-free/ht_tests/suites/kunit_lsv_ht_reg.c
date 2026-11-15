@@ -126,7 +126,7 @@ static void LSV_KTEST(ht_cell_exhaustion)(struct kunit *test)
 	 */
 	for (key = 1; key <= 3; key++)
 		KUNIT_EXPECT_TRUE(test, lsv_ht_test_release_key(ctx, key));
-	for (key = 0; key < 8 && !atomic_read(&ctx->nodes_freed); key++)
+	for (key = 0; key < LSV_HT_TEST_QUIET_RECLAIM_OPS && !atomic_read(&ctx->nodes_freed); key++)
 		lsv_ht_test_find(ctx, 4);
 	KUNIT_EXPECT_GT(test, atomic_read(&ctx->nodes_freed), 0);
 	KUNIT_EXPECT_NOT_NULL(test, lsv_ht_test_insert(ctx, 5, &is_new));
@@ -571,6 +571,15 @@ static void LSV_KTEST(ht_concurrent_participants_reused_cells)(struct kunit *tes
 	KUNIT_EXPECT_GT(test, atomic_read(&ctx->reused), 0);
 }
 
+/* Holds its worker until the test lets it go. */
+static void ht_test_hold_fn(struct lsv_ht_test_job *job)
+{
+	complete(&job->ctx->hold_parked);
+	wait_for_completion(&job->ctx->hold_release);
+}
+
+
+#if LSV_HT_IDLE_BUFFERS
 /* Inserts and releases keys of its own until the pool turns it away. */
 static void ht_test_drain_pool_fn(struct lsv_ht_test_job *job)
 {
@@ -632,13 +641,6 @@ static void LSV_KTEST(ht_idle_buffer_comes_back)(struct kunit *test)
 	/* Assert: the idle buffer comes back, and insertions succeed again */
 	KUNIT_EXPECT_NOT_NULL(test, lsv_ht_test_insert_eventually(ctx, 300));
 	KUNIT_EXPECT_GT(test, atomic_read(&ctx->nodes_freed), 0);
-}
-
-/* Holds its worker until the test lets it go. */
-static void ht_test_hold_fn(struct lsv_ht_test_job *job)
-{
-	complete(&job->ctx->hold_parked);
-	wait_for_completion(&job->ctx->hold_release);
 }
 
 static void ht_test_free_fn(struct lsv_ht_test_job *job)
@@ -725,6 +727,7 @@ static void LSV_KTEST(ht_free_on_worker_with_queued_request)(struct kunit *test)
 		KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(flush));
 	}
 }
+#endif /* LSV_HT_IDLE_BUFFERS */
 
 /*
  * What .exit does first, after a test that failed an assertion with a job
@@ -765,9 +768,11 @@ static struct kunit_case __cases[] = {
 	LSV_KUNIT_CASE(ht_capacity_under_contention),
 	LSV_KUNIT_CASE(ht_concurrent_participants),
 	LSV_KUNIT_CASE(ht_concurrent_participants_reused_cells),
+#if LSV_HT_IDLE_BUFFERS
 	LSV_KUNIT_CASE(ht_idle_buffer_comes_back),
 	LSV_KUNIT_CASE(ht_free_waits_for_queued_request),
 	LSV_KUNIT_CASE(ht_free_on_worker_with_queued_request),
+#endif
 	LSV_KUNIT_CASE(ht_join_releases_parked_jobs),
 	{}
 };
