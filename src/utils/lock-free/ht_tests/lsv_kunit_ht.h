@@ -27,6 +27,9 @@
  *				inside it included
  * lsv_ht_test_stall_hook	the hook a traversal calls where a participant
  *				that stalls holds back the most
+ * LSV_HT_IDLE_BUFFERS	(optional) retired cells wait in a buffer per participant
+ * LSV_HT_TEST_QUIET_RECLAIM_OPS	(optional) operations a quiet table needs to give
+ *				back what it retired
  * LSV_HT_TEST_STRESS_RESERVE	cells beyond the pool a roomy stress run gives
  *				node_copy(), and LSV_HT_TEST_TIGHT_RESERVE a
  *				tight one: 0 without recovery
@@ -38,6 +41,19 @@
 #endif
 #ifndef LSV_HT_OPS_NONPREEMPTIBLE
 #define LSV_HT_OPS_NONPREEMPTIBLE 0
+#endif
+
+/* operations after which cells retired by a quiet table have been given back */
+#ifndef LSV_HT_TEST_QUIET_RECLAIM_OPS
+#define LSV_HT_TEST_QUIET_RECLAIM_OPS 8
+#endif
+
+/*
+ * Cells a participant retires wait in a buffer of its own, which another one
+ * must ask it to empty if it goes idle; 0 when the table keeps them in common.
+ */
+#ifndef LSV_HT_IDLE_BUFFERS
+#define LSV_HT_IDLE_BUFFERS 1
 #endif
 
 #define LSV_HT_TEST_WAIT_MS 60000
