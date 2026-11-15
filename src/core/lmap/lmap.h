@@ -71,7 +71,7 @@ struct lsv_lmap {
 
 	u64 segment_size;
 
-	atomic64_t next_pba; /* physical cell numbers, monotonic for now */
+	atomic64_t next_pba; /* isn't used in case of segment model */
 	u64 capacity_cells;
 
 	/* Every live pblk by its pba: teardown walks it, GC will need it as the reverse map. */
@@ -109,6 +109,16 @@ static inline void lsv_lmap_locate(const struct lsv_lmap *lmap, sector_t sector,
 static inline sector_t lsv_lmap_data_sector(const struct lsv_lmap *lmap, u64 pba)
 {
 	return LSV_META_SECTORS + (pba << lmap->cell_sect_shift);
+}
+
+static inline enum lsv_space_layout lsv_lmap_is_linear(const struct lsv_lmap *lmap)
+{
+	return lmap->params.space_layout == LSV_SPACE_LINEAR;
+}
+
+static inline enum lsv_space_layout lsv_lmap_is_segmented(const struct lsv_lmap *lmap)
+{
+	return lmap->params.space_layout == LSV_SPACE_SEGMENTED;
 }
 
 #endif

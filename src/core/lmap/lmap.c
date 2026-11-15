@@ -85,12 +85,31 @@ void lsv_lmap_engine_deinit(void)
 	kfree(engine);
 }
 
+static void lsv_lmap_validate_params(struct lsv_lmap *lmap)
+{
+	if (!lmap->params.cell_size)
+		lmap->params.cell_size = LSV_DEF_CELL_SIZE;
+
+	if (!lmap->params.space_layout)
+		lmap->params.space_layout = LSV_DEF_SPACE_LAYOUT;
+
+	if (!lmap->params.segment_size)
+		lmap->params.segment_size = LSV_DEF_SEGMENT_SIZE;
+
+	if (!lmap->params.back_cap_sectors)
+		lmap->params.back_cap_sectors = LSV_DEF_BACK_CAP_SECTORS;
+
+}
+
 static s32 lsv_lmap_setup_geometry(struct lsv_lmap *lmap)
 {
-	u32 cell_size = lmap->params.cell_size;
-	sector_t backing_sectors = lmap->params.back_cap_sectors;
+	u32 cell_size;
+	sector_t backing_sectors;
 
-	// TODO: add segment based geometry;
+	lsv_lmap_validate_params(lmap);
+
+	cell_size = lmap->params.cell_size;
+	backing_sectors = lmap->params.back_cap_sectors;
 
 	if (cell_size < LSV_CELL_SIZE_MIN || cell_size > LSV_CELL_SIZE_MAX)
 		return -EINVAL;
@@ -108,8 +127,6 @@ static s32 lsv_lmap_setup_geometry(struct lsv_lmap *lmap)
 	lmap->capacity_cells = (backing_sectors - LSV_META_SECTORS) >> lmap->cell_sect_shift;
 	if (!lmap->capacity_cells)
 		return -ENOSPC;
-
-	atomic64_set(&lmap->next_pba, 0);
 
 	return 0;
 }
@@ -162,17 +179,28 @@ void lsv_lmap_deinit(struct lsv_lmap *lmap)
 	bioset_exit(&lmap->bio_set);
 }
 
-static s32 lsv_lmap_alloc_pba(struct lsv_lmap *lmap, u64 *pba)
+static s64 lsv_lmap_linear_next_pba_get(struct lsv_lmap *lmap)
 {
-	s64 allocated;
+	s64 pba;
 
-	allocated = atomic64_fetch_add(1, &lmap->next_pba);
-	if (allocated < 0 || (u64)allocated >= lmap->capacity_cells) {
+	pba = atomic64_fetch_add(1, &lmap->next_pba);
+	if (pba < 0 || (u64)pba >= lmap->capacity_cells) {
 		atomic64_dec(&lmap->next_pba);
 		return -ENOSPC;
 	}
 
-	*pba = allocated;
+	return pba;
+}
+
+static s64 lsvv_lmap_segmented_next_pba_get(struct lsv_lmap *lmap)
+{}
+
+static s32 lsv_lmap_alloc_pba(struct lsv_lmap *lmap, u64 *pba)
+{
+	if (lsv_lmap_is_linear(lmap))
+		*pba = lsv_lmap_linear_next_pba_get(lmap);
+
+	// TODO(maksim): add segment model pba allocation
 
 	return 0;
 }
@@ -187,17 +215,16 @@ struct lsv_pblk *lsv_pblk_alloc(struct lsv_lmap *lmap)
 	u64 pba;
 	s32 rc;
 
-	rc = lsv_lmap_alloc_pba(lmap, &pba);
-	if (rc)
-		return ERR_PTR(rc);
-
 	pblk = kmem_cache_alloc(g_lmap_engine->pblk_cachep, GFP_NOIO);
 	if (!pblk)
 		return ERR_PTR(-ENOMEM);
 
-	pblk->pba = pba;
 	refcount_set(&pblk->ref, 1);
 	pblk->de = NULL;
+
+	rc = lsv_lmap_alloc_pba(lmap, &pblk->pba);
+	if (rc)
+		return ERR_PTR(rc);
 
 	rc = xa_err(xa_store(&lmap->pblks, pba, pblk, GFP_NOIO));
 	if (rc) {
