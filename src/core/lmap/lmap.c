@@ -78,7 +78,7 @@ void lsv_lmap_engine_deinit(void)
 	kfree(mng);
 
 	kmem_cache_destroy(cache->cell_cachep);
-	/* Waits for the pblks still queued by kfree_rcu(). */
+	/* Waits for the pblk_pba_map still queued by kfree_rcu(). */
 	kmem_cache_destroy(engine->pblk_cachep);
 
 	g_lmap_engine = NULL;
@@ -143,7 +143,7 @@ s32 lsv_lmap_init(struct lsv_lmap *lmap)
 		return rc;
 
 	lmap->segment_size = lmap->params.segment_size;
-	xa_init(&lmap->pblks);
+	xa_init(&lmap->pblk_pba_map);
 
 	rc = bioset_init(&lmap->bio_set, BIO_POOL_SIZE, 0, BIOSET_NEED_BVECS);
 	if (rc)
@@ -162,7 +162,7 @@ bioset_err:
 
 /*
  * The device is quiesced by now, so nothing races with this. Every pblk still
- * referenced by a cell is in |pblks|; they are freed directly, without going
+ * referenced by a cell is in |pblk_pba_map|; they are freed directly, without going
  * through lsv_pblk_put(): the dedup entries pointing at them are already gone.
  */
 void lsv_lmap_deinit(struct lsv_lmap *lmap)
@@ -172,9 +172,9 @@ void lsv_lmap_deinit(struct lsv_lmap *lmap)
 
 	lsv_ds_free(&lmap->index, &g_lmap_engine->map_cache);
 
-	xa_for_each(&lmap->pblks, pba, pblk)
+	xa_for_each(&lmap->pblk_pba_map, pba, pblk)
 		kmem_cache_free(g_lmap_engine->pblk_cachep, pblk);
-	xa_destroy(&lmap->pblks);
+	xa_destroy(&lmap->pblk_pba_map);
 
 	bioset_exit(&lmap->bio_set);
 }
@@ -226,7 +226,7 @@ struct lsv_pblk *lsv_pblk_alloc(struct lsv_lmap *lmap)
 	if (rc)
 		return ERR_PTR(rc);
 
-	rc = xa_err(xa_store(&lmap->pblks, pba, pblk, GFP_NOIO));
+	rc = xa_err(xa_store(&lmap->pblk_pba_map, pba, pblk, GFP_NOIO));
 	if (rc) {
 		kmem_cache_free(g_lmap_engine->pblk_cachep, pblk);
 		return ERR_PTR(rc);
@@ -249,7 +249,7 @@ void lsv_pblk_put(struct lsv_lmap *lmap, struct lsv_pblk *pblk)
 	 *	atomic_inc(&lmap->segs[pblk->pba / cells_per_segment].dead);
 	 */
 
-	xa_erase(&lmap->pblks, pblk->pba);
+	xa_erase(&lmap->pblk_pba_map, pblk->pba);
 	kfree_rcu(pblk, rcu);
 }
 

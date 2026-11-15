@@ -72,10 +72,11 @@ struct lsv_lmap {
 	u64 segment_size;
 
 	atomic64_t next_pba; /* isn't used in case of segment model */
+	// TODO(maksim): union with array of segments
 	u64 capacity_cells;
 
 	/* Every live pblk by its pba: teardown walks it, GC will need it as the reverse map. */
-	struct xarray pblks;
+	struct xarray pblk_pba_map;
 
 	struct bio_set bio_set;
 
