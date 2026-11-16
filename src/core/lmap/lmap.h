@@ -4,6 +4,7 @@
 #define LSV_CORE_LMAP_H
 
 #include <linux/bio.h>
+#include <linux/idr.h>
 #include <linux/rcupdate.h>
 #include <linux/refcount.h>
 #include <linux/types.h>
@@ -68,15 +69,13 @@ struct lsv_lmap {
 	u32 cell_size; /* bytes */
 	u32 cell_sectors;
 	u8 cell_sect_shift; /* log2(cell_sectors), a shift over sector numbers */
-
-	u64 segment_size;
-
-	atomic64_t next_pba; /* isn't used in case of segment model */
-	// TODO(maksim): union with array of segments
 	u64 capacity_cells;
 
-	/* Every live pblk by its pba: teardown walks it, GC will need it as the reverse map. */
-	struct xarray pblk_pba_map;
+	u64 segment_size;
+	/* TODO(maksim):  array of segments */
+
+	struct xarray pblk_pba_map; /* Every live pblk by its pba */
+	struct ida pba_bitmap;
 
 	struct bio_set bio_set;
 

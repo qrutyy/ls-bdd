@@ -406,16 +406,38 @@ out:
 	kmem_cache_free(g_dedup_engine->verify_cachep, vw);
 }
 
+static int lsv_dedup_start_verify_work(struct lsv_dedup *dedup, struct bio *bio, u64 lba, struct lsv_pblk *pblk, void *tmp_buf)
+{
+	struct lsv_dedup_verify *vw;
+
+	vw = kmem_cache_alloc(g_dedup_engine->verify_cachep, GFP_NOIO);
+	if (!vw) {
+		lsv_pblk_put(dedup->lmap, pblk);
+		return -1;
+	}
+
+	INIT_WORK(&vw->work, lsv_dedup_verify_fn);
+	vw->dedup = dedup;
+	vw->bio = bio;
+	vw->lba = lba;
+	vw->pblk = pblk;
+	vw->data = tmp_buf;
+
+	queue_work(g_dedup_engine->verify_wq, &vw->work);
+
+	return 0;
+}
+
 /*
  * Runs in ->submit_bio and so never waits for I/O: the verify, which has to read
  * the backing device, is left to a worker.
  */
 s32 lsv_dedup_write(struct lsv_dedup *dedup, struct bio *bio, u64 lba, struct lsv_pblk **pblk)
 {
-	struct lsv_dedup_verify *vw;
 	struct lsv_pblk *found;
 	void *tmp_buf;
 	u64 digest;
+	int rc;
 
 	tmp_buf = lsv_dedup_data_buf_alloc();
 	if (!tmp_buf)
@@ -432,24 +454,15 @@ s32 lsv_dedup_write(struct lsv_dedup *dedup, struct bio *bio, u64 lba, struct ls
 		return IS_ERR(*pblk) ? PTR_ERR(*pblk) : LSV_DE_NEW;
 	}
 
-	/* TODO(qrutyy): move in sep function */
-	vw = kmem_cache_alloc(g_dedup_engine->verify_cachep, GFP_NOIO);
-	if (!vw) {
-		lsv_pblk_put(dedup->lmap, found);
+	rc = lsv_dedup_start_verify_work(dedup, bio, lba, found, tmp_buf);
+	if (rc)
 		goto free_buf;
-	}
-
-	INIT_WORK(&vw->work, lsv_dedup_verify_fn);
-	vw->dedup = dedup;
-	vw->bio = bio;
-	vw->lba = lba;
-	vw->pblk = found;
-	vw->data = tmp_buf;
-
-	queue_work(g_dedup_engine->verify_wq, &vw->work);
 
 	return LSV_DE_DUPLICATE;
 
+	/* TODO(qrutyy): i dont like this behavior here, it should be somewhere like in
+	 * lsv_bio_setup_write
+	 */
 free_buf:
 	lsv_dedup_data_buf_free(tmp_buf);
 plain:

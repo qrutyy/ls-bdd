@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
+#include "linux/idr.h"
 #include <linux/blkdev.h>
 #include <linux/err.h>
 #include <linux/log2.h>
@@ -8,6 +9,11 @@
 
 #include "core/dedup/dedup.h"
 #include "core/lmap/lmap.h"
+
+#define LSV_DEF_CELL_SIZE 4096
+#define LSV_DEF_SPACE_LAYOUT (LSV_SPACE_SEGMENTED)
+#define LSV_DEF_SEGMENT_SIZE 1 * 1024 * 1024
+#define LSV_DEF_BACK_CAP_SECTORS 0
 
 /*
  * Module wide state of the mapping layer: the node caches every index
@@ -128,6 +134,8 @@ static s32 lsv_lmap_setup_geometry(struct lsv_lmap *lmap)
 	if (!lmap->capacity_cells)
 		return -ENOSPC;
 
+	lmap->segment_size = lmap->params.segment_size;
+
 	return 0;
 }
 
@@ -142,8 +150,8 @@ s32 lsv_lmap_init(struct lsv_lmap *lmap)
 	if (rc)
 		return rc;
 
-	lmap->segment_size = lmap->params.segment_size;
 	xa_init(&lmap->pblk_pba_map);
+	ida_init(&lmap->pba_bitmap);
 
 	rc = bioset_init(&lmap->bio_set, BIO_POOL_SIZE, 0, BIOSET_NEED_BVECS);
 	if (rc)
@@ -181,19 +189,22 @@ void lsv_lmap_deinit(struct lsv_lmap *lmap)
 
 static s64 lsv_lmap_linear_next_pba_get(struct lsv_lmap *lmap)
 {
-	s64 pba;
+	s64 pba, pba_id;
 
-	pba = atomic64_fetch_add(1, &lmap->next_pba);
-	if (pba < 0 || (u64)pba >= lmap->capacity_cells) {
-		atomic64_dec(&lmap->next_pba);
+	/* NOTE: currently it fills the gaps, bc allocs the minimal*/
+	pba_id = ida_alloc(&lmap->pba_bitmap, GFP_NOIO);
+	pba = pba_id * lmap->cell_size;
+	if (pba_id < 0 || (u64)pba >= lmap->capacity_cells) {
 		return -ENOSPC;
 	}
 
 	return pba;
 }
 
-static s64 lsvv_lmap_segmented_next_pba_get(struct lsv_lmap *lmap)
-{}
+static s64 lsv_lmap_segmented_next_pba_get(struct lsv_lmap *lmap)
+{
+	return 0;
+}
 
 static s32 lsv_lmap_alloc_pba(struct lsv_lmap *lmap, u64 *pba)
 {
