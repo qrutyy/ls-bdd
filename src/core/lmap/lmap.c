@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
+#include "linux/idr.h"
 #include <linux/blkdev.h>
 #include <linux/err.h>
 #include <linux/log2.h>
@@ -8,6 +9,11 @@
 
 #include "core/dedup/dedup.h"
 #include "core/lmap/lmap.h"
+
+#define LSV_DEF_CELL_SIZE 4096
+#define LSV_DEF_SPACE_LAYOUT (LSV_SPACE_SEGMENTED)
+#define LSV_DEF_SEGMENT_SIZE 1 * 1024 * 1024
+#define LSV_DEF_BACK_CAP_SECTORS 0
 
 /*
  * Module wide state of the mapping layer: the node caches every index
@@ -78,19 +84,38 @@ void lsv_lmap_engine_deinit(void)
 	kfree(mng);
 
 	kmem_cache_destroy(cache->cell_cachep);
-	/* Waits for the pblks still queued by kfree_rcu(). */
+	/* Waits for the pblk_pba_map still queued by kfree_rcu(). */
 	kmem_cache_destroy(engine->pblk_cachep);
 
 	g_lmap_engine = NULL;
 	kfree(engine);
 }
 
+static void lsv_lmap_validate_params(struct lsv_lmap *lmap)
+{
+	if (!lmap->params.cell_size)
+		lmap->params.cell_size = LSV_DEF_CELL_SIZE;
+
+	if (!lmap->params.space_layout)
+		lmap->params.space_layout = LSV_DEF_SPACE_LAYOUT;
+
+	if (!lmap->params.segment_size)
+		lmap->params.segment_size = LSV_DEF_SEGMENT_SIZE;
+
+	if (!lmap->params.back_cap_sectors)
+		lmap->params.back_cap_sectors = LSV_DEF_BACK_CAP_SECTORS;
+
+}
+
 static s32 lsv_lmap_setup_geometry(struct lsv_lmap *lmap)
 {
-	u32 cell_size = lmap->params.cell_size;
-	sector_t backing_sectors = lmap->params.back_cap_sectors;
+	u32 cell_size;
+	sector_t backing_sectors;
 
-	// TODO: add segment based geometry;
+	lsv_lmap_validate_params(lmap);
+
+	cell_size = lmap->params.cell_size;
+	backing_sectors = lmap->params.back_cap_sectors;
 
 	if (cell_size < LSV_CELL_SIZE_MIN || cell_size > LSV_CELL_SIZE_MAX)
 		return -EINVAL;
@@ -109,7 +134,7 @@ static s32 lsv_lmap_setup_geometry(struct lsv_lmap *lmap)
 	if (!lmap->capacity_cells)
 		return -ENOSPC;
 
-	atomic64_set(&lmap->next_pba, 0);
+	lmap->segment_size = lmap->params.segment_size;
 
 	return 0;
 }
@@ -125,8 +150,8 @@ s32 lsv_lmap_init(struct lsv_lmap *lmap)
 	if (rc)
 		return rc;
 
-	lmap->segment_size = lmap->params.segment_size;
-	xa_init(&lmap->pblks);
+	xa_init(&lmap->pblk_pba_map);
+	ida_init(&lmap->pba_bitmap);
 
 	rc = bioset_init(&lmap->bio_set, BIO_POOL_SIZE, 0, BIOSET_NEED_BVECS);
 	if (rc)
@@ -145,7 +170,7 @@ bioset_err:
 
 /*
  * The device is quiesced by now, so nothing races with this. Every pblk still
- * referenced by a cell is in |pblks|; they are freed directly, without going
+ * referenced by a cell is in |pblk_pba_map|; they are freed directly, without going
  * through lsv_pblk_put(): the dedup entries pointing at them are already gone.
  */
 void lsv_lmap_deinit(struct lsv_lmap *lmap)
@@ -155,24 +180,38 @@ void lsv_lmap_deinit(struct lsv_lmap *lmap)
 
 	lsv_ds_free(&lmap->index, &g_lmap_engine->map_cache);
 
-	xa_for_each(&lmap->pblks, pba, pblk)
+	xa_for_each(&lmap->pblk_pba_map, pba, pblk)
 		kmem_cache_free(g_lmap_engine->pblk_cachep, pblk);
-	xa_destroy(&lmap->pblks);
+	xa_destroy(&lmap->pblk_pba_map);
 
 	bioset_exit(&lmap->bio_set);
 }
 
-static s32 lsv_lmap_alloc_pba(struct lsv_lmap *lmap, u64 *pba)
+static s64 lsv_lmap_linear_next_pba_get(struct lsv_lmap *lmap)
 {
-	s64 allocated;
+	s64 pba, pba_id;
 
-	allocated = atomic64_fetch_add(1, &lmap->next_pba);
-	if (allocated < 0 || (u64)allocated >= lmap->capacity_cells) {
-		atomic64_dec(&lmap->next_pba);
+	/* NOTE: currently it fills the gaps, bc allocs the minimal*/
+	pba_id = ida_alloc(&lmap->pba_bitmap, GFP_NOIO);
+	pba = pba_id * lmap->cell_size;
+	if (pba_id < 0 || (u64)pba >= lmap->capacity_cells) {
 		return -ENOSPC;
 	}
 
-	*pba = allocated;
+	return pba;
+}
+
+static s64 lsv_lmap_segmented_next_pba_get(struct lsv_lmap *lmap)
+{
+	return 0;
+}
+
+static s32 lsv_lmap_alloc_pba(struct lsv_lmap *lmap, u64 *pba)
+{
+	if (lsv_lmap_is_linear(lmap))
+		*pba = lsv_lmap_linear_next_pba_get(lmap);
+
+	// TODO(maksim): add segment model pba allocation
 
 	return 0;
 }
@@ -187,19 +226,18 @@ struct lsv_pblk *lsv_pblk_alloc(struct lsv_lmap *lmap)
 	u64 pba;
 	s32 rc;
 
-	rc = lsv_lmap_alloc_pba(lmap, &pba);
-	if (rc)
-		return ERR_PTR(rc);
-
 	pblk = kmem_cache_alloc(g_lmap_engine->pblk_cachep, GFP_NOIO);
 	if (!pblk)
 		return ERR_PTR(-ENOMEM);
 
-	pblk->pba = pba;
 	refcount_set(&pblk->ref, 1);
 	pblk->de = NULL;
 
-	rc = xa_err(xa_store(&lmap->pblks, pba, pblk, GFP_NOIO));
+	rc = lsv_lmap_alloc_pba(lmap, &pblk->pba);
+	if (rc)
+		return ERR_PTR(rc);
+
+	rc = xa_err(xa_store(&lmap->pblk_pba_map, pba, pblk, GFP_NOIO));
 	if (rc) {
 		kmem_cache_free(g_lmap_engine->pblk_cachep, pblk);
 		return ERR_PTR(rc);
@@ -222,7 +260,7 @@ void lsv_pblk_put(struct lsv_lmap *lmap, struct lsv_pblk *pblk)
 	 *	atomic_inc(&lmap->segs[pblk->pba / cells_per_segment].dead);
 	 */
 
-	xa_erase(&lmap->pblks, pblk->pba);
+	xa_erase(&lmap->pblk_pba_map, pblk->pba);
 	kfree_rcu(pblk, rcu);
 }
 

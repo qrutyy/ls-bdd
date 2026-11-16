@@ -4,6 +4,7 @@
 #define LSV_CORE_LMAP_H
 
 #include <linux/bio.h>
+#include <linux/idr.h>
 #include <linux/rcupdate.h>
 #include <linux/refcount.h>
 #include <linux/types.h>
@@ -68,14 +69,13 @@ struct lsv_lmap {
 	u32 cell_size; /* bytes */
 	u32 cell_sectors;
 	u8 cell_sect_shift; /* log2(cell_sectors), a shift over sector numbers */
-
-	u64 segment_size;
-
-	atomic64_t next_pba; /* physical cell numbers, monotonic for now */
 	u64 capacity_cells;
 
-	/* Every live pblk by its pba: teardown walks it, GC will need it as the reverse map. */
-	struct xarray pblks;
+	u64 segment_size;
+	/* TODO(maksim):  array of segments */
+
+	struct xarray pblk_pba_map; /* Every live pblk by its pba */
+	struct ida pba_bitmap;
 
 	struct bio_set bio_set;
 
@@ -109,6 +109,16 @@ static inline void lsv_lmap_locate(const struct lsv_lmap *lmap, sector_t sector,
 static inline sector_t lsv_lmap_data_sector(const struct lsv_lmap *lmap, u64 pba)
 {
 	return LSV_META_SECTORS + (pba << lmap->cell_sect_shift);
+}
+
+static inline enum lsv_space_layout lsv_lmap_is_linear(const struct lsv_lmap *lmap)
+{
+	return lmap->params.space_layout == LSV_SPACE_LINEAR;
+}
+
+static inline enum lsv_space_layout lsv_lmap_is_segmented(const struct lsv_lmap *lmap)
+{
+	return lmap->params.space_layout == LSV_SPACE_SEGMENTED;
 }
 
 #endif
