@@ -442,13 +442,13 @@ err_free_ht:
  */
 static bool dta_own_request_queued(struct lsv_dta_state *dta)
 {
-	struct lsv_worker *worker = lsv_wq_current_worker();
+	struct lsv_shard_wq_worker *worker = lsv_shard_wq_current_worker();
 	unsigned int tid;
 
 	if (!worker)
 		return false;
 
-	tid = lsv_worker_id(worker);
+	tid = lsv_shard_wq_worker_id(worker);
 	return tid < dta->nr_threads && atomic_read(&dta->local[tid].reclaim_queued);
 }
 

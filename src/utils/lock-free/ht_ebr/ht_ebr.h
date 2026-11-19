@@ -27,8 +27,8 @@
  *     recovery to copy cells for.
  *   - A cell is smaller: no timestamps.
  *
- * Participants are lsv_wq workers, the worker id being the participant id
- * (lsv_worker_id()). Every lsv_ht_* operation must run on a worker created
+ * Participants are lsv_shard_wq workers, the worker id being the participant id
+ * (lsv_shard_wq_worker_id()). Every lsv_ht_* operation must run on a worker created
  * before the table; any other caller fails the operation. Callbacks in
  * lsv_lf_list_ops must not call back into the same table.
  *

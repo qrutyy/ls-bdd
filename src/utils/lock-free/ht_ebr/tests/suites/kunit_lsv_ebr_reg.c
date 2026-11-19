@@ -4,7 +4,7 @@
  * KUnit suite of the EBR hash table (ht_ebr), for both back-ends: ht=ebr
  * (limbo lists per participant) and ht=ebr+ (limbo lists shared by the
  * table, LSV_HT_EBR_GLOBAL). Where the two must behave differently, a case
- * says what each one must do. Table operations run on lsv_wq workers, the
+ * says what each one must do. Table operations run on lsv_shard_wq workers, the
  * participants of the table; the test thread only queues them.
  *
  * The interface itself is covered by the shared suites (ht_tests/), which run
@@ -29,7 +29,7 @@
 #include <linux/spinlock.h>
 
 #include "utils/kunit.h"
-#include "utils/wq.h"
+#include "core/wq/wq.h"
 #include "utils/lock-free/ht_ebr/ht_ebr.h"
 #include "utils/lock-free/ht_ebr/ebr.h"
 #include "utils/lock-free/ht_ebr/tests/include_static/__static_kunit_lsv_ht.h"
@@ -55,7 +55,7 @@ struct ebr_test_cell {
 
 struct ebr_test_ctx {
 	struct kunit *test;
-	struct lsv_wq *wq;
+	struct lsv_shard_wq *wq;
 	unsigned int worker_cnt;
 	struct lsv_ht *ht;
 
@@ -90,7 +90,7 @@ struct ebr_test_job;
 typedef void (*ebr_test_job_fn_t)(struct ebr_test_job *job);
 
 struct ebr_test_job {
-	struct lsv_wq_ctx wq_ctx;
+	struct lsv_shard_wq_work wq_ctx;
 	struct ebr_test_ctx *ctx;
 	ebr_test_job_fn_t fn;
 	struct completion done;
@@ -192,7 +192,7 @@ static void ebr_test_scanned(struct lsv_ht *ht, u64 e)
 	wait_for_completion(&ctx->scan_release);
 }
 
-static void ebr_test_job_run(struct lsv_wq_ctx *wq_ctx)
+static void ebr_test_job_run(struct lsv_shard_wq_work *wq_ctx)
 {
 	struct ebr_test_job *job = container_of(wq_ctx, struct ebr_test_job, wq_ctx);
 	struct ebr_test_ctx *ctx = job->ctx;
@@ -202,14 +202,14 @@ static void ebr_test_job_run(struct lsv_wq_ctx *wq_ctx)
 	atomic_dec(&ctx->jobs_running);
 }
 
-static struct lsv_worker *ebr_test_worker(struct ebr_test_ctx *ctx, unsigned int i)
+static struct lsv_shard_wq_worker *ebr_test_worker(struct ebr_test_ctx *ctx, unsigned int i)
 {
-	return lsv_wq_map(ctx->wq, NULL, cpumask_nth(i, cpu_online_mask));
+	return lsv_shard_wq_map(ctx->wq, NULL, cpumask_nth(i, cpu_online_mask));
 }
 
 static unsigned int ebr_test_tid(struct ebr_test_ctx *ctx, unsigned int i)
 {
-	return lsv_worker_id(ebr_test_worker(ctx, i));
+	return lsv_shard_wq_worker_id(ebr_test_worker(ctx, i));
 }
 
 static struct ebr_test_job *ebr_test_job_start(struct ebr_test_ctx *ctx, unsigned int worker,
@@ -224,9 +224,10 @@ static struct ebr_test_job *ebr_test_job_start(struct ebr_test_ctx *ctx, unsigne
 	job->cnt = cnt;
 	prandom_seed_state(&job->rnd, get_random_u64());
 	init_completion(&job->done);
-	lsv_wq_ctx_init(&job->wq_ctx, ebr_test_job_run);
+	lsv_shard_wq_init_work(&job->wq_ctx, ebr_test_job_run);
 	atomic_inc(&ctx->jobs_running);
-	lsv_worker_add(ebr_test_worker(ctx, worker), &job->wq_ctx);
+	lsv_shard_wq_queue_work_by_id(lsv_shard_wq_worker_id(ebr_test_worker(ctx, worker)),
+				       &job->wq_ctx);
 
 	return job;
 }
@@ -643,7 +644,7 @@ static int ebr_test_init(struct kunit *test)
 	test->priv = ctx;
 
 	/* the workers come first: a table counts only those made before it */
-	ctx->wq = lsv_wq_create(0, cpu_online_mask, "kunit-ebr");
+	ctx->wq = lsv_shard_wq_create(0, cpu_online_mask, "kunit-ebr");
 	if (IS_ERR(ctx->wq)) {
 		int rc = PTR_ERR(ctx->wq);
 
@@ -685,7 +686,7 @@ static void ebr_test_exit(struct kunit *test)
 	lsv_ht_free(ctx->ht);
 
 	if (ctx->wq)
-		lsv_wq_destroy(ctx->wq);
+		lsv_shard_wq_destroy(ctx->wq);
 	WRITE_ONCE(g_lsv_ht_ebr_scanned, NULL);
 	WRITE_ONCE(g_lsv_ht_kunit_cell_check, NULL);
 	WRITE_ONCE(g_ebr_test_ctx, NULL);

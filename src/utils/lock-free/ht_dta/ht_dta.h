@@ -13,8 +13,8 @@
  *
  * Link to paper: https://dl.acm.org/doi/10.1145/2486159.2486184
  *
- * Participants are lsv_wq workers: [DtA] assumes a fixed set of threads with
- * ids 0..n-1, and the worker id plays that role (lsv_worker_id()). Every
+ * Participants are lsv_shard_wq workers: [DtA] assumes a fixed set of threads with
+ * ids 0..n-1, and the worker id plays that role (lsv_shard_wq_worker_id()). Every
  * lsv_ht_* operation must run on a worker created before the table; any other
  * caller fails the operation. Callbacks in lsv_lf_list_ops must not call back
  * into the same table.

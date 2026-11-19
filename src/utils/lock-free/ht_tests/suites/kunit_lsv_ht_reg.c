@@ -8,7 +8,7 @@
 #include <linux/prandom.h>
 #include <linux/spinlock.h>
 
-#include "utils/wq.h"
+#include "core/wq/wq.h"
 #include "utils/kunit.h"
 
 #include "../lsv_kunit_ht.h"
@@ -342,7 +342,7 @@ static void LSV_KTEST(ht_values_without_refs)(struct kunit *test)
 
 static void ht_test_wq_destroy(void *wq)
 {
-	lsv_wq_destroy(wq);
+	lsv_shard_wq_destroy(wq);
 }
 
 /*
@@ -355,19 +355,19 @@ static void LSV_KTEST(ht_late_worker_refused)(struct kunit *test)
 	struct lsv_ht_test_job *job = lsv_ht_test_job_new(test);
 	struct lsv_ht_test_ctx *ctx = test->priv;
 	struct lsv_ht_test_value *value;
-	struct lsv_wq *late;
+	struct lsv_shard_wq *late;
 	bool is_new;
 
 	KUNIT_ASSERT_EQ(test, lsv_ht_test_create_table(ctx, 64, 64), 0);
 	value = lsv_ht_test_insert(ctx, 5, &is_new);
 	KUNIT_ASSERT_NOT_NULL(test, value);
 
-	late = lsv_wq_create(1, cpu_online_mask, "kunit-ht-late");
+	late = lsv_shard_wq_create(1, cpu_online_mask, "kunit-ht-late");
 	KUNIT_ASSERT_FALSE(test, IS_ERR(late));
 	KUNIT_ASSERT_EQ(test, kunit_add_action_or_reset(test, ht_test_wq_destroy, late), 0);
 
 	job->key = 5;
-	lsv_ht_test_job_start_on(ctx, job, lsv_wq_map(late, NULL, cpumask_first(cpu_online_mask)),
+	lsv_ht_test_job_start_on(ctx, job, lsv_shard_wq_map(late, NULL, cpumask_first(cpu_online_mask)),
 				 lsv_ht_test_insert_fn);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(job));
 	KUNIT_EXPECT_NULL(test, job->value);
@@ -375,7 +375,7 @@ static void LSV_KTEST(ht_late_worker_refused)(struct kunit *test)
 
 	job = lsv_ht_test_job_new(test);
 	job->key = 5;
-	lsv_ht_test_job_start_on(ctx, job, lsv_wq_map(late, NULL, cpumask_first(cpu_online_mask)),
+	lsv_ht_test_job_start_on(ctx, job, lsv_shard_wq_map(late, NULL, cpumask_first(cpu_online_mask)),
 				 lsv_ht_test_remove_fn);
 	KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(job));
 	KUNIT_EXPECT_FALSE(test, job->result);

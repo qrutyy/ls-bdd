@@ -46,7 +46,7 @@
 #include <linux/types.h>
 
 #include "ht_ebr.h"
-#include "utils/wq.h"
+#include "core/wq/wq.h"
 
 #define LSV_EBR_NR_EPOCHS	3
 

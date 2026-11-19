@@ -53,7 +53,7 @@ struct lsv_ebr_local_rec {
 	 * so the reclamation runs on the owner's worker, between two of its
 	 * operations.
 	 */
-	struct lsv_wq_ctx reclaim_ctx;
+	struct lsv_shard_wq_work reclaim_ctx;
 } ____cacheline_aligned;
 
 /*
@@ -219,11 +219,11 @@ u32 ebr_op_end(struct lsv_ht *ht, int tid, bool no_cell)
  * lists, between two of its operations, so that the lists never have two
  * threads at once.
  */
-static void ebr_reclaim_request_run(struct lsv_wq_ctx *ctx)
+static void ebr_reclaim_request_run(struct lsv_shard_wq_work *ctx)
 {
 	struct lsv_ebr_local_rec *loc = container_of(ctx, struct lsv_ebr_local_rec,
 						     reclaim_ctx);
-	unsigned int tid = lsv_worker_id(lsv_wq_current_worker());
+	unsigned int tid = lsv_shard_wq_worker_id(lsv_shard_wq_current_worker());
 	struct lsv_ebr_limbo_state *limbo = container_of(loc - tid, struct lsv_ebr_limbo_state,
 							 rec[0]);
 	struct lsv_ebr_state *ebr = limbo->ebr;
@@ -251,7 +251,6 @@ static void ebr_reclaim_request_run(struct lsv_wq_ctx *ctx)
 void ebr_request_reclaim(struct lsv_ebr_state *ebr, int my_tid)
 {
 	struct lsv_ebr_local_rec *loc;
-	struct lsv_worker *worker;
 	unsigned int i;
 
 	for (i = 0; i < ebr->nr_threads; i++) {
@@ -261,13 +260,15 @@ void ebr_request_reclaim(struct lsv_ebr_state *ebr, int my_tid)
 		if (atomic_xchg(&loc->reclaim_queued, 1))
 			continue;
 
-		worker = lsv_worker_by_id(i);
-		if (!worker) {
-			atomic_set(&loc->reclaim_queued, 0);
-			continue;
-		}
+		/*
+		 * Counted before the job can run: it counts itself out. A worker
+		 * that is gone has no one to scan the buffer, so no request.
+		 */
 		atomic_inc(&ebr->limbo->reclaim_pending);
-		lsv_worker_add(worker, &loc->reclaim_ctx);
+		if (!lsv_shard_wq_queue_work_by_id(i, &loc->reclaim_ctx)) {
+			atomic_dec(&ebr->limbo->reclaim_pending);
+			atomic_set(&loc->reclaim_queued, 0);
+		}
 	}
 }
 
@@ -282,7 +283,7 @@ int ebr_limbo_alloc(struct lsv_ebr_state *ebr)
 
 	limbo->ebr = ebr;
 	for (i = 0; i < ebr->nr_threads; i++)
-		lsv_wq_ctx_init(&limbo->rec[i].reclaim_ctx, ebr_reclaim_request_run);
+		lsv_shard_wq_init_work(&limbo->rec[i].reclaim_ctx, ebr_reclaim_request_run);
 
 	ebr->limbo = limbo;
 	return 0;
@@ -294,13 +295,13 @@ int ebr_limbo_alloc(struct lsv_ebr_state *ebr)
  */
 static bool ebr_own_request_queued(struct lsv_ebr_state *ebr)
 {
-	struct lsv_worker *worker = lsv_wq_current_worker();
+	struct lsv_shard_wq_worker *worker = lsv_shard_wq_current_worker();
 	unsigned int tid;
 
 	if (!worker)
 		return false;
 
-	tid = lsv_worker_id(worker);
+	tid = lsv_shard_wq_worker_id(worker);
 	return tid < ebr->nr_threads && atomic_read(&ebr_local(ebr, tid)->reclaim_queued);
 }
 
