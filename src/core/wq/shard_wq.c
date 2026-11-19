@@ -10,17 +10,17 @@
 #include <linux/vmalloc.h>
 #include <linux/xarray.h>
 
-#include "utils/wq.h"
+#include "shard_wq.h"
 
-#define LSV_WQ_NAME_SIZE	32
+#define LSV_SHARD_WQ_NAME_SIZE	32
 
 /*
  * The kthread_worker is embedded rather than made by kthread_create_worker_*(),
  * so that the worker a thread runs is a container_of() away from kthread_data().
  */
-struct lsv_worker {
+struct lsv_shard_wq_worker {
 	struct kthread_worker kw;
-	struct lsv_wq *wq;
+	struct lsv_shard_wq *wq;
 	/* NULL until the thread is created; kw.task is set by the thread itself */
 	struct task_struct *task;
 	unsigned int cpu_num;
@@ -28,46 +28,46 @@ struct lsv_worker {
 	bool registered;
 };
 
-struct lsv_wq {
-	char name[LSV_WQ_NAME_SIZE];
+struct lsv_shard_wq {
+	char name[LSV_SHARD_WQ_NAME_SIZE];
 	cpumask_var_t cpumask;
 
 	int cpu_cnt;
-	struct lsv_worker **worker_map;
+	struct lsv_shard_wq_worker **worker_map;
 
 	int worker_cnt;
-	struct lsv_worker workers[] __counted_by(worker_cnt);
+	struct lsv_shard_wq_worker workers[] __counted_by(worker_cnt);
 };
 
 /* every running worker by its module-wide id */
-static DEFINE_XARRAY(g_lsv_workers);
+static DEFINE_XARRAY(g_lsv_shard_wq_workers);
 
 /* Zero-initialized storage is a valid atomic_t holding 0. */
-static atomic_t g_lsv_worker_id_next;
+static atomic_t g_lsv_shard_wq_worker_id_next;
 
-void lsv_wq_ctx_run(struct kthread_work *work)
+void lsv_shard_wq_work_run(struct kthread_work *kwork)
 {
-	struct lsv_wq_ctx *ctx = container_of(work, struct lsv_wq_ctx, work);
+	struct lsv_shard_wq_work *work = container_of(kwork, struct lsv_shard_wq_work, work);
 
-	ctx->func(ctx);
+	work->func(work);
 }
 
 /*
  * kthread_worker_fn() under a name of our own, so that a thread of ours is told
  * apart from any other kthread_worker by its thread function alone.
  */
-static int lsv_worker_fn(void *kw)
+static int lsv_shard_wq_worker_fn(void *kw)
 {
 	return kthread_worker_fn(kw);
 }
 
-static int worker_run(struct lsv_worker *worker, const char *name, unsigned int cpu)
+static int worker_run(struct lsv_shard_wq_worker *worker, const char *name, unsigned int cpu)
 {
 	struct task_struct *task;
 
 	kthread_init_worker(&worker->kw);
 
-	task = kthread_create_on_node(lsv_worker_fn, &worker->kw, cpu_to_node(cpu),
+	task = kthread_create_on_node(lsv_shard_wq_worker_fn, &worker->kw, cpu_to_node(cpu),
 				      "lsv-%s/%u", name, cpu);
 	if (IS_ERR(task))
 		return PTR_ERR(task);
@@ -82,7 +82,7 @@ static int worker_run(struct lsv_worker *worker, const char *name, unsigned int 
 }
 
 /* A stopping kthread_worker drops what is still queued: run it first. */
-static void worker_stop(struct lsv_worker *worker)
+static void worker_stop(struct lsv_shard_wq_worker *worker)
 {
 	if (!worker->task)
 		return;
@@ -91,32 +91,48 @@ static void worker_stop(struct lsv_worker *worker)
 	kthread_stop(worker->task);
 }
 
-unsigned int lsv_worker_id(const struct lsv_worker *worker)
+unsigned int lsv_shard_wq_worker_id(const struct lsv_shard_wq_worker *worker)
 {
 	return worker->id;
 }
 
-unsigned int lsv_worker_id_limit(void)
+unsigned int lsv_shard_wq_worker_id_limit(void)
 {
-	return atomic_read(&g_lsv_worker_id_next);
+	return atomic_read(&g_lsv_shard_wq_worker_id_next);
 }
 
-struct lsv_worker *lsv_worker_by_id(unsigned int id)
+struct lsv_shard_wq_worker *lsv_shard_wq_worker_by_id(unsigned int id)
 {
-	return xa_load(&g_lsv_workers, id);
+	return xa_load(&g_lsv_shard_wq_workers, id);
 }
 
-void lsv_worker_add(struct lsv_worker *worker, struct lsv_wq_ctx *ctx)
+bool lsv_shard_wq_queue_work_by_id(unsigned int id, struct lsv_shard_wq_work *work)
 {
-	kthread_queue_work(&worker->kw, &ctx->work);
+	struct lsv_shard_wq_worker *worker = lsv_shard_wq_worker_by_id(id);
+
+	if (!worker)
+		return false;
+
+	return kthread_queue_work(&worker->kw, &work->work);
 }
 
-static struct lsv_wq *wq_create(const struct cpumask *cpumask, const char *name)
+bool lsv_shard_wq_queue_work_current(struct lsv_shard_wq_work *work)
 {
-	struct lsv_worker *worker;
+	struct lsv_shard_wq_worker *worker = lsv_shard_wq_current_worker();
+
+	if (!worker)
+		return false;
+
+	return kthread_queue_work(&worker->kw, &work->work);
+}
+
+
+static struct lsv_shard_wq *wq_create(const struct cpumask *cpumask, const char *name)
+{
+	struct lsv_shard_wq_worker *worker;
 	int worker_cnt;
 	unsigned int cpu;
-	struct lsv_wq *wq;
+	struct lsv_shard_wq *wq;
 	int i, rc;
 
 	worker_cnt = cpumask_weight(cpumask);
@@ -155,8 +171,8 @@ static struct lsv_wq *wq_create(const struct cpumask *cpumask, const char *name)
 		}
 
 		/* Ids are never reused: queues are created at module setup. */
-		worker->id = atomic_fetch_inc(&g_lsv_worker_id_next);
-		rc = xa_insert(&g_lsv_workers, worker->id, worker, GFP_KERNEL);
+		worker->id = atomic_fetch_inc(&g_lsv_shard_wq_worker_id_next);
+		rc = xa_insert(&g_lsv_shard_wq_workers, worker->id, worker, GFP_KERNEL);
 		if (unlikely(rc)) {
 			pr_err("lsv: wq %s: failed to register worker id=%u, rc=%d\n",
 			       wq->name, worker->id, rc);
@@ -170,16 +186,16 @@ static struct lsv_wq *wq_create(const struct cpumask *cpumask, const char *name)
 	return wq;
 
 out_err:
-	lsv_wq_destroy(wq);
+	lsv_shard_wq_destroy(wq);
 	return ERR_PTR(rc);
 }
 
-struct lsv_wq *
-lsv_wq_create(int worker_cnt, const struct cpumask *cpumask, const char *namefmt, ...)
+struct lsv_shard_wq *
+lsv_shard_wq_create(int worker_cnt, const struct cpumask *cpumask, const char *namefmt, ...)
 {
-	char name[LSV_WQ_NAME_SIZE];
+	char name[LSV_SHARD_WQ_NAME_SIZE];
 	cpumask_var_t cur_cpumask;
-	struct lsv_wq *wq;
+	struct lsv_shard_wq *wq;
 	int max_active;
 	va_list args;
 
@@ -207,9 +223,9 @@ lsv_wq_create(int worker_cnt, const struct cpumask *cpumask, const char *namefmt
 	return wq;
 }
 
-void lsv_wq_destroy(struct lsv_wq *wq)
+void lsv_shard_wq_destroy(struct lsv_shard_wq *wq)
 {
-	struct lsv_worker *worker;
+	struct lsv_shard_wq_worker *worker;
 	int i;
 
 	if (IS_ERR_OR_NULL(wq))
@@ -220,7 +236,7 @@ void lsv_wq_destroy(struct lsv_wq *wq)
 
 		/* a worker that never ran has no thread and no id */
 		if (worker->registered)
-			xa_erase(&g_lsv_workers, worker->id);
+			xa_erase(&g_lsv_shard_wq_workers, worker->id);
 		worker_stop(worker);
 	}
 
@@ -229,7 +245,7 @@ void lsv_wq_destroy(struct lsv_wq *wq)
 	vfree(wq);
 }
 
-struct lsv_worker *lsv_wq_map(struct lsv_wq *wq, const struct cpumask *cpumask,
+struct lsv_shard_wq_worker *lsv_shard_wq_map(struct lsv_shard_wq *wq, const struct cpumask *cpumask,
 			      unsigned int cpu)
 {
 	if (!cpumask)
@@ -241,7 +257,7 @@ struct lsv_worker *lsv_wq_map(struct lsv_wq *wq, const struct cpumask *cpumask,
 	return wq->worker_map[cpu];
 }
 
-void lsv_wq_flush(struct lsv_wq *wq)
+void lsv_shard_wq_flush(struct lsv_shard_wq *wq)
 {
 	int i;
 
@@ -250,10 +266,10 @@ void lsv_wq_flush(struct lsv_wq *wq)
 			kthread_flush_worker(&wq->workers[i].kw);
 }
 
-struct lsv_worker *lsv_wq_current_worker(void)
+struct lsv_shard_wq_worker *lsv_shard_wq_current_worker(void)
 {
-	if (!in_task() || kthread_func(current) != lsv_worker_fn)
+	if (!in_task() || kthread_func(current) != lsv_shard_wq_worker_fn)
 		return NULL;
 
-	return container_of(kthread_data(current), struct lsv_worker, kw);
+	return container_of(kthread_data(current), struct lsv_shard_wq_worker, kw);
 }
