@@ -201,7 +201,7 @@ static void LSV_KTEST(ht_anchor_ends_with_the_op)(struct kunit *test)
 	for (n = 0; n < LSV_HT_TEST_BUCKET_KEYS; n++)
 		KUNIT_ASSERT_NOT_NULL(test, lsv_ht_test_insert(ctx, keys[n], &is_new));
 
-	tid = lsv_worker_id(lsv_ht_test_worker(ctx, 0, 0));
+	tid = lsv_shard_wq_worker_id(lsv_ht_test_worker(ctx, 0, 0));
 
 	KUNIT_EXPECT_NOT_NULL(test, lsv_ht_test_find(ctx, keys[LSV_HT_TEST_BUCKET_KEYS - 1]));
 	KUNIT_EXPECT_FALSE(test, ht_kunit_participant_holds_anchor(ctx->ht, tid));
@@ -519,7 +519,7 @@ static void LSV_KTEST(ht_reclaim_reads_one_record_state)(struct kunit *test)
 	/* Act: worker 0 reclaims and stops halfway through the lookup's record... */
 	init_completion(&ctx->record_parked);
 	init_completion(&ctx->record_release);
-	ctx->record_tid = lsv_worker_id(lsv_ht_test_worker(ctx, 0, 1));
+	ctx->record_tid = lsv_shard_wq_worker_id(lsv_ht_test_worker(ctx, 0, 1));
 	atomic_set(&ctx->record_armed, 1);
 	kunit_activate_static_stub(test, ht_kunit_record_flags_read,
 				   ht_test_record_flags_read_stub);
@@ -626,7 +626,7 @@ static void LSV_KTEST(ht_stale_begin_second_suspect)(struct kunit *test)
 	kunit_activate_static_stub(test, ht_kunit_cell_reached, lsv_ht_test_cell_reached_stub);
 
 	/* Arrange: the older lookup computes its timestamp and stalls before publishing it */
-	ctx->begin_tid = lsv_worker_id(lsv_ht_test_worker(ctx, 0, 1));
+	ctx->begin_tid = lsv_shard_wq_worker_id(lsv_ht_test_worker(ctx, 0, 1));
 	atomic_set(&ctx->begin_armed, 1);
 	older->key = keys[LSV_HT_TEST_BUCKET_KEYS - 1];
 	older->stub_visible = true;
@@ -646,7 +646,7 @@ static void LSV_KTEST(ht_stale_begin_second_suspect)(struct kunit *test)
 	lsv_ht_test_job_start(ctx, younger, 1, 1, lsv_ht_test_find_fn);
 	KUNIT_ASSERT_TRUE(test, wait_for_completion_timeout(&ctx->parked,
 							    msecs_to_jiffies(LSV_HT_TEST_WAIT_MS)));
-	younger_tid = lsv_worker_id(lsv_ht_test_worker(ctx, 1, 1));
+	younger_tid = lsv_shard_wq_worker_id(lsv_ht_test_worker(ctx, 1, 1));
 
 	/* it is suspected, and its range frozen but not copied: node_copy() refuses it */
 	ctx->copy_block_max = keys[LSV_HT_TEST_COPY_BLOCK_MAX];
@@ -747,7 +747,7 @@ static void LSV_KTEST(ht_recovery_waits_for_cells)(struct kunit *test)
 	KUNIT_ASSERT_TRUE(test, wait_for_completion_timeout(&ctx->parked,
 							    msecs_to_jiffies(LSV_HT_TEST_WAIT_MS)));
 
-	tid = lsv_worker_id(lsv_ht_test_worker(ctx, 0, 1));
+	tid = lsv_shard_wq_worker_id(lsv_ht_test_worker(ctx, 0, 1));
 
 	churn->key = LSV_HT_TEST_CHURN_KEY;
 	churn->deadline_ms = LSV_HT_TEST_STARVE_MS;

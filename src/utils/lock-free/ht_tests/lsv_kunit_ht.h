@@ -11,7 +11,7 @@
 #include <linux/spinlock.h>
 #include <linux/refcount.h>
 
-#include "utils/wq.h"
+#include "core/wq/wq.h"
 
 /*
  * The fixture every lsv_ht implementation is tested with. The tests are
@@ -113,7 +113,7 @@ struct lsv_ht_test_value {
 
 struct lsv_ht_test_ctx {
 	struct kunit *test;
-	struct lsv_wq *wq[LSV_HT_TEST_WQ_CNT];
+	struct lsv_shard_wq *wq[LSV_HT_TEST_WQ_CNT];
 	unsigned int worker_cnt;	/* per wq */
 	struct lsv_ht *ht;
 
@@ -232,7 +232,7 @@ struct lsv_ht_test_ctx {
 };
 
 struct lsv_ht_test_job {
-	struct lsv_wq_ctx wq_ctx;
+	struct lsv_shard_wq_work wq_ctx;
 	struct lsv_ht_test_ctx *ctx;
 	lsv_ht_test_job_fn_t fn;
 	struct completion done;
@@ -255,11 +255,11 @@ extern const struct lsv_lf_list_ops g_lsv_ht_test_ops_norefs;
 
 struct lsv_lf_list_node *lsv_ht_test_node_alloc(u64 key, void *priv);
 void lsv_ht_test_node_dealloc(struct lsv_lf_list_node *node, void *priv);
-struct lsv_worker *lsv_ht_test_worker(struct lsv_ht_test_ctx *ctx, unsigned int wq_idx,
+struct lsv_shard_wq_worker *lsv_ht_test_worker(struct lsv_ht_test_ctx *ctx, unsigned int wq_idx,
 				      unsigned int worker);
 struct lsv_ht_test_job *lsv_ht_test_job_new(struct kunit *test);
 void lsv_ht_test_job_start_on(struct lsv_ht_test_ctx *ctx, struct lsv_ht_test_job *job,
-			      struct lsv_worker *worker, lsv_ht_test_job_fn_t fn);
+			      struct lsv_shard_wq_worker *worker, lsv_ht_test_job_fn_t fn);
 void lsv_ht_test_job_start(struct lsv_ht_test_ctx *ctx, struct lsv_ht_test_job *job,
 			   unsigned int wq_idx, unsigned int worker,
 			   lsv_ht_test_job_fn_t fn);

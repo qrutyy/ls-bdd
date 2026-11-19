@@ -309,7 +309,7 @@ const struct lsv_lf_list_ops g_lsv_ht_test_ops_norefs = {
 	.node_dealloc	= lsv_ht_test_node_dealloc,
 };
 
-static void ht_test_job_run(struct lsv_wq_ctx *wq_ctx)
+static void ht_test_job_run(struct lsv_shard_wq_work *wq_ctx)
 {
 	struct lsv_ht_test_job *job = container_of(wq_ctx, struct lsv_ht_test_job, wq_ctx);
 
@@ -323,11 +323,11 @@ static void ht_test_job_run(struct lsv_wq_ctx *wq_ctx)
 	complete(&job->done);
 }
 
-/* The |worker|-th worker of a wq; lsv_wq_map() takes a CPU number. */
-struct lsv_worker *lsv_ht_test_worker(struct lsv_ht_test_ctx *ctx, unsigned int wq_idx,
+/* The |worker|-th worker of a wq; lsv_shard_wq_map() takes a CPU number. */
+struct lsv_shard_wq_worker *lsv_ht_test_worker(struct lsv_ht_test_ctx *ctx, unsigned int wq_idx,
 				      unsigned int worker)
 {
-	return lsv_wq_map(ctx->wq[wq_idx], NULL, cpumask_nth(worker, cpu_online_mask));
+	return lsv_shard_wq_map(ctx->wq[wq_idx], NULL, cpumask_nth(worker, cpu_online_mask));
 }
 
 /*
@@ -344,14 +344,14 @@ struct lsv_ht_test_job *lsv_ht_test_job_new(struct kunit *test)
 }
 
 void lsv_ht_test_job_start_on(struct lsv_ht_test_ctx *ctx, struct lsv_ht_test_job *job,
-			      struct lsv_worker *worker, lsv_ht_test_job_fn_t fn)
+			      struct lsv_shard_wq_worker *worker, lsv_ht_test_job_fn_t fn)
 {
 	job->ctx = ctx;
 	job->fn = fn;
 	init_completion(&job->done);
-	lsv_wq_ctx_init(&job->wq_ctx, ht_test_job_run);
+	lsv_shard_wq_init_work(&job->wq_ctx, ht_test_job_run);
 	atomic_inc(&ctx->jobs_running);
-	lsv_worker_add(worker, &job->wq_ctx);
+	lsv_shard_wq_queue_work_by_id(lsv_shard_wq_worker_id(worker), &job->wq_ctx);
 }
 
 void lsv_ht_test_job_start(struct lsv_ht_test_ctx *ctx, struct lsv_ht_test_job *job,
@@ -678,7 +678,7 @@ int lsv_ht_test_init(struct kunit *test)
 	WRITE_ONCE(g_lsv_ht_kunit_cell_check, ht_test_cell_check);
 
 	for (i = 0; i < LSV_HT_TEST_WQ_CNT; i++) {
-		ctx->wq[i] = lsv_wq_create(0, cpu_online_mask, "kunit-ht%u", i);
+		ctx->wq[i] = lsv_shard_wq_create(0, cpu_online_mask, "kunit-ht%u", i);
 		if (IS_ERR(ctx->wq[i])) {
 			int rc = PTR_ERR(ctx->wq[i]);
 
@@ -734,7 +734,7 @@ void lsv_ht_test_exit(struct kunit *test)
 	lsv_ht_free(ctx->ht);
 
 	for (i = 0; i < LSV_HT_TEST_WQ_CNT; i++)
-		lsv_wq_destroy(ctx->wq[i]);
+		lsv_shard_wq_destroy(ctx->wq[i]);
 	WRITE_ONCE(g_lsv_ht_kunit_cell_check, NULL);
 	WRITE_ONCE(g_lsv_ht_test_ctx, NULL);
 	KUNIT_EXPECT_EQ(test, atomic_read(&ctx->nodes_live), 0);

@@ -14,7 +14,7 @@
 
 #include "utils/kunit.h"
 #include "linux/hash.h"
-#include "utils/wq.h"
+#include "core/wq/wq.h"
 
 #include "../lsv_kunit_ht.h"
 
@@ -23,7 +23,7 @@
  * regression test: every case reports its numbers with kunit_info() and
  * fails only when the scenario could not be run.
  *
- * Every participant is an lsv_wq worker bound to its CPU, runs one scenario
+ * Every participant is an lsv_shard_wq worker bound to its CPU, runs one scenario
  * flat out for a fixed time and times each operation with local_clock(), so
  * the latencies include the few tens of nanoseconds of the clock itself.
  * ns/op is the CPU time of one participant per operation: workers only spin.
@@ -67,7 +67,7 @@ enum lsv_htb_op {
 };
 
 struct lsv_htb_job {
-	struct lsv_wq_ctx wq_ctx;
+	struct lsv_shard_wq_work wq_ctx;
 	struct lsv_htb_ctx *ctx;
 	struct completion done;
 	struct rnd_state rnd;
@@ -82,7 +82,7 @@ struct lsv_htb_job {
 
 struct lsv_htb_ctx {
 	struct kunit *test;
-	struct lsv_wq *wq;
+	struct lsv_shard_wq *wq;
 	unsigned int worker_cnt;
 	struct kmem_cache *cells;
 
@@ -311,7 +311,7 @@ static void htb_stall_stub(struct lsv_lf_list_node *cell)
 		lsv_ht_test_op_msleep(LSV_HTB_STALL_MS);
 }
 
-static void htb_job_run(struct lsv_wq_ctx *wq_ctx)
+static void htb_job_run(struct lsv_shard_wq_work *wq_ctx)
 {
 	struct lsv_htb_job *job = container_of(wq_ctx, struct lsv_htb_job, wq_ctx);
 	struct lsv_htb_ctx *ctx = job->ctx;
@@ -374,14 +374,14 @@ static int htb_table_create(struct lsv_htb_ctx *ctx, u64 size, long max_cells)
 }
 
 struct lsv_htb_fill {
-	struct lsv_wq_ctx wq_ctx;
+	struct lsv_shard_wq_work wq_ctx;
 	struct lsv_htb_ctx *ctx;
 	struct completion done;
 	u64 failed;
 };
 
 /* Every prefilled key holds the pin of its insertion for the whole run. */
-static void htb_fill_run(struct lsv_wq_ctx *wq_ctx)
+static void htb_fill_run(struct lsv_shard_wq_work *wq_ctx)
 {
 	struct lsv_htb_fill *fill = container_of(wq_ctx, struct lsv_htb_fill, wq_ctx);
 	struct lsv_htb_ctx *ctx = fill->ctx;
@@ -417,10 +417,11 @@ static void htb_fill(struct lsv_htb_ctx *ctx)
 	KUNIT_ASSERT_NOT_NULL(ctx->test, fill);
 	fill->ctx = ctx;
 	init_completion(&fill->done);
-	lsv_wq_ctx_init(&fill->wq_ctx, htb_fill_run);
+	lsv_shard_wq_init_work(&fill->wq_ctx, htb_fill_run);
 	atomic_inc(&ctx->jobs_running);
-	lsv_worker_add(lsv_wq_map(ctx->wq, NULL, cpumask_nth(0, cpu_online_mask)),
-		       &fill->wq_ctx);
+	lsv_shard_wq_queue_work_by_id(lsv_shard_wq_worker_id(lsv_shard_wq_map(ctx->wq, NULL,
+										  cpumask_nth(0, cpu_online_mask))),
+				       &fill->wq_ctx);
 	KUNIT_ASSERT_TRUE(ctx->test, wait_for_completion_timeout(&fill->done, 60 * HZ));
 	KUNIT_ASSERT_EQ(ctx->test, fill->failed, 0ULL);
 }
@@ -457,9 +458,11 @@ static struct lsv_htb_job *htb_job_queue(struct lsv_htb_ctx *ctx, unsigned int i
 	job->stall = stall;
 	prandom_seed_state(&job->rnd, seed + i);
 	init_completion(&job->done);
-	lsv_wq_ctx_init(&job->wq_ctx, htb_job_run);
+	lsv_shard_wq_init_work(&job->wq_ctx, htb_job_run);
 	atomic_inc(&ctx->jobs_running);
-	lsv_worker_add(lsv_wq_map(ctx->wq, NULL, cpumask_nth(i, cpu_online_mask)), &job->wq_ctx);
+	lsv_shard_wq_queue_work_by_id(lsv_shard_wq_worker_id(lsv_shard_wq_map(ctx->wq, NULL,
+										  cpumask_nth(i, cpu_online_mask))),
+				       &job->wq_ctx);
 	return job;
 }
 
@@ -666,7 +669,7 @@ static void LSV_KTEST(htb_memory)(struct kunit *test)
 	table = lsv_ht_mem_usage(ctx->ht, sizeof(struct lsv_htb_cell));
 	kunit_info(test,
 		   "HTB memory participants=%u entries=%u buckets=%llu table_bytes=%zu cells=%ld cell_bytes=%zu per_entry=%zu\n",
-		   lsv_worker_id_limit(), LSV_HTB_KEYS, ctx->ht->bucket_cnt, table,
+		   lsv_shard_wq_worker_id_limit(), LSV_HTB_KEYS, ctx->ht->bucket_cnt, table,
 		   atomic_long_read(&ctx->cells_live),
 		   sizeof(struct lsv_htb_cell),
 		   (table + atomic_long_read(&ctx->cells_live) * sizeof(struct lsv_htb_cell)) /
@@ -721,7 +724,7 @@ static int htb_init(struct kunit *test)
 		return -ENOMEM;
 
 	/* one worker per online CPU, created before any table */
-	ctx->wq = lsv_wq_create(0, cpu_online_mask, "kunit-htb");
+	ctx->wq = lsv_shard_wq_create(0, cpu_online_mask, "kunit-htb");
 	if (IS_ERR(ctx->wq)) {
 		int rc = PTR_ERR(ctx->wq);
 
@@ -742,7 +745,7 @@ static void htb_exit(struct kunit *test)
 		return;
 
 	htb_stop(ctx);
-	lsv_wq_destroy(ctx->wq);
+	lsv_shard_wq_destroy(ctx->wq);
 	kmem_cache_destroy(ctx->cells);
 }
 

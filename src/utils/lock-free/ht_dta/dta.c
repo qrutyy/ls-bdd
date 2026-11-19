@@ -1052,11 +1052,11 @@ static struct lsv_dta_state *dta_of_local(struct lsv_dta_local_rec *loc, unsigne
  * a scan in an operation of its own, between two of the owner's, so that the
  * buffer never has two threads at once.
  */
-static void dta_reclaim_request_run(struct lsv_wq_ctx *ctx)
+static void dta_reclaim_request_run(struct lsv_shard_wq_work *ctx)
 {
 	struct lsv_dta_local_rec *loc = container_of(ctx, struct lsv_dta_local_rec,
 							   reclaim_ctx);
-	unsigned int tid = lsv_worker_id(lsv_wq_current_worker());
+	unsigned int tid = lsv_shard_wq_worker_id(lsv_shard_wq_current_worker());
 	struct lsv_dta_state *dta = dta_of_local(loc, tid);
 
 	/* the table was freed on this very worker, and left this to free */
@@ -1085,7 +1085,6 @@ static void dta_reclaim_request_run(struct lsv_wq_ctx *ctx)
 void dta_request_reclaim(struct lsv_dta_state *dta, int my_tid)
 {
 	struct lsv_dta_local_rec *loc;
-	struct lsv_worker *worker;
 	unsigned int i;
 
 	for (i = 0; i < dta->nr_threads; i++) {
@@ -1096,13 +1095,15 @@ void dta_request_reclaim(struct lsv_dta_state *dta, int my_tid)
 		if (atomic_xchg(&loc->reclaim_queued, 1))
 			continue;
 
-		worker = lsv_worker_by_id(i);
-		if (!worker) {
-			atomic_set(&loc->reclaim_queued, 0);
-			continue;
-		}
+		/*
+		 * Counted before the job can run: it counts itself out. A worker
+		 * that is gone has no one to scan the buffer, so no request.
+		 */
 		atomic_inc(&dta->reclaim_pending);
-		lsv_worker_add(worker, &loc->reclaim_ctx);
+		if (!lsv_shard_wq_queue_work_by_id(i, &loc->reclaim_ctx)) {
+			atomic_dec(&dta->reclaim_pending);
+			atomic_set(&loc->reclaim_queued, 0);
+		}
 	}
 }
 
@@ -1116,7 +1117,7 @@ struct lsv_dta_state *dta_alloc(struct lsv_ht *ht)
 	if (!dta)
 		return NULL;
 
-	dta->nr_threads = max_t(unsigned int, lsv_worker_id_limit(), 1);
+	dta->nr_threads = max_t(unsigned int, lsv_shard_wq_worker_id_limit(), 1);
 
 	dta->global = kvzalloc_objs(*dta->global, dta->nr_threads);
 	block = kvzalloc(struct_size(block, rec, dta->nr_threads), GFP_KERNEL);
@@ -1137,7 +1138,7 @@ struct lsv_dta_state *dta_alloc(struct lsv_ht *ht)
 
 	for (i = 0; i < dta->nr_threads; i++) {
 		dta->global[i].anchor_and_flags = LSV_DTA_IDLE_BIT;
-		lsv_wq_ctx_init(&dta->local[i].reclaim_ctx, dta_reclaim_request_run);
+		lsv_shard_wq_init_work(&dta->local[i].reclaim_ctx, dta_reclaim_request_run);
 	}
 
 	dta->ht = ht;
@@ -1181,18 +1182,18 @@ void dta_free(struct lsv_dta_state *dta, bool own_request)
 }
 
 /*
- * [DtA] 4.1: participants are the lsv_wq workers created before the table.
+ * [DtA] 4.1: participants are the lsv_shard_wq workers created before the table.
  * Any other caller fails its operation.
  */
 int ht_tid(const struct lsv_ht *ht)
 {
-	struct lsv_worker *worker = lsv_wq_current_worker();
+	struct lsv_shard_wq_worker *worker = lsv_shard_wq_current_worker();
 	unsigned int id;
 
 	if (WARN_ON_ONCE(!worker))
 		return -1;
 
-	id = lsv_worker_id(worker);
+	id = lsv_shard_wq_worker_id(worker);
 	if (unlikely(id >= ht->dta->nr_threads)) {
 		/*
 		 * The table sized its records when it was created, so a worker

@@ -14,7 +14,7 @@
 #include <linux/types.h>
 
 #include "ht_dta.h"
-#include "utils/wq.h"
+#include "core/wq/wq.h"
 
 #define LSV_DTA_ANCHOR_THRESHOLD	5	/* drop an anchor every N live cells */
 
@@ -147,7 +147,7 @@ struct lsv_dta_local_rec {
 	 * out of cells: the buffer is its owner's alone, so the scan runs on
 	 * the owner's worker, between two of its operations.
 	 */
-	struct lsv_wq_ctx reclaim_ctx;
+	struct lsv_shard_wq_work reclaim_ctx;
 };
 
 /* The local records and the state they belong to, which a reclaim request needs. */

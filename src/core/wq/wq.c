@@ -20,7 +20,7 @@ struct lsv_wq *lsv_wq_create(enum lsv_wq_mode mode, const char *name)
 
 	wq->mode = mode;
 
-	if (LSV_WQ_MODE_PINNED) {
+	if (mode == LSV_WQ_MODE_PINNED) {
 		wq->shard = lsv_shard_wq_create(0, cpu_online_mask, "%s", name);
 		if (IS_ERR(wq->shard)) {
 			rc = PTR_ERR(wq->shard);

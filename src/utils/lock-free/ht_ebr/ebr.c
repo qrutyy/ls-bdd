@@ -142,7 +142,7 @@ struct lsv_ebr_state *ebr_alloc(struct lsv_ht *ht)
 	if (!ebr)
 		return NULL;
 
-	ebr->nr_threads = max_t(unsigned int, lsv_worker_id_limit(), 1);
+	ebr->nr_threads = max_t(unsigned int, lsv_shard_wq_worker_id_limit(), 1);
 	ebr->ht = ht;
 	ebr->ops = ht->ops;
 	ebr->ctx = ht->ctx;
@@ -172,13 +172,13 @@ void ebr_destroy(struct lsv_ebr_state *ebr)
 
 int ebr_tid(const struct lsv_ht *ht)
 {
-	struct lsv_worker *worker = lsv_wq_current_worker();
+	struct lsv_shard_wq_worker *worker = lsv_shard_wq_current_worker();
 	unsigned int id;
 
 	if (WARN_ON_ONCE(!worker))
 		return -1;
 
-	id = lsv_worker_id(worker);
+	id = lsv_shard_wq_worker_id(worker);
 	if (unlikely(id >= ht->ebr->nr_threads)) {
 		/*
 		 * The table sized its records when it was created, so a worker
