@@ -54,13 +54,21 @@ struct lsv_wq {
 struct lsv_wq *lsv_wq_create(enum lsv_wq_mode mode, const char *name);
 void lsv_wq_destroy(struct lsv_wq *wq);
 
-#define lsv_wq_work_init_pool(w, fn)                       \
-	do {                                               \
-		(w)->type = LSV_WQ_WORK_POOL;              \
-		lsv_pool_wq_init_work(&(w)->pool_work, fn); \
-	} while (0)
+static inline void lsv_wq_init_work_pool(struct lsv_wq_work *work, lsv_pool_wq_func_t fn)
+{
+	work->type = LSV_WQ_WORK_POOL;
+	lsv_pool_wq_init_work(&work->pool_work, fn);
+}
 
-static inline void lsv_wq_work_init_shard(struct lsv_wq_work *work, lsv_shard_wq_func_t fn)
+/* A pool job that queues itself again |period| jiffies after |fn| returns. */
+static inline void lsv_wq_init_periodic_work_pool(struct lsv_wq_work *work, lsv_pool_wq_func_t fn,
+						  unsigned long period)
+{
+	work->type = LSV_WQ_WORK_POOL;
+	lsv_pool_wq_init_periodic_work(&work->pool_work, fn, period);
+}
+
+static inline void lsv_wq_init_work_shard(struct lsv_wq_work *work, lsv_shard_wq_func_t fn)
 {
 	work->type = LSV_WQ_WORK_SHARD;
 	lsv_shard_wq_init_work(&work->shard_work, fn);
@@ -95,8 +103,12 @@ static inline bool lsv_wq_sched_shard_current(struct lsv_wq_work *work)
 	return lsv_shard_wq_queue_work_current(&work->shard_work);
 }
 
-/* false: |work| is already queued, or PINNED has no queue for work that blocks. */
-static inline bool lsv_wq_sched_pool(struct lsv_wq *wq, struct lsv_wq_work *work)
+/*
+ * |delay| is in jiffies, 0 runs |work| at once. For a periodic job it starts the cycle.
+ *
+ * false: |work| is already queued, or PINNED has no queue for work that blocks.
+ */
+static inline bool lsv_wq_sched_pool(struct lsv_wq *wq, struct lsv_wq_work *work, unsigned long delay)
 {
 	if (WARN_ON_ONCE(work->type != LSV_WQ_WORK_POOL))
 		return false;
@@ -106,7 +118,16 @@ static inline bool lsv_wq_sched_pool(struct lsv_wq *wq, struct lsv_wq_work *work
 		return false;
 	}
 
-	return lsv_pool_wq_queue_work(wq->pool, &work->pool_work);
+	return lsv_pool_wq_queue_work(wq->pool, &work->pool_work, delay);
+}
+
+/* Stops a periodic pool job and waits for its run in progress, see lsv_pool_wq_cancel_work(). */
+static inline void lsv_wq_cancel_pool(struct lsv_wq_work *work)
+{
+	if (WARN_ON_ONCE(work->type != LSV_WQ_WORK_POOL))
+		return;
+
+	lsv_pool_wq_cancel_work(&work->pool_work);
 }
 
 #endif /* _LSV_WQ_H */

@@ -55,7 +55,44 @@ void lsv_pool_wq_flush(struct lsv_pool_wq *wq)
 	flush_workqueue(wq);
 }
 
-bool lsv_pool_wq_queue_work(struct lsv_pool_wq *wq, struct lsv_pool_wq_work *work)
+static void lsv_pool_wq_trampoline(struct work_struct *ws)
 {
-	return queue_work(wq, work);
+	struct lsv_pool_wq_work *w = container_of(to_delayed_work(ws), struct lsv_pool_wq_work, dwork);
+
+	w->func(w);
+
+	if (w->period && !READ_ONCE(w->stopped))
+		queue_delayed_work(w->wq, &w->dwork, w->period);
+}
+
+void lsv_pool_wq_init_work(struct lsv_pool_wq_work *w, lsv_pool_wq_func_t func)
+{
+	INIT_DELAYED_WORK(&w->dwork, lsv_pool_wq_trampoline);
+	w->func = func;
+	w->wq = NULL;
+	w->period = 0;
+	w->stopped = false;
+}
+
+void lsv_pool_wq_init_periodic_work(struct lsv_pool_wq_work *w, lsv_pool_wq_func_t func,
+				    unsigned long period)
+{
+	lsv_pool_wq_init_work(w, func);
+	w->period = period;
+}
+
+bool lsv_pool_wq_queue_work(struct lsv_pool_wq *wq, struct lsv_pool_wq_work *w,
+			    unsigned long delay)
+{
+	if (WARN_ON_ONCE(READ_ONCE(w->stopped)))
+		return false;
+
+	w->wq = wq;
+	return queue_delayed_work(wq, &w->dwork, delay);
+}
+
+void lsv_pool_wq_cancel_work(struct lsv_pool_wq_work *w)
+{
+	WRITE_ONCE(w->stopped, true);
+	cancel_delayed_work_sync(&w->dwork);
 }

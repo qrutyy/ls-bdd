@@ -3,13 +3,15 @@
 
 #include <linux/types.h>
 
-#if IS_ENABLED(CONFIG_KUNIT)
-
-/* These functions are static outside KUnit builds; ht_kunit_cell_reached() never is. */
 struct lsv_lf_list_node;
 
-void ht_kunit_anchor_dropped(struct lsv_lf_list_node *anchor);
+/* Not static in any build: dta.c defines it, ht_dta.c calls it. */
 void ht_kunit_cell_reached(struct lsv_lf_list_node *cell);
+
+#if IS_ENABLED(CONFIG_KUNIT)
+
+/* These functions are static outside KUnit builds. */
+void ht_kunit_anchor_dropped(struct lsv_lf_list_node *anchor);
 void ht_kunit_cell_linking(struct lsv_lf_list_node *cell);
 void ht_kunit_record_flags_read(unsigned int tid);
 void ht_kunit_begin_computed(unsigned int tid);

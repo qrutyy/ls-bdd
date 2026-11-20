@@ -12,8 +12,26 @@
  * job has no worker id: whatever needs one runs on lsv_shard_wq.
  */
 
-#define lsv_pool_wq      workqueue_struct
-#define lsv_pool_wq_work work_struct
+#define lsv_pool_wq workqueue_struct
+
+struct lsv_pool_wq_work;
+
+typedef void (*lsv_pool_wq_func_t)(struct lsv_pool_wq_work *w);
+
+/*
+ * Pool work is always a delayed_work underneath: queueing it with a zero delay
+ * is the same as queue_work(), so the caller never picks between the two kinds.
+ * The delay is a property of a single queueing, the period of the work itself.
+ */
+struct lsv_pool_wq_work {
+	struct delayed_work dwork;
+	lsv_pool_wq_func_t func;
+	/* the queue it was last queued on: the periodic work re-arms itself there */
+	struct lsv_pool_wq *wq;
+
+	unsigned long period;
+	bool stopped;
+};
 
 /*
  * An unbound queue that keeps making progress under memory pressure.
@@ -34,13 +52,31 @@ void lsv_pool_wq_destroy(struct lsv_pool_wq *wq);
 /* Waits for every job queued on |wq| so far. */
 void lsv_pool_wq_flush(struct lsv_pool_wq *wq);
 
-/*
- * A macro, not a function: INIT_WORK() gives every expansion a lockdep class
- * of its own, and a function would make all jobs share one.
- */
-#define lsv_pool_wq_init_work(work, func) INIT_WORK(work, func)
+/* A work that runs once per queueing. Also revives a work that was cancelled. */
+void lsv_pool_wq_init_work(struct lsv_pool_wq_work *w, lsv_pool_wq_func_t func);
 
-/* false if |work| is already queued and has not started yet. */
-bool lsv_pool_wq_queue_work(struct lsv_pool_wq *wq, struct lsv_pool_wq_work *work);
+/*
+ * A work that queues itself again |period| jiffies after |func| returns, until
+ * lsv_pool_wq_cancel_work(). |func| is one pass and knows nothing of the queue.
+ * Runs never overlap: the next count starts when the previous run is over.
+ */
+void lsv_pool_wq_init_periodic_work(struct lsv_pool_wq_work *w, lsv_pool_wq_func_t func,
+				    unsigned long period);
+
+/*
+ * Queues |w| to run after |delay| jiffies, 0 is at once. For a periodic work it
+ * starts the cycle.
+ *
+ * false if |w| is already queued and has not started yet.
+ */
+bool lsv_pool_wq_queue_work(struct lsv_pool_wq *wq, struct lsv_pool_wq_work *w,
+			    unsigned long delay);
+
+/*
+ * Stops a periodic work for good and waits for a run in progress: when it
+ * returns |w| is neither queued nor running, so its owner can be freed.
+ * Must not be called from |func| itself. Re-init |w| to use it again.
+ */
+void lsv_pool_wq_cancel_work(struct lsv_pool_wq_work *w);
 
 #endif /* _LSV_POOL_WQ_H */
