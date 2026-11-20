@@ -11,7 +11,6 @@
 #include "core/lmap/lmap.h"
 
 #define LSV_DEF_CELL_SIZE 4096
-#define LSV_DEF_SPACE_LAYOUT (LSV_SPACE_SEGMENTED)
 #define LSV_DEF_SEGMENT_SIZE (1 * 1024 * 1024)
 #define LSV_DEF_BACK_CAP_SECTORS 0
 
@@ -96,8 +95,7 @@ static void lsv_lmap_validate_params(struct lsv_lmap *lmap)
 	if (!lmap->params.cell_size)
 		lmap->params.cell_size = LSV_DEF_CELL_SIZE;
 
-	if (!lmap->params.space_layout)
-		lmap->params.space_layout = LSV_DEF_SPACE_LAYOUT;
+	/* No default for the layout: 0 is LSV_SPACE_LINEAR, a valid choice of its own. */
 
 	if (!lmap->params.segment_size)
 		lmap->params.segment_size = LSV_DEF_SEGMENT_SIZE;
@@ -133,6 +131,10 @@ static s32 lsv_lmap_setup_geometry(struct lsv_lmap *lmap)
 	lmap->capacity_cells = (backing_sectors - LSV_META_SECTORS) >> lmap->cell_sect_shift;
 	if (!lmap->capacity_cells)
 		return -ENOSPC;
+
+	/* ida hands out ints only: about 8 TiB of 4 KiB cells. */
+	if (lsv_lmap_is_linear(lmap) && lmap->capacity_cells - 1 > INT_MAX)
+		return -E2BIG;
 
 	lmap->segment_size = lmap->params.segment_size;
 
@@ -183,37 +185,48 @@ void lsv_lmap_deinit(struct lsv_lmap *lmap)
 	xa_for_each(&lmap->pblk_pba_map, pba, pblk)
 		kmem_cache_free(g_lmap_engine->pblk_cachep, pblk);
 	xa_destroy(&lmap->pblk_pba_map);
+	ida_destroy(&lmap->pba_bitmap);
 
 	bioset_exit(&lmap->bio_set);
 }
 
+/*
+ * The lowest free cell: the linear layout fills the gaps the dead ones left.
+ * Bounded by the capacity, so a full device is -ENOSPC from ida itself.
+ */
 static s64 lsv_lmap_linear_next_pba_get(struct lsv_lmap *lmap)
 {
-	s64 pba, pba_id;
-
-	/* NOTE: currently it fills the gaps, bc allocs the minimal*/
-	pba_id = ida_alloc(&lmap->pba_bitmap, GFP_NOIO);
-	pba = pba_id * lmap->cell_size;
-	if (pba_id < 0 || (u64)pba >= lmap->capacity_cells) {
-		return -ENOSPC;
-	}
-
-	return pba;
+	return ida_alloc_max(&lmap->pba_bitmap, lmap->capacity_cells - 1, GFP_NOIO);
 }
 
 static s64 lsv_lmap_segmented_next_pba_get(struct lsv_lmap *lmap)
 {
-	return 0;
+	/* TODO(maksim): add segment model pba allocation */
+	return -EOPNOTSUPP;
 }
 
 static s32 lsv_lmap_alloc_pba(struct lsv_lmap *lmap, u64 *pba)
 {
-	if (lsv_lmap_is_linear(lmap))
-		*pba = lsv_lmap_linear_next_pba_get(lmap);
+	s64 rc;
 
-	// TODO(maksim): add segment model pba allocation
+	if (lsv_lmap_is_linear(lmap))
+		rc = lsv_lmap_linear_next_pba_get(lmap);
+	else
+		rc = lsv_lmap_segmented_next_pba_get(lmap);
+
+	if (rc < 0)
+		return rc;
+
+	*pba = rc;
 
 	return 0;
+}
+
+/* Gives the cell back for reuse. Only the linear layout tracks free cells one by one. */
+static void lsv_lmap_free_pba(struct lsv_lmap *lmap, u64 pba)
+{
+	if (lsv_lmap_is_linear(lmap))
+		ida_free(&lmap->pba_bitmap, pba);
 }
 
 /*
@@ -223,7 +236,6 @@ static s32 lsv_lmap_alloc_pba(struct lsv_lmap *lmap, u64 *pba)
 struct lsv_pblk *lsv_pblk_alloc(struct lsv_lmap *lmap)
 {
 	struct lsv_pblk *pblk;
-	u64 pba;
 	s32 rc;
 
 	pblk = kmem_cache_alloc(g_lmap_engine->pblk_cachep, GFP_NOIO);
@@ -235,15 +247,19 @@ struct lsv_pblk *lsv_pblk_alloc(struct lsv_lmap *lmap)
 
 	rc = lsv_lmap_alloc_pba(lmap, &pblk->pba);
 	if (rc)
-		return ERR_PTR(rc);
+		goto free_pblk;
 
-	rc = xa_err(xa_store(&lmap->pblk_pba_map, pba, pblk, GFP_NOIO));
-	if (rc) {
-		kmem_cache_free(g_lmap_engine->pblk_cachep, pblk);
-		return ERR_PTR(rc);
-	}
+	rc = xa_err(xa_store(&lmap->pblk_pba_map, pblk->pba, pblk, GFP_NOIO));
+	if (rc)
+		goto free_pba;
 
 	return pblk;
+
+free_pba:
+	lsv_lmap_free_pba(lmap, pblk->pba);
+free_pblk:
+	kmem_cache_free(g_lmap_engine->pblk_cachep, pblk);
+	return ERR_PTR(rc);
 }
 
 void lsv_pblk_put(struct lsv_lmap *lmap, struct lsv_pblk *pblk)
@@ -261,6 +277,13 @@ void lsv_pblk_put(struct lsv_lmap *lmap, struct lsv_pblk *pblk)
 	 */
 
 	xa_erase(&lmap->pblk_pba_map, pblk->pba);
+	/*
+	 * TODO: the cell may be handed out again at once, while a reader that got
+	 * this pba from lsv_lmap_lookup_pba() or a dedup verify still has its read
+	 * in flight, and then reads the new data. Needs a count of reads in flight
+	 * (per pblk here, per segment in the segmented layout), see the GC design.
+	 */
+	lsv_lmap_free_pba(lmap, pblk->pba);
 	kfree_rcu(pblk, rcu);
 }
 
