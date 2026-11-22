@@ -1,0 +1,52 @@
+# Figs. 3-4 of the paper: IOPS of sequential and random reads against the number of request sources and the queue depth.
+#
+# One description for every build of the module: pass the build with tags,
+#   python3 -m lsvtest run experiments/paper_scaling.toml --tag mode=lf
+#   python3 -m lsvtest run experiments/paper_scaling.toml --tag mode=sy --tag variant=bucket
+#   python3 -m lsvtest run experiments/paper_scaling.toml --tag mode=sy --tag variant=optik
+# (test/run_paper.sh does it for all of them) and give every result directory
+# to `python3 -m lsvtest figures`.
+#
+# The parameters are those of table 1 of the ISP RAS 2026 paper (8k blocks, the
+# first 10% of the device, an offset of 16k so that no key is 0), except for the
+# length of a run and the number of repeats, shortened to fit three builds into
+# a week: a 30 s warm-up and 120 s runs (60 s and 180 s in the paper) and 10 repeats (25 in the paper).
+# 24 points x 10 repeats: about 10 hours per build, without the time of
+# preconditioning and of the module reload before every run.
+name = "paper_scaling"
+
+[device]
+# The NVMe drive of the platform: its contents are lost.
+backing = "/dev/nvme1n1"
+
+[matrix]
+ds = ["sl", "ht"]
+rw = ["rw:100", "randrw:100"]
+bs = ["8k"]
+# [numjobs, iodepth]
+concurrency = [[1, 4], [2, 8], [4, 16], [8, 32], [16, 64], [32, 128]]
+
+[fio]
+ioengine = "io_uring"
+runtime = 120
+
+[fio.extra]
+ramp_time = 30
+registerfiles = 1
+fixedbufs = 1
+hipri = 0
+prio = 0
+norandommap = 0
+cpus_allowed_policy = "shared"
+cpus_allowed = "0-{last_cpu}"
+offset = "16k"
+
+[run]
+repeats = 10
+baseline = false
+precondition = "auto"
+region = 0.1
+
+[tags]
+mode = "lf"
+paper = "ISP RAS 2026"
