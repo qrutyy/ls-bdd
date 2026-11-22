@@ -8,6 +8,12 @@
  * list of a bucket is changed under that bucket's spinlock, so writers of
  * different buckets do not meet. Lookups take no locks.
  *
+ * Built with HT_OPTIK (make type=sy ht=optik) the spinlock of a bucket is an
+ * OPTIK lock (optik.h): a writer looks for its place without any lock, then
+ * takes the lock only if the bucket was not changed meanwhile, in one
+ * compare-and-swap, and a removal of an absent key takes no lock at all.
+ * Nothing else differs.
+ *
  * Memory reclamation follows the lock-free table on purpose, so the two are
  * comparable: an unlinked node is pushed on a stack and freed, together with
  * the value it holds, when the table is freed. Lookups take no locks, so a node
@@ -21,6 +27,9 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/atomic.h>
+#ifdef HT_OPTIK
+#include "optik.h"
+#endif
 
 /* 2^18 buckets, like the lock-free table (tests build with fewer to get long chains) */
 #ifndef HT_MAP_BITS
@@ -36,7 +45,11 @@ struct hash_el {
 };
 
 struct ht_bucket {
+#ifdef HT_OPTIK
+	optik_t lock; /* version lock: a change is made only if the bucket still has the version it was read at */
+#else
 	spinlock_t lock; /* protects the list below against other writers */
+#endif
 	struct hash_el *first;
 };
 

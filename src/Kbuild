@@ -21,6 +21,16 @@ else
 $(error Invalid type specified. Use "make type=lf" or "make type=sy")
 endif
 
+# The hash table of the blocking build: a spinlock per bucket (default) or an
+# OPTIK lock per bucket (see utils/sync/optik.h).
+ifeq ($(type), sy)
+ifeq ($(ht), optik)
+ccflags-y += -DHT_OPTIK
+else ifneq ($(filter-out bucket,$(ht)),)
+$(error Invalid ht specified. Use "make type=sy ht=bucket" or "make type=sy ht=optik")
+endif
+endif
+
 lsbdd-objs += main.o utils/ds_control.o \
 	$(DIR)/btree_utils.o $(DIR)/skiplist.o \
 	$(DIR)/hashtable.o $(DIR)/rbtree.o  \

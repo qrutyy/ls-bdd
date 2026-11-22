@@ -109,3 +109,20 @@ See [`lock-free/skiplist.c`](../src/lock-free/skiplist.c) or [`lock-free/hashtab
 
 Some data structures are still **work-in-progress (WIP)** as they are being adapted to use `kmem_cache`-based memory management.
 All existing implementations—except for `lock-free/rb-tree` and `lock-free/btree`—are algorithmically correct and fully functional.
+
+## Blocking implementations (`make type=sy`)
+
+The skip list and the hash table of `utils/sync` are the blocking counterparts of the lock-free ones.
+Lookups take no locks; the locks are spinlocks (no sleeping under them), and nothing is allocated under a lock.
+As in the lock-free build, an unlinked node and the value it holds are freed when the structure is freed.
+
+| Index | Implementation |
+| ----- | -------------- |
+| `sl`  | lazy skip list: a lock per node, optimistic traversal that is validated under the locks (Herlihy, Lev, Luchangco, Shavit, 2007) |
+| `ht`  | a lock per bucket, `make type=sy ht=bucket` (default) |
+| `ht`  | an OPTIK lock per bucket, `make type=sy ht=optik`: the bucket is searched without a lock and locked only if its version has not changed, a removal of an absent key takes no lock (Guerraoui, Trigonakis, 2016, see `utils/sync/optik.h`) |
+
+`bt` and `rb` of both builds have no synchronization of their own: use them with one request source only.
+
+`hashtable_prev` looks only in the bucket of the key and in the one before it, like the lock-free table does:
+the buckets are not ordered by key, so it is not an exact predecessor query.

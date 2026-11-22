@@ -56,13 +56,21 @@ struct hashtable *hashtable_init(struct kmem_cache *lsbdd_node_cache)
 	}
 
 	for (i = 0; i < HT_BUCKETS; ++i) {
+#ifdef HT_OPTIK
+		ht->buckets[i].lock = OPTIK_INIT;
+#else
 		spin_lock_init(&ht->buckets[i].lock);
 		lockdep_set_novalidate_class(&ht->buckets[i].lock);
+#endif
 	}
 	atomic64_set(&ht->last_key, 0);
 	atomic_set(&ht->used, 0);
 
-	pr_info("Blocking hashtable (lock per bucket) initialized with %lu buckets.\n", HT_BUCKETS);
+#ifdef HT_OPTIK
+	pr_info("Blocking hashtable (OPTIK lock per bucket) initialized with %lu buckets.\n", HT_BUCKETS);
+#else
+	pr_info("Blocking hashtable (spinlock per bucket) initialized with %lu buckets.\n", HT_BUCKETS);
+#endif
 	return ht;
 }
 
@@ -74,6 +82,9 @@ struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void *value
 	struct hash_el *pred = NULL;
 	struct hash_el *curr = NULL;
 	struct hash_el *old = NULL;
+#ifdef HT_OPTIK
+	optik_t version;
+#endif
 
 	BUG_ON(!ht || !lsbdd_node_cache);
 	if (WARN_ON(!value))
@@ -86,10 +97,24 @@ struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void *value
 	el->value = value;
 
 	bucket = bucket_of(ht, key);
+
+#ifdef HT_OPTIK
+	for (;;) {
+		/* Find the place without a lock, then take the lock if the bucket is as it was. */
+		version = optik_get_version_wait(&bucket->lock);
+		pred = NULL;
+		for (curr = READ_ONCE(bucket->first); curr && curr->key < key; curr = READ_ONCE(curr->next))
+			pred = curr;
+
+		if (optik_trylock_version(&bucket->lock, version))
+			break;
+	}
+#else
 	spin_lock(&bucket->lock);
 
 	for (curr = bucket->first; curr && curr->key < key; curr = curr->next)
 		pred = curr;
+#endif
 
 	if (curr && curr->key == key) {
 		/* A reader on the old node must see a whole list, so swap the nodes. */
@@ -104,7 +129,11 @@ struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void *value
 	else
 		smp_store_release(&bucket->first, el);
 
+#ifdef HT_OPTIK
+	optik_unlock(&bucket->lock);
+#else
 	spin_unlock(&bucket->lock);
+#endif
 
 	if (old)
 		push_removed(ht, old);
@@ -162,10 +191,29 @@ void hashtable_remove(struct hashtable *ht, sector_t key, struct kmem_cache *lsb
 	struct ht_bucket *bucket = NULL;
 	struct hash_el *pred = NULL;
 	struct hash_el *curr = NULL;
+#ifdef HT_OPTIK
+	optik_t version;
+#endif
 
 	BUG_ON(!ht);
 
 	bucket = bucket_of(ht, key);
+
+#ifdef HT_OPTIK
+	for (;;) {
+		version = optik_get_version_wait(&bucket->lock);
+		pred = NULL;
+		for (curr = READ_ONCE(bucket->first); curr && curr->key < key; curr = READ_ONCE(curr->next))
+			pred = curr;
+
+		/* Nothing to remove: no lock needed. */
+		if (!curr || curr->key != key)
+			return;
+
+		if (optik_trylock_version(&bucket->lock, version))
+			break;
+	}
+#else
 	spin_lock(&bucket->lock);
 
 	for (curr = bucket->first; curr && curr->key < key; curr = curr->next)
@@ -175,13 +223,18 @@ void hashtable_remove(struct hashtable *ht, sector_t key, struct kmem_cache *lsb
 		spin_unlock(&bucket->lock);
 		return;
 	}
+#endif
 
 	if (pred)
 		smp_store_release(&pred->next, curr->next);
 	else
 		smp_store_release(&bucket->first, curr->next);
 
+#ifdef HT_OPTIK
+	optik_unlock(&bucket->lock);
+#else
 	spin_unlock(&bucket->lock);
+#endif
 
 	push_removed(ht, curr);
 }
