@@ -136,3 +136,35 @@ def test_shipped_experiments_load():
     assert files
     for path in files:
         assert spec.load(path).points()
+
+
+def test_tags_override_the_file_and_are_kept_apart():
+    exp = spec.from_dict(
+        doc(tags={"mode": "lf", "paper": "x"}), tags={"mode": "sy", "variant": "optik"}
+    )
+    assert exp.tags == {"mode": "sy", "paper": "x", "variant": "optik"}
+    assert exp.tag_overrides == {"mode": "sy", "variant": "optik"}
+
+
+def test_parse_tag_args():
+    assert spec.parse_tag_args(["mode=sy", "variant=optik"]) == {
+        "mode": "sy",
+        "variant": "optik",
+    }
+
+
+@pytest.mark.parametrize("item", ["mode", "=sy", "1x=y", "ds=ht", "iops=1", "repeat=2"])
+def test_parse_tag_args_rejects(item):
+    with pytest.raises(spec.SpecError):
+        spec.parse_tag_args([item])
+
+
+def test_ds_keeps_only_the_given_indexes():
+    exp = spec.from_dict(doc(), ds=["ht"])
+    assert exp.matrix["ds"] == ["ht"] and exp.ds_override == ["ht"]
+    assert {p.ds for p in exp.points()} == {"ht"}
+
+
+def test_ds_must_be_in_the_experiment():
+    with pytest.raises(spec.SpecError):
+        spec.from_dict(doc(), ds=["rb"])

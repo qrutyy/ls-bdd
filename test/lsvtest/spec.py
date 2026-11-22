@@ -144,6 +144,10 @@ class Experiment:
     run: dict = field(default_factory=dict)
     tags: dict = field(default_factory=dict)
     source: str = ""
+    # tags given on the command line; they are not in |source|, so they are kept apart
+    tag_overrides: dict = field(default_factory=dict)
+    # the indexes of [matrix] to run, from the command line; kept apart for the same reason
+    ds_override: list = field(default_factory=list)
 
     @property
     def repeats(self) -> int:
@@ -269,25 +273,74 @@ class Experiment:
                 )
 
 
-def load(path: Path) -> Experiment:
+def load(
+    path: Path, tags: Optional[dict] = None, ds: Optional[list] = None
+) -> Experiment:
+    """
+    |tags| replace the [tags] of the file: the same experiment, run per build.
+    |ds| keeps only these indexes of [matrix], e.g. the hash table alone.
+    """
     path = Path(path)
     source = path.read_text()
     try:
         doc = tomllib.loads(source)
     except tomllib.TOMLDecodeError as e:
         raise SpecError(f"{path}: {e}") from e
-    return from_dict(doc, default_name=path.stem, source=source)
+    return from_dict(doc, default_name=path.stem, source=source, tags=tags, ds=ds)
 
 
-def from_dict(doc: dict, default_name: str = "experiment", source: str = ""):
+def parse_tag_args(items: list[str]) -> dict:
+    """KEY=VALUE strings of the command line."""
+    from .fio import ROW_FIELDS
+
+    taken = (
+        set(Point.__dataclass_fields__)
+        | set(ROW_FIELDS)
+        | {"experiment", "run_id", "repeat", "time"}
+    )
+    tags = {}
+    for item in items:
+        key, sep, value = item.partition("=")
+        if not sep or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            raise SpecError(f"a tag is KEY=VALUE, got {item!r}")
+        if key in taken:
+            raise SpecError(f"tag {key!r} is the name of a result column")
+        tags[key] = value
+    return tags
+
+
+def from_dict(
+    doc: dict,
+    default_name: str = "experiment",
+    source: str = "",
+    tags: Optional[dict] = None,
+    ds: Optional[list] = None,
+):
+    overrides = dict(tags or {})
+    matrix = dict(doc.get("matrix", {}))
+    if ds:
+        have = matrix.get(
+            "ds",
+            [doc.get("device", {}).get("ds")]
+            if doc.get("device", {}).get("ds")
+            else [],
+        )
+        missing = [d for d in ds if d not in have]
+        if missing:
+            raise SpecError(
+                f"--ds {', '.join(missing)}: the experiment runs {', '.join(map(str, have))}"
+            )
+        matrix["ds"] = [d for d in have if d in ds]
     exp = Experiment(
         name=doc.get("name", default_name),
-        matrix=doc.get("matrix", {}),
+        matrix=matrix,
         device=doc.get("device", {}),
         fio=doc.get("fio", {}),
         run=doc.get("run", {}),
-        tags=doc.get("tags", {}),
+        tags={**doc.get("tags", {}), **overrides},
         source=source,
+        tag_overrides=overrides,
+        ds_override=list(ds or []),
     )
     exp.validate()
     return exp

@@ -183,6 +183,11 @@ class Runner:
             return
         (self.out / "fio").mkdir(parents=True, exist_ok=True)
         (self.out / "experiment.toml").write_text(self.exp.source)
+        if self.exp.tag_overrides or self.exp.ds_override:
+            overrides = {"tags": self.exp.tag_overrides, "ds": self.exp.ds_override}
+            (self.out / "overrides.json").write_text(
+                json.dumps(overrides, indent=2) + "\n"
+            )
         meta = env.fingerprint(self.repo, [backing])
         meta["experiment"] = self.exp.name
         (self.out / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")

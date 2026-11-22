@@ -157,3 +157,20 @@ def test_plan_mixed_budget_counts_only_writes():
 def test_plan_without_budget():
     with pytest.raises(spec.SpecError, match="write budget"):
         runner.plan_io(point("randrw", 99, numjobs=64), 64 << 20, 1.0, "always")
+
+
+def test_tag_overrides_reach_the_rows_and_survive_a_resume(tmp_path):
+    exp = spec.from_dict(
+        {
+            "name": "t",
+            "matrix": {"ds": ["ht"], "rw": ["randread"], "bs": ["4k"]},
+            "run": {"repeats": 1},
+            "tags": {"mode": "lf"},
+        },
+        source="name = 't'\n",
+        tags={"mode": "sy", "variant": "optik"},
+    )
+    runner.Runner(exp, tmp_path, FakeSystem(), tmp_path).run()
+    assert {(r["mode"], r["variant"]) for r in rows(tmp_path)} == {("sy", "optik")}
+    saved = json.loads((tmp_path / "overrides.json").read_text())
+    assert saved == {"tags": {"mode": "sy", "variant": "optik"}, "ds": []}
