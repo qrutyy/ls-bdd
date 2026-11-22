@@ -1,96 +1,107 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only
+ *
+ * Hash table with a lock per bucket: the blocking counterpart of the lock-free
+ * hash table.
+ *
+ * The table has the same shape as the lock-free one: HT_BUCKETS buckets chosen
+ * with hash_min(key, HT_MAP_BITS), a sorted singly linked list in each. The
+ * list of a bucket is changed under that bucket's spinlock, so writers of
+ * different buckets do not meet. Lookups take no locks.
+ *
+ * Memory reclamation follows the lock-free table on purpose, so the two are
+ * comparable: an unlinked node is pushed on a stack and freed, together with
+ * the value it holds, when the table is freed. Lookups take no locks, so a node
+ * (or a value) can still be read after it was unlinked.
+ */
 
 #ifndef HASHTABLE_H
 #define HASHTABLE_H
 
 #include <linux/hashtable.h>
 #include <linux/slab.h>
+#include <linux/spinlock.h>
+#include <linux/atomic.h>
 
-#define HT_MAP_BITS 7
-#define CHUNK_SIZE (1024 * 2)
-#define BUCKET_NUM ((sector_t)(key / (CHUNK_SIZE)))
-
-struct hashtable {
-	DECLARE_HASHTABLE(head, HT_MAP_BITS);
-	struct hash_el *last_el;
-	u8 max_bck_num;
-};
+/* 2^18 buckets, like the lock-free table (tests build with fewer to get long chains) */
+#ifndef HT_MAP_BITS
+#define HT_MAP_BITS 18
+#endif
+#define HT_BUCKETS (1UL << HT_MAP_BITS)
 
 struct hash_el {
 	sector_t key;
 	void *value;
-	struct hlist_node node;
+	struct hash_el *next; /* the next greater key of the bucket */
+	struct hash_el *removed_link; /* stack of unlinked nodes */
+};
+
+struct ht_bucket {
+	spinlock_t lock; /* protects the list below against other writers */
+	struct hash_el *first;
+};
+
+struct hashtable {
+	struct ht_bucket *buckets;
+	atomic64_t last_key; /* greatest key ever inserted */
+	atomic_t used; /* set by the first insertion */
+	struct hash_el *removed_head;
 };
 
 /**
- * Simply initialises the hashtable and allocates guard nodes.
+ * Allocates the table and its buckets.
  *
- * @param lsbdd_node_cache - node cache ;)
- *
- * @return hashtable structure, NULL on error
+ * @return hashtable on success, NULL on memory error
  */
 struct hashtable *hashtable_init(struct kmem_cache *lsbdd_node_cache);
 
 /**
- * Inserts node with provided key-value pair into the hashtable.
+ * Inserts the key-value pair. If the key is present, its node (and value) is
+ * replaced; the old ones are kept until hashtable_free().
  *
- * @param ht - hashtable structure
- * @param key - LBA sector
  * @param value - pointer to struct (lsbdd_value_redir) with PBA and meta data
- * @param lsbdd_node_cache
- * @param lsbdd_value_cache
  *
- * @return inserted node, NULL if:
- *  - if key == 0
- *  - if failed to insert key (check lf_list_add)
+ * @return the node on success, NULL on memory error (the value is not taken)
  */
-struct hash_el *hashtable_insert(struct hashtable *hm, sector_t key, void *value, struct kmem_cache *lsbdd_node_cache, struct kmem_cache *lsbdd_value_cache);
+struct hash_el *hashtable_insert(struct hashtable *ht, sector_t key, void *value, struct kmem_cache *lsbdd_node_cache,
+				 struct kmem_cache *lsbdd_value_cache);
 
 /**
- * Frees the allocated memory and caches.
- * Just iterates over the buckets and calls frees all the nodes.
- *
- * @param ht - hastable structure
- * @param lsbdd_node_cache - node cache
- * @param lsbdd_value_cache - value cache
- *
- * @return void
+ * Frees the table: linked nodes, unlinked ones, and all their values.
+ * Does not destroy the caches, their owner does. Must not run concurrently
+ * with any other operation.
  */
-void hashtable_free(struct hashtable *hm, struct kmem_cache *lsbdd_node_cache, struct kmem_cache *lsbdd_value_cache);
+void hashtable_free(struct hashtable *ht, struct kmem_cache *lsbdd_node_cache, struct kmem_cache *lsbdd_value_cache);
 
 /**
- * Searches for node with provided key in the hashtable.
+ * Finds the node with the given key. Takes no locks.
  *
- * @param ht - hastable structure
- * @param key - LBA sector
- *
- * @return node on success, NULL on fail
+ * @return the node, NULL if there is none
  */
-struct hash_el *hashtable_find_node(struct hashtable *hm, sector_t key);
+struct hash_el *hashtable_find_node(struct hashtable *ht, sector_t key);
 
 /**
- * Searches for node with max key smaller than provided one.
+ * Looks for the node with the greatest key smaller than |key|, like the
+ * lock-free table does: only in the bucket of |key| and in the one before it.
+ * The buckets are not ordered by key, so this is not an exact predecessor
+ * query: it can miss the predecessor, and it can find a node of the bucket
+ * before that is not the greatest smaller key.
  *
- * @param ht - hastable structure
- * @param key - LBA sector
- * @param prev_key - pointer to prev_key memory that will be changed
+ * @param prev_key - receives the key of the node found
  *
- * @return prev_node on success, NULL on fail
+ * @return the node, NULL if none was found
  */
-struct hash_el *hashtable_prev(struct hashtable *hm, sector_t key, sector_t *prev_key);
+struct hash_el *hashtable_prev(struct hashtable *ht, sector_t key, sector_t *prev_key);
 
 /**
- * Removes the node from the hashtable. Frees the node specific mem.
- *
- * @param ht - hashtable structure
- * @param key - LBA sector
- * @param lsbdd_value_cache - value cache (value is being freed right at the time node is being removed)
- *
- * @return void
+ * Removes the node with the given key, if any. Neither the node nor its value
+ * is freed here (see the top of this file).
  */
-void hashtable_remove(struct hashtable *hm, sector_t key, struct kmem_cache *lsbdd_value_cache);
+void hashtable_remove(struct hashtable *ht, sector_t key, struct kmem_cache *lsbdd_value_cache);
 
-// @return bool if empty
+/* The greatest key ever inserted, 0 if there was none. Never decreases. */
+sector_t hashtable_last(struct hashtable *ht);
+
+/* True until the first insertion. It does not turn true again after removals. */
 bool hashtable_is_empty(struct hashtable *ht);
 
 #endif

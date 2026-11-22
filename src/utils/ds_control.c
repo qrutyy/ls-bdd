@@ -76,7 +76,9 @@ s32 ds_init(struct lsbdd_ds *ds, char *sel_ds, struct lsbdd_cache_mng *cache_mng
 
 		ds->type = HASHTABLE_TYPE;
 		ds->structure.map_hash = hash_table;
+#ifdef LF_MODE
 		ds->structure.map_hash->max_bck_num = 0;
+#endif
 	} else if (!strncmp(sel_ds, rb, 2)) {
 		rbtree_map = kzalloc(sizeof(struct rbtree), GFP_KERNEL);
 		rbtree_map = rbtree_init();
@@ -208,9 +210,6 @@ sector_t ds_last(struct lsbdd_ds *ds, sector_t key)
 	#ifdef LF_MODE
 	struct lf_list_node *hm_node = NULL;
 #endif
-	#ifdef SY_MODE
-	struct hash_el *hm_node = NULL;
-	#endif
 	struct rbtree_node *rb_node = NULL;
 	u64 *kp = NULL;
 
@@ -223,10 +222,14 @@ sector_t ds_last(struct lsbdd_ds *ds, sector_t key)
 		return skiplist_last(ds->structure.map_list);
 		break;
 	case HASHTABLE_TYPE:
+#ifdef SY_MODE
+		return hashtable_last(ds->structure.map_hash);
+#else
 		hm_node = ds->structure.map_hash->last_el;
 		if (hm_node == NULL)
 			return 0;
 		return hm_node->key;
+#endif
 	case RBTREE_TYPE:
 		rb_node = rbtree_last(ds->structure.map_rbtree);
 		if (rb_node == NULL)
