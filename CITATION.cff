@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "LS-BDD: a log-structured block device driver for research"
+abstract: >-
+  LS-BDD is a software-defined-storage block device driver for the Linux
+  kernel, made for research. It implements log-structured storage, in which
+  the logical block address translation table is a pluggable data structure
+  (skip list, hash table, B+-tree, red-black tree; lock-free and blocking
+  variants), together with a test system that automates the whole experiment
+  cycle: declarative experiment descriptions, repeated fio runs and a
+  statistical report.
+authors:
+  - given-names: Mikhail
+    family-names: Gavrilenko
+    alias: qrutyy
+repository-code: "https://github.com/qrutyy/ls-bdd"
+license: GPL-2.0-only
+keywords:
+  - log-structured storage
+  - block device
+  - Linux kernel
+  - address translation table
+  - lock-free data structures
+  - performance evaluation
