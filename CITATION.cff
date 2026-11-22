@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Gavrilenko"
+  given-names: "Mikhail"
+  orcid: "https://orcid.org/0009-0009-0342-526X"
+title: "LS-BDD"
+version: 2.0.0
+date-released: 2026-11-22
+url: "https://github.com/qrutyy/ls-bdd"
