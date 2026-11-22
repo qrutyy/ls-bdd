@@ -7,12 +7,14 @@ Command line of the harness, run from test/ as root:
     python3 -m lsvtest destroy lsvbd1
     python3 -m lsvtest unload
 
-    python3 -m lsvtest run experiments/smoke.toml [--dry-run] [--ko ../src/lsbdd.ko]
+    python3 -m lsvtest run experiments/smoke.toml [--dry-run] [--ko ../src/lsbdd.ko] [--tag mode=sy]
     python3 -m lsvtest run --resume results/smoke-<time>
     python3 -m lsvtest report results/smoke-<time> [more result dirs]
+    python3 -m lsvtest figures results/paper_*-<time> --out figures    # gnuplot, EPS
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -53,9 +55,13 @@ def cmd_run(args) -> int:
 
     if args.resume:
         out = args.resume
-        exp = spec.load(out / "experiment.toml")
+        saved = out / "overrides.json"
+        overrides = json.loads(saved.read_text()) if saved.exists() else {}
+        exp = spec.load(
+            out / "experiment.toml", overrides.get("tags"), overrides.get("ds")
+        )
     elif args.experiment:
-        exp = spec.load(args.experiment)
+        exp = spec.load(args.experiment, spec.parse_tag_args(args.tag), args.ds)
         out = runner.result_dir(args.out, exp)
     else:
         raise spec.SpecError("give an experiment file or --resume DIR")
@@ -78,6 +84,20 @@ def cmd_report(args) -> None:
     out = args.out or args.dirs[0] / "report"
     report.report(args.dirs, out, args.metric or ("iops", "lat_p99_us"))
     print(f"report: {out}")
+
+
+def cmd_figures(args) -> None:
+    from . import figures
+
+    scripts = figures.make(
+        args.dirs,
+        args.out,
+        mono=args.mono,
+        style=args.style,
+        ylog_lat=args.log_lat,
+        do_render=not args.no_render,
+    )
+    print(f"figures: {', '.join(s.stem for s in scripts)} in {args.out}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -110,6 +130,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--resume", type=Path, help="continue an interrupted run")
     p.add_argument("--dry-run", action="store_true", help="print, do not run")
     p.add_argument(
+        "--ds",
+        action="append",
+        default=[],
+        help="run only this index of the experiment, repeatable",
+    )
+    p.add_argument(
+        "--tag",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="set a tag of the experiment, repeatable (e.g. the build: --tag mode=sy)",
+    )
+    p.add_argument(
         "--ko",
         type=Path,
         default=Path("../src/lsbdd.ko"),
@@ -122,6 +155,35 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", type=Path)
     p.add_argument("--metric", action="append", help="metric to plot, repeatable")
     p.set_defaults(func=cmd_report)
+
+    p = sub.add_parser(
+        "figures", help="the figures of the paper as gnuplot scripts (and EPS)"
+    )
+    p.add_argument(
+        "dirs",
+        type=Path,
+        nargs="+",
+        help="result directories, every build of every paper_* experiment",
+    )
+    p.add_argument("--out", type=Path, default=Path("figures"))
+    p.add_argument(
+        "--mono",
+        action="store_true",
+        help="black and white, told apart by dashes and marks",
+    )
+    p.add_argument(
+        "--style",
+        choices=("box", "bars"),
+        default="box",
+        help="figs. 5-7: box plots or bars with the interval",
+    )
+    p.add_argument(
+        "--log-lat", action="store_true", help="logarithmic axis of the latency figures"
+    )
+    p.add_argument(
+        "--no-render", action="store_true", help="write the scripts and data only"
+    )
+    p.set_defaults(func=cmd_figures)
 
     return parser
 

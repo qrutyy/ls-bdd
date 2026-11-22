@@ -89,6 +89,52 @@ completion and total latency (in microseconds). `summary.csv` gives, per point,
 the median over repeats with a bootstrap 95% confidence interval and the
 coefficient of variation of IOPS.
 
+### Figures of the paper (gnuplot)
+
+`experiments/paper_scaling.toml` (figs. 3-4), `paper_ops.toml` (fig. 5) and `paper_lat.toml`
+(figs. 6-7) are run for every build of the module, and `figures` draws the results as
+gnuplot scripts and EPS files:
+
+```bash
+sudo ./run_paper.sh              # builds lf / bl / optik, measures, plots
+sudo ./run_paper.sh --dry-run    # what it would do
+
+# or by hand, one build:
+sudo python3 -m lsvtest run experiments/paper_scaling.toml --ko build/lsbdd-bl.ko \
+     --tag mode=sy --tag variant=bucket          # --ds ht keeps only the hash table
+python3 -m lsvtest figures results/paper/*/* --out figures   # [--mono] [--style bars] [--log-lat]
+```
+
+The builds are told apart by the tags `mode` (`lf`, `sy`) and `variant` (`bucket`, `optik`; the
+latter is the lock of the hash table only, the skip list is the same). The series are named
+index and build: `ht-lf`, `ht-bl`, `ht-optik`, `sl-lf`, `sl-bl`, and `nvme` for a baseline.
+`--tag` and `--ds` are kept in `overrides.json` of the result directory, so `--resume` keeps them.
+
+| Figure | Experiment | What |
+| ------ | ---------- | ---- |
+| fig3 | paper_scaling | IOPS of sequential reads against the number of sources / queue depth |
+| fig4 | paper_scaling | the same for random reads |
+| fig5 | paper_ops | IOPS of every operation in the optimal configuration (8 sources, depth 32) |
+| fig6 | paper_lat | p99 latency of every operation without contention (1 source, depth 1) |
+| fig7 | paper_lat | p99 latency of every operation in the optimal configuration |
+
+Every figure is drawn from its own experiment only: they were measured under different protocols
+(`paper_lat` has no warm-up). The IOPS of a mixed operation is reads plus writes, the latency of
+one has a column for each direction.
+
+How the spread of the repeats is shown: a line (figs. 3-4) is the median with the bootstrap 95%
+interval of the median as error bars, and a repeat that Tukey's rule calls an outlier (beyond 1.5
+interquartile ranges of the quartiles) is a small hollow mark, so one bad run is visible and does
+not move the line. In figs. 5-7 a box is the quartiles, the bar in it the median, the whiskers reach
+the farthest repeat that is not an outlier, outliers are hollow marks (`--style bars` draws bars with
+the interval instead). `figures_table.csv` has, for every point, the repeats, the median, the
+interval, the coefficient of variation and the number of outliers. Styles are solid, dashed and
+dash-dotted by build and red / blue by index, so a black and white print (`--mono`) still reads.
+
+The descriptions use 120 s runs and 10 repeats instead of the paper's 180 s and 25, to fit the three
+builds into a week: 1500 runs in all (about 58 hours of fio, plus the preconditioning of every run
+that reads). The numbers are in the header of each file.
+
 ### Unit tests
 
 `pytest` in `test/` checks the harness itself against a fake `/sys` and canned
