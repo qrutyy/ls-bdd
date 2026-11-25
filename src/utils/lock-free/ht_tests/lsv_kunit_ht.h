@@ -56,6 +56,20 @@
 #define LSV_HT_IDLE_BUFFERS 1
 #endif
 
+/*
+ * The table reclaims for an operation that ran out of cells, and for a
+ * participant that went idle; 0 when it only ever reclaims its own retired
+ * cells, from its own operations.
+ */
+#ifndef LSV_HT_RECLAIM_ON_DEMAND
+#define LSV_HT_RECLAIM_ON_DEMAND 1
+#endif
+
+/* cells a roomy stress run may allocate per job */
+#ifndef LSV_HT_TEST_POOL_PER_JOB
+#define LSV_HT_TEST_POOL_PER_JOB 256
+#endif
+
 #define LSV_HT_TEST_WAIT_MS 60000
 #define LSV_HT_TEST_WQ_CNT 2
 

@@ -265,6 +265,7 @@ static void LSV_KTEST(ht_lost_insertion_drops_its_value)(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, atomic_read(&made->cell_cnt), 0);
 }
 
+#if LSV_HT_RECLAIM_ON_DEMAND
 /*
  * A pool of two cells, and two removals, fewer than the three retirements
  * after which a participant scans its retire buffer: the cells of the removed
@@ -298,6 +299,8 @@ static void LSV_KTEST(ht_cell_shortage_reclaims)(struct kunit *test)
 	KUNIT_EXPECT_TRUE(test, is_new);
 	KUNIT_EXPECT_GT(test, atomic_read(&ctx->nodes_freed), 0);
 }
+
+#endif
 
 /*
  * Without value_get() the table knows nothing of references: it pins
@@ -447,7 +450,6 @@ static void LSV_KTEST(ht_capacity_under_contention)(struct kunit *test)
 #define LSV_HT_TEST_STRESS_KEYS		64
 #define LSV_HT_TEST_STRESS_ITERS	2000
 /* cells of the pool per job, an eighth of what a job may retire */
-#define LSV_HT_TEST_POOL_PER_JOB	256
 
 /*
  * Pin a random key, then drop the pin; the last put removes the key, as the
@@ -579,7 +581,7 @@ static void ht_test_hold_fn(struct lsv_ht_test_job *job)
 }
 
 
-#if LSV_HT_IDLE_BUFFERS
+#if LSV_HT_IDLE_BUFFERS && LSV_HT_RECLAIM_ON_DEMAND
 /* Inserts and releases keys of its own until the pool turns it away. */
 static void ht_test_drain_pool_fn(struct lsv_ht_test_job *job)
 {
@@ -727,7 +729,7 @@ static void LSV_KTEST(ht_free_on_worker_with_queued_request)(struct kunit *test)
 		KUNIT_ASSERT_TRUE(test, lsv_ht_test_job_wait(flush));
 	}
 }
-#endif /* LSV_HT_IDLE_BUFFERS */
+#endif /* LSV_HT_IDLE_BUFFERS && LSV_HT_RECLAIM_ON_DEMAND */
 
 /*
  * What .exit does first, after a test that failed an assertion with a job
@@ -762,13 +764,15 @@ static struct kunit_case __cases[] = {
 	LSV_KUNIT_CASE(ht_dead_entry_reuse),
 	LSV_KUNIT_CASE(ht_late_remove_spares_new_value),
 	LSV_KUNIT_CASE(ht_lost_insertion_drops_its_value),
+#if LSV_HT_RECLAIM_ON_DEMAND
 	LSV_KUNIT_CASE(ht_cell_shortage_reclaims),
+#endif
 	LSV_KUNIT_CASE(ht_values_without_refs),
 	LSV_KUNIT_CASE(ht_late_worker_refused),
 	LSV_KUNIT_CASE(ht_capacity_under_contention),
 	LSV_KUNIT_CASE(ht_concurrent_participants),
 	LSV_KUNIT_CASE(ht_concurrent_participants_reused_cells),
-#if LSV_HT_IDLE_BUFFERS
+#if LSV_HT_IDLE_BUFFERS && LSV_HT_RECLAIM_ON_DEMAND
 	LSV_KUNIT_CASE(ht_idle_buffer_comes_back),
 	LSV_KUNIT_CASE(ht_free_waits_for_queued_request),
 	LSV_KUNIT_CASE(ht_free_on_worker_with_queued_request),
