@@ -199,7 +199,7 @@ static s64 lsv_lmap_linear_next_pba_get(struct lsv_lmap *lmap)
 	return ida_alloc_max(&lmap->pba_bitmap, lmap->capacity_cells - 1, GFP_NOIO);
 }
 
-static s64 lsv_lmap_segmented_next_pba_get(struct lsv_lmap *lmap)
+static s64 __maybe_unused lsv_lmap_segmented_next_pba_get(struct lsv_lmap *lmap)
 {
 	/* TODO(maksim): add segment model pba allocation */
 	return -EOPNOTSUPP;

@@ -32,8 +32,12 @@ ccflags-y += -DLSV_HT_EBR_GLOBAL
 lsv-ht-impl := utils/lock-free/ht_ebr/ebr.o utils/lock-free/ht_ebr/ht_ebr.o \
 	$(HT_DIR)/ebr_global.o
 lsv-ht-impl-tests := utils/lock-free/ht_ebr/tests/suites/kunit_lsv_ebr_reg.o
+else ifeq ($(ht), debra)
+HT_HDR := $(HT_DIR)/ht_debra.h
+lsv-ht-impl := $(HT_DIR)/debra.o $(HT_DIR)/ht_debra.o
+lsv-ht-impl-tests := $(HT_DIR)/tests/suites/kunit_lsv_debra_reg.o
 else
-$(error Invalid ht specified. Use "make ht=dta", "make ht=ebr" or "make ht=ebr+")
+$(error Invalid ht specified. Use "make ht=dta", "make ht=ebr", "make ht=ebr+" or "make ht=debra")
 endif
 
 # The workers the hash table participants run on
