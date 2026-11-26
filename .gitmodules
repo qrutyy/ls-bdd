@@ -1,0 +1,3 @@
+[submodule "src/utils/lfbitmap"]
+	path = src/utils/lfbitmap
+	url = https://github.com/qrutyy/lfbitmap

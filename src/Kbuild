@@ -102,8 +102,11 @@ lsv-core += core/trace/trace.o
 lsv-ds := utils/ds_control.o utils/xxh3.o
 lsv-ds += $(addprefix $(DIR)/, btree_utils.o skiplist.o rbtree.o)
 
-lsv-objs += $(lsv-core) $(lsv-ds)
+# The lock-free bitmap of the free cells, a git submodule.
+lsv-bitmap := utils/lfbitmap/lfbm.o
+
+lsv-objs += $(lsv-core) $(lsv-ds) $(lsv-bitmap)
 
 # Dynamical include path for the ds-control headers; core/trace is where
 # define_trace.h looks for lsv_trace.h (TRACE_INCLUDE_PATH is relative to it).
-ccflags-y += -I$(src) -I$(src)/$(DIR) -I$(src)/core/trace
+ccflags-y += -I$(src) -I$(src)/$(DIR) -I$(src)/core/trace -I$(src)/utils/lfbitmap

@@ -16,6 +16,17 @@ For related works, see [docs](https://github.com/qrutyy/ls-bdd/blob/main/docs):
 
 **_Compatible with Linux Kernel 7.2.9_**
 
+### Getting the sources
+
+The free cells of the linear layout are tracked by [lfbitmap](https://github.com/qrutyy/lfbitmap),
+a lock-free bitmap kept as a git submodule, so clone with it:
+
+```bash
+git clone --recurse-submodules https://github.com/qrutyy/ls-bdd
+# or, in an existing clone:
+git submodule update --init
+```
+
 ### Initialization
 
 ```bash

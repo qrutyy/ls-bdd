@@ -30,6 +30,8 @@ jobs:
           echo "KERNEL_SOURCE_PATH=$HOME/kernel/linux-$KERNEL_VERSION" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install build prerequisites
         run: |

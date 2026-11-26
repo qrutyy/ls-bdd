@@ -4,12 +4,12 @@
 #define LSV_CORE_LMAP_H
 
 #include <linux/bio.h>
-#include <linux/idr.h>
 #include <linux/rcupdate.h>
 #include <linux/refcount.h>
 #include <linux/types.h>
 #include <linux/xarray.h>
 
+#include "lfbm.h"
 #include "utils/ds_control.h"
 
 /* Sectors reserved at the head of the backing device for metadata. */
@@ -75,7 +75,7 @@ struct lsv_lmap {
 	/* TODO(maksim):  array of segments */
 
 	struct xarray pblk_pba_map; /* Every live pblk by its pba */
-	struct ida pba_bitmap;
+	struct lfbm pba_bitmap; /* Taken cells of the linear layout */
 
 	struct lsv_lmap_params params;
 };
