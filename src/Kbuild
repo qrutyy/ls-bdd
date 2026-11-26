@@ -1,61 +1,82 @@
-ccflags-y := 	-Wall							\
-		-Wextra									\
-		-Wno-missing-field-initializers			\
-		-Wno-unused-parameter					\
-		-Wformat								\
-		-std=gnu18								\
-		-O2 									\
-		-Werror=format-security					\
-		-Werror=implicit-function-declaration   \
+# Kbuild of lsv.ko.
+#
+# Knobs, given on the command line (the top-level Makefile passes them on):
+#
+#   type=lf|sy        data structures: lock-free (lf) or lock based (sy)
+#   ht=dta|ebr|ebr+   lock-free hash table (only for type=lf, default dta)
+#       dta   DtA: reclamation with recovery of stalled participants
+#       ebr   EBR, limbo lists of every participant its own
+#       ebr+  EBR, three limbo lists shared by the whole table
 
 obj-m := lsv.o
 
-# Lock-free hash table implementation: make ht=<name> (default dta)
-#   dta   DtA: reclamation with recovery of stalled participants
-#   ebr   EBR, limbo lists of every participant its own
-#   ebr+  EBR, three limbo lists shared by the whole table
+# ---------------------------------------------------------------------------
+# Compiler flags
+# ---------------------------------------------------------------------------
+
+ccflags-y := -std=gnu18 -O2
+ccflags-y += -Wall -Wextra -Wformat
+ccflags-y += -Wno-missing-field-initializers -Wno-unused-parameter
+ccflags-y += -Werror=format-security -Werror=implicit-function-declaration
+
+# ---------------------------------------------------------------------------
+# Hash table implementation (ht=)
+#
+#   ht-dir    where the implementation and its tests live
+#   ht-hdr    the header the rest of the driver includes it through
+#   ht-impl   objects of the implementation
+#   ht-tests  objects of the KUnit cases of its own mechanism
+# ---------------------------------------------------------------------------
+
 ht ?= dta
-HT_DIR := utils/lock-free/ht_$(ht)
+ht-dir := utils/lock-free/ht_$(ht)
 
 ifeq ($(ht), dta)
-HT_HDR := $(HT_DIR)/ht_dta.h
-lsv-ht-impl := $(HT_DIR)/dta.o $(HT_DIR)/ht_dta.o
-lsv-ht-impl-tests := $(HT_DIR)/tests/suites/kunit_lsv_dta_reg.o
+ht-hdr := $(ht-dir)/ht_dta.h
+ht-impl := $(addprefix $(ht-dir)/, dta.o ht_dta.o)
+ht-tests := $(ht-dir)/tests/suites/kunit_lsv_dta_reg.o
+
 else ifeq ($(ht), ebr)
-HT_HDR := $(HT_DIR)/ht_ebr.h
-lsv-ht-impl := $(HT_DIR)/ebr.o $(HT_DIR)/ht_ebr.o $(HT_DIR)/ebr_local.o
-lsv-ht-impl-tests := $(HT_DIR)/tests/suites/kunit_lsv_ebr_reg.o
+ht-hdr := $(ht-dir)/ht_ebr.h
+ht-impl := $(addprefix $(ht-dir)/, ebr.o ht_ebr.o ebr_local.o)
+ht-tests := $(ht-dir)/tests/suites/kunit_lsv_ebr_reg.o
+
 else ifeq ($(ht), ebr+)
-# the table and the epochs are the ones of ebr, only the limbo lists differ
-HT_HDR := utils/lock-free/ht_ebr/ht_ebr.h
+# The table and the epochs are the ones of ebr, only the limbo lists differ.
+ebr-dir := utils/lock-free/ht_ebr
+ht-hdr := $(ebr-dir)/ht_ebr.h
+ht-impl := $(addprefix $(ebr-dir)/, ebr.o ht_ebr.o) $(ht-dir)/ebr_global.o
+ht-tests := $(ebr-dir)/tests/suites/kunit_lsv_ebr_reg.o
 ccflags-y += -DLSV_HT_EBR_GLOBAL
-lsv-ht-impl := utils/lock-free/ht_ebr/ebr.o utils/lock-free/ht_ebr/ht_ebr.o \
-	$(HT_DIR)/ebr_global.o
-lsv-ht-impl-tests := utils/lock-free/ht_ebr/tests/suites/kunit_lsv_ebr_reg.o
+
 else
 $(error Invalid ht specified. Use "make ht=dta", "make ht=ebr" or "make ht=ebr+")
 endif
 
-# The workers the hash table participants run on
-lsv-wq := core/wq/shard_wq.o core/wq/pool_wq.o core/wq/wq.o
+# The workers the hash table participants run on.
+lsv-wq := $(addprefix core/wq/, shard_wq.o pool_wq.o wq.o)
 
-lsv-ht := $(lsv-wq) $(lsv-ht-impl)
 # The suites every implementation runs, compiled against the one picked
 # through its tests/ht_impl_test.h, and the cases of its own mechanism.
-lsv-ht-tests := utils/lock-free/ht_tests/lsv_kunit_ht.o \
-	utils/lock-free/ht_tests/suites/kunit_lsv_ht_reg.o \
-	utils/lock-free/ht_tests/suites/kunit_lsv_ht_stress.o \
-	utils/lock-free/ht_tests/suites/kunit_lsv_ht_perf.o \
-	$(HT_DIR)/tests/ht_impl_test.o \
-	$(lsv-ht-impl-tests)
+lsv-ht-tests := utils/lock-free/ht_tests/lsv_kunit_ht.o
+lsv-ht-tests += $(addprefix utils/lock-free/ht_tests/suites/, \
+		kunit_lsv_ht_reg.o kunit_lsv_ht_stress.o kunit_lsv_ht_perf.o)
+lsv-ht-tests += $(ht-dir)/tests/ht_impl_test.o $(ht-tests)
+
+# ---------------------------------------------------------------------------
+# Data structures (type=)
+#
+#   DIR  where the btree, skiplist and rbtree of the type live; it is also
+#        put on the include path for ds_control
+# ---------------------------------------------------------------------------
 
 ifeq ($(type), lf)
 DIR := utils/lock-free
 ccflags-y += -DLF_MODE
-ccflags-y += -DLSV_HT_IMPL_H='"$(HT_HDR)"' -I$(src)/$(HT_DIR)/tests
-lsv-objs := $(DIR)/lf_list.o $(lsv-ht)
+ccflags-y += -DLSV_HT_IMPL_H='"$(ht-hdr)"' -I$(src)/$(ht-dir)/tests
+lsv-objs := $(DIR)/lf_list.o $(lsv-wq) $(ht-impl)
 
-# KUnit suites of the hash table, in lsv.ko whenever the kernel has KUnit
+# KUnit suites of the hash table, in lsv.ko whenever the kernel has KUnit.
 ifneq ($(CONFIG_KUNIT),)
 lsv-objs += $(lsv-ht-tests)
 endif
@@ -69,13 +90,20 @@ else
 $(error Invalid type specified. Use "make type=lf" or "make type=sy")
 endif
 
-lsv-ds := utils/ds_control.o utils/xxh3.o \
-	$(DIR)/btree_utils.o $(DIR)/skiplist.o \
-	$(DIR)/rbtree.o
+# ---------------------------------------------------------------------------
+# The rest of the driver
+# ---------------------------------------------------------------------------
 
-lsv-objs += main.o ctl/configfs.o core/dev.o \
-	core/lmap/lmap.o core/bio/bio.o core/bio/io.o core/dedup/dedup.o core/dedup/digest.o \
-	$(lsv-ds)
+lsv-core := main.o ctl/configfs.o core/dev.o core/lmap/lmap.o
+lsv-core += core/bio/bio.o core/bio/io.o
+lsv-core += core/dedup/dedup.o core/dedup/digest.o
+lsv-core += core/trace/trace.o
 
-# Add dynamical include path for the ds-control headers.
-ccflags-y += -I$(src) -I$(src)/$(DIR)
+lsv-ds := utils/ds_control.o utils/xxh3.o
+lsv-ds += $(addprefix $(DIR)/, btree_utils.o skiplist.o rbtree.o)
+
+lsv-objs += $(lsv-core) $(lsv-ds)
+
+# Dynamical include path for the ds-control headers; core/trace is where
+# define_trace.h looks for lsv_trace.h (TRACE_INCLUDE_PATH is relative to it).
+ccflags-y += -I$(src) -I$(src)/$(DIR) -I$(src)/core/trace

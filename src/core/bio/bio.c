@@ -9,58 +9,61 @@
 #include "core/bio/bio.h"
 #include "core/dedup/dedup.h"
 #include "core/lmap/lmap.h"
+#include "core/trace/lsv_trace.h"
 
 #define LSV_BIO_SUBMIT 0
 #define LSV_BIO_DONE 1
 
-static struct kmem_cache *g_lsv_bio_req_cachep;
-
-s32 lsv_bio_cache_alloc(void)
+s32 lsv_bio_init(struct lsv_dev *dev)
 {
-	g_lsv_bio_req_cachep = kmem_cache_create("lsv_bio_req", sizeof(struct lsv_bio_req), 0, SLAB_HWCACHE_ALIGN, NULL);
-	if (!g_lsv_bio_req_cachep)
-		return -ENOMEM;
+	/* The bio sits right behind the pad, so the pad has to keep it aligned. */
+	BUILD_BUG_ON(!IS_ALIGNED(sizeof(struct lsv_bio_req), __alignof__(struct bio)));
 
-	return 0;
+	return bioset_init(&dev->bio_set, BIO_POOL_SIZE, sizeof(struct lsv_bio_req), BIOSET_NEED_BVECS);
 }
 
-void lsv_bio_cache_free(void)
+void lsv_bio_deinit(struct lsv_dev *dev)
 {
-	kmem_cache_destroy(g_lsv_bio_req_cachep);
-	g_lsv_bio_req_cachep = NULL;
+	bioset_exit(&dev->bio_set);
+}
+
+static inline struct lsv_bio_req *lsv_bio_to_req(struct bio *clone)
+{
+	return (struct lsv_bio_req *)((char *)clone - sizeof(struct lsv_bio_req));
 }
 
 static void lsv_bio_end_io(struct bio *clone)
 {
-	struct lsv_bio_req *req = clone->bi_private;
+	struct lsv_bio_req *req = lsv_bio_to_req(clone);
 	struct bio *orig = req->orig;
+	u64 orig_sector = orig->bi_iter.bi_sector;
+	u64 size = orig->bi_iter.bi_size;
 
 	orig->bi_status = clone->bi_status;
 	bio_endio(orig);
+	/* Frees the request with it: |req| must not be touched from here on. */
 	bio_put(clone);
-	kmem_cache_free(g_lsv_bio_req_cachep, req);
+
+	trace_lsv_bio_end_io(orig_sector, size);
 }
 
 static struct lsv_bio_req *lsv_bio_req_alloc(struct lsv_dev *dev, struct bio *bio)
 {
 	struct lsv_bio_req *req;
+	struct bio *clone;
 
-	req = kmem_cache_zalloc(g_lsv_bio_req_cachep, GFP_NOIO);
-	if (!req)
+	clone = bio_alloc_clone(dev->back.bd, bio, GFP_NOIO, &dev->bio_set);
+	if (!clone)
 		return NULL;
 
-	req->clone = bio_alloc_clone(dev->back.bd, bio, GFP_NOIO, &dev->lmap.bio_set);
-	if (!req->clone) {
-		kmem_cache_free(g_lsv_bio_req_cachep, req);
-		return NULL;
-	}
-
+	/* The pad comes out of the pool as it was left: every field is set here. */
+	req = lsv_bio_to_req(clone);
 	req->orig = bio;
+	req->clone = clone;
 	req->dev = dev;
 	req->op = bio_op(bio);
 
-	req->clone->bi_private = req;
-	req->clone->bi_end_io = lsv_bio_end_io;
+	clone->bi_end_io = lsv_bio_end_io;
 
 	return req;
 }
@@ -182,7 +185,7 @@ static void lsv_bio_process(struct lsv_bio_req *req)
 		bio = clone;
 
 		if (chunk < bio_sectors(clone)) {
-			bio = bio_split(clone, chunk, GFP_NOIO, &lmap->bio_set);
+			bio = bio_split(clone, chunk, GFP_NOIO, &req->dev->bio_set);
 			if (!bio) {
 				rc = -ENOMEM;
 				goto err;
@@ -212,6 +215,8 @@ static void lsv_submit_bio(struct bio *bio)
 {
 	struct lsv_dev *dev = bio->bi_bdev->bd_disk->private_data;
 	struct lsv_bio_req *req;
+
+	trace_lsv_submit_bio(bio->bi_iter.bi_sector, bio->bi_iter.bi_size);
 
 	if (unlikely(!dev)) {
 		bio_io_error(bio);

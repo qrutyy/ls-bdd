@@ -3,6 +3,7 @@
 #ifndef LSV_CORE_DEV_H
 #define LSV_CORE_DEV_H
 
+#include <linux/bio.h>
 #include <linux/blkdev.h>
 #include <linux/list.h>
 
@@ -45,6 +46,9 @@ struct lsv_dev {
 
 	struct lsv_lmap lmap;
 	struct lsv_dedup *dedup; /* NULL when dedup is off */
+
+	/* Clones and splits of this device; every clone carries its lsv_bio_req in front. */
+	struct bio_set bio_set;
 
 	struct list_head node; /* node in the module wide device list */
 };

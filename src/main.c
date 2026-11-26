@@ -44,16 +44,10 @@ static s32 lsv_mng_init(void)
 	if (rc)
 		goto deinit_lmap_engine;
 
-	rc = lsv_bio_cache_alloc();
-	if (rc)
-		goto deinit_dedup_engine;
-
 	g_mng = mng;
 
 	return 0;
 
-deinit_dedup_engine:
-	lsv_dedup_engine_deinit();
 deinit_lmap_engine:
 	lsv_lmap_engine_deinit();
 unregister:
@@ -79,7 +73,6 @@ static void lsv_mng_deinit(void)
 
 	lsv_dev_destroy_all(mng);
 
-	lsv_bio_cache_free();
 	lsv_dedup_engine_deinit();
 	lsv_lmap_engine_deinit();
 	unregister_blkdev(mng->major, LSV_BLKDEV_NAME_PREFIX);
