@@ -9,6 +9,8 @@
 #include <linux/refcount.h>
 #include <linux/types.h>
 #include <linux/xarray.h>
+#include "linux/spinlock.h"
+#include "linux/atomic.h"
 
 #include "utils/ds_control.h"
 
@@ -19,7 +21,15 @@
 #define LSV_CELL_SIZE_MAX (1024 * 1024)
 #define LSV_DS_NAME_LEN 8
 
+/* Segment model constants. */
+#define LSV_SEGMENT_MIN_CELLS 256
+#define LSV_SEGMENT_DEFAULT_SIZE (16 * 1024 * 1024)
+#define LSV_GC_RESERVE_SEGS 1
+#define LSV_REFS_HIST_BUCKETS 5
+
 struct lsv_de;
+
+struct lsv_segment;
 
 /*
  * |ref| counts exactly those cells (plus a writer that holds one in flight).
@@ -32,6 +42,7 @@ struct lsv_pblk {
 
 	struct lsv_de *de; /* dedup entry indexing this block, NULL if none */
 	struct rcu_head rcu;
+	struct lsv_segment *segment; /* segment this block belongs to */
 };
 
 struct lsv_cell {
@@ -43,6 +54,54 @@ struct lsv_cell {
 enum lsv_space_layout {
 	LSV_SPACE_LINEAR,
 	LSV_SPACE_SEGMENTED,
+};
+
+enum lsv_segment_state {
+	LSV_SEGMENT_FREE = 0,
+	LSV_SEGMENT_OPEN,
+	LSV_SEGMENT_SEALING,
+	LSV_SEGMENT_CLOSED,
+	LSV_SEGMENT_VICTIM,
+};
+
+enum lsv_segment_stream {
+	LSV_SEGMENT_USER = 0,
+	LSV_SEGMENT_STREAM_GC,
+	LSV_SEGMENT_STREAM_NR,
+};
+
+/*
+ * A fixed-size region of physical storage that is allocated and reclaimed
+ * as a unit. Its lifecycle and counters are maintained independently of
+ * linear allocation mode
+ */
+struct lsv_segment {
+	enum lsv_segment_state state;
+	enum lsv_segment_stream stream;
+	u64 id; /* segment numberю */
+	u64 start_pba; /* first pba in this segment */
+
+	atomic_t next_slot; /* next free pba in this segment */
+	atomic_t live; /* block still referenced */
+	atomic_t shared; /* block with >= 2 references */
+	atomic_t inflight; /* writes begun but not completed. */
+	atomic_t hits_in; /* dedup hits into this segment */
+
+	spinlock_t lock; /* protects the segment's state and pblk_count */
+};
+
+struct lsv_segment_pool {
+	struct lsv_segment *segments;
+	unsigned long *free_bitmap;
+	u32 nr_segments;
+	u32 cells_per_segment;
+	u32 free_count;
+
+	struct lsv_segment *open_segments[LSV_SEGMENT_STREAM_NR];
+
+	u32 gc_reserve; /* number of segments reserved for GC */
+
+	spinlock_t pool_lock; /* protects the open_segments and free_bitmap */
 };
 
 /* What the device hands lmap to build it from, as configured. */
@@ -72,7 +131,9 @@ struct lsv_lmap {
 	u64 capacity_cells;
 
 	u64 segment_size;
-	/* TODO(maksim):  array of segments */
+	u32 cells_per_segment;
+	u32 nr_segments;
+	struct lsv_segment_pool segment_pool;
 
 	struct xarray pblk_pba_map; /* Every live pblk by its pba */
 	struct ida pba_bitmap;
@@ -93,6 +154,10 @@ void lsv_pblk_put(struct lsv_lmap *lmap, struct lsv_pblk *pblk);
 
 s32 lsv_lmap_bind(struct lsv_lmap *lmap, u64 lba, struct lsv_pblk *pblk);
 bool lsv_lmap_lookup_pba(struct lsv_lmap *lmap, u64 lba, u64 *pba);
+
+s32 lsv_segment_pool_init(struct lsv_lmap *lmap);
+void lsv_segment_pool_deinit(struct lsv_lmap *lmap);
+s64 lsv_segment_slot(struct lsv_lmap *lmap, enum lsv_segment_stream stream);
 
 /* Where a sector lands inside the cell grid. */
 static inline void lsv_lmap_locate(const struct lsv_lmap *lmap, sector_t sector, struct lsv_lmap_pos *pos)
