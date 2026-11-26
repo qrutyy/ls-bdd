@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-#include "linux/idr.h"
 #include <linux/blkdev.h>
+#include <linux/bug.h>
 #include <linux/err.h>
 #include <linux/log2.h>
 #include <linux/slab.h>
@@ -132,10 +132,6 @@ static s32 lsv_lmap_setup_geometry(struct lsv_lmap *lmap)
 	if (!lmap->capacity_cells)
 		return -ENOSPC;
 
-	/* ida hands out ints only: about 8 TiB of 4 KiB cells. */
-	if (lsv_lmap_is_linear(lmap) && lmap->capacity_cells - 1 > INT_MAX)
-		return -E2BIG;
-
 	lmap->segment_size = lmap->params.segment_size;
 
 	return 0;
@@ -153,13 +149,23 @@ s32 lsv_lmap_init(struct lsv_lmap *lmap)
 		return rc;
 
 	xa_init(&lmap->pblk_pba_map);
-	ida_init(&lmap->pba_bitmap);
+
+	/* Only the linear layout tracks free cells one by one. */
+	if (lsv_lmap_is_linear(lmap)) {
+		rc = lfbm_init(&lmap->pba_bitmap, lmap->capacity_cells);
+		if (rc)
+			return rc;
+	}
 
 	rc = lsv_ds_init(&lmap->index, lmap->ds_type, g_lmap_engine->map_cache.entry_cache_mng, lmap->capacity_cells);
 	if (rc)
-		return rc;
+		goto destroy_bitmap;
 
 	return 0;
+
+destroy_bitmap:
+	lfbm_destroy(&lmap->pba_bitmap);
+	return rc;
 }
 
 /*
@@ -177,16 +183,17 @@ void lsv_lmap_deinit(struct lsv_lmap *lmap)
 	xa_for_each(&lmap->pblk_pba_map, pba, pblk)
 		kmem_cache_free(g_lmap_engine->pblk_cachep, pblk);
 	xa_destroy(&lmap->pblk_pba_map);
-	ida_destroy(&lmap->pba_bitmap);
+	lfbm_destroy(&lmap->pba_bitmap);
 }
 
 /*
  * The lowest free cell: the linear layout fills the gaps the dead ones left.
- * Bounded by the capacity, so a full device is -ENOSPC from ida itself.
+ * Bounded by the capacity, so a full device is -ENOSPC from the bitmap itself.
+ * It neither locks nor allocates, which is what the write path wants.
  */
 static s64 lsv_lmap_linear_next_pba_get(struct lsv_lmap *lmap)
 {
-	return ida_alloc_max(&lmap->pba_bitmap, lmap->capacity_cells - 1, GFP_NOIO);
+	return lfbm_find_and_set_bit(&lmap->pba_bitmap);
 }
 
 static s64 lsv_lmap_segmented_next_pba_get(struct lsv_lmap *lmap)
@@ -216,7 +223,7 @@ static s32 lsv_lmap_alloc_pba(struct lsv_lmap *lmap, u64 *pba)
 static void lsv_lmap_free_pba(struct lsv_lmap *lmap, u64 pba)
 {
 	if (lsv_lmap_is_linear(lmap))
-		ida_free(&lmap->pba_bitmap, pba);
+		WARN_ON_ONCE(!lfbm_test_and_clear_bit(&lmap->pba_bitmap, pba));
 }
 
 /*
