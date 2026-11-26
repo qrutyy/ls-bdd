@@ -152,9 +152,13 @@ s32 lsv_dev_create(const struct lsv_dev_params *params, struct lsv_dev **out)
 			goto deinit_lmap;
 	}
 
-	rc = lsv_dev_add_disk(dev);
+	rc = lsv_bio_init(dev);
 	if (rc)
 		goto destroy_dedup;
+
+	rc = lsv_dev_add_disk(dev);
+	if (rc)
+		goto deinit_bio;
 
 	mutex_lock(&g_mng->lock);
 	list_add_tail(&dev->node, &g_mng->dev_list);
@@ -167,6 +171,8 @@ s32 lsv_dev_create(const struct lsv_dev_params *params, struct lsv_dev **out)
 
 	return 0;
 
+deinit_bio:
+	lsv_bio_deinit(dev);
 destroy_dedup:
 	lsv_dedup_destroy(dev->dedup);
 deinit_lmap:
@@ -190,6 +196,7 @@ void lsv_dev_destroy(struct lsv_dev *dev)
 	lsv_dev_del_disk(dev);
 	/* Before lmap: pending verifies still hold pblks and bios of this device. */
 	lsv_dedup_destroy(dev->dedup);
+	lsv_bio_deinit(dev);
 	lsv_lmap_deinit(&dev->lmap);
 	lsv_dev_close_back(dev);
 

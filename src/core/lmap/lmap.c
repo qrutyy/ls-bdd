@@ -155,19 +155,11 @@ s32 lsv_lmap_init(struct lsv_lmap *lmap)
 	xa_init(&lmap->pblk_pba_map);
 	ida_init(&lmap->pba_bitmap);
 
-	rc = bioset_init(&lmap->bio_set, BIO_POOL_SIZE, 0, BIOSET_NEED_BVECS);
+	rc = lsv_ds_init(&lmap->index, lmap->ds_type, g_lmap_engine->map_cache.entry_cache_mng, lmap->capacity_cells);
 	if (rc)
 		return rc;
 
-	rc = lsv_ds_init(&lmap->index, lmap->ds_type, g_lmap_engine->map_cache.entry_cache_mng, lmap->capacity_cells);
-	if (rc)
-		goto bioset_err;
-
 	return 0;
-
-bioset_err:
-	bioset_exit(&lmap->bio_set);
-	return rc;
 }
 
 /*
@@ -186,8 +178,6 @@ void lsv_lmap_deinit(struct lsv_lmap *lmap)
 		kmem_cache_free(g_lmap_engine->pblk_cachep, pblk);
 	xa_destroy(&lmap->pblk_pba_map);
 	ida_destroy(&lmap->pba_bitmap);
-
-	bioset_exit(&lmap->bio_set);
 }
 
 /*

@@ -77,8 +77,6 @@ struct lsv_lmap {
 	struct xarray pblk_pba_map; /* Every live pblk by its pba */
 	struct ida pba_bitmap;
 
-	struct bio_set bio_set;
-
 	struct lsv_lmap_params params;
 };
 
