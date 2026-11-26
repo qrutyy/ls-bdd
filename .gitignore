@@ -120,3 +120,12 @@ compile_commands.json
 test/results/
 __pycache__/
 .pytest_cache/
+
+# cscope
+cscope*
+
+# Claude
+.claude
+
+# cache
+src/.cache
