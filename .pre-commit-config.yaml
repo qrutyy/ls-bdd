@@ -40,3 +40,13 @@ repos:
     -   id: checkmake
         name: Check Makefile (+lint)
         files: Makefile
+
+  - repo: local
+    hooks:
+      - id: checkpatch
+        name: Check kernel coding style (checkpatch.pl)
+        entry: scripts/checkpatch.sh
+        language: script
+        files: \.(c|h)$
+        # One process: parallel ones would all download checkpatch.pl at once.
+        require_serial: true
